@@ -565,7 +565,13 @@
   <p>Conçu par un paysagiste, pour des paysagistes · 2026</p>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
+  const db = supabase.createClient(
+    'https://djegdtlcvyjtrayrodxj.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s'
+  );
+
   let roleActif = 'entrepreneur';
 
   function setTab(el, role) {
@@ -583,34 +589,15 @@
       return;
     }
 
-    const SUPABASE_URL = 'https://djegdtlcvyjtrayrodxj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+    const { error } = await db.from('waitlist').insert({ prenom, email, role: roleActif });
 
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/waitlist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({ prenom, email, role: roleActif })
-      });
-
-      if (res.ok || res.status === 201) {
-        document.getElementById('success-msg').style.display = 'block';
-        document.getElementById('input-prenom').value = '';
-        document.getElementById('input-email').value = '';
-      } else {
-        alert('Une erreur est survenue. Merci de réessayer.');
-      }
-    } catch (e) {
-      // Fallback si Supabase pas encore branché
-      console.log('Inscription :', { prenom, email, role: roleActif });
+    if (!error) {
       document.getElementById('success-msg').style.display = 'block';
       document.getElementById('input-prenom').value = '';
       document.getElementById('input-email').value = '';
+    } else {
+      console.error('Waitlist error:', error);
+      alert('Une erreur est survenue. Merci de réessayer.');
     }
   }
 </script>
