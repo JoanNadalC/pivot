@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pivot — La plateforme d'achat pour les paysagistes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --vert:    #1C3A2A;
+      --vert-md: #2D5940;
+      --vert-lt: #3E7A58;
+      --ecru:    #F5F0E8;
+      --cuivre:  #B87333;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; background: var(--blanc); color: var(--vert); line-height: 1.6; }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.2rem 2.5rem;
+      background: rgba(250,250,247,0.93);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--gris-lt);
+      gap: 1rem;
+    }
+    .nav-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; font-weight: 900;
+      color: var(--vert); letter-spacing: -0.02em;
+    }
+    .nav-logo span { color: var(--cuivre); }
+    nav a.nav-cta {
+      background: var(--vert); color: var(--blanc);
+      padding: 0.55rem 1rem; border-radius: 4px;
+      text-decoration: none; font-size: 0.8rem; font-weight: 600;
+      transition: background 0.2s;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    @media (max-width: 400px) {
+      nav a.nav-cta { font-size: 0.72rem; padding: 0.5rem 0.7rem; }
+      .nav-logo { font-size: 1.2rem; }
+    }
+    nav a.nav-cta:hover { background: var(--vert-md); }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh; background: var(--vert);
+      display: flex; flex-direction: column;
+      justify-content: center;
+      padding: 9rem 2.5rem 5rem;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 55% 55% at 85% 40%, rgba(62,122,88,0.3) 0%, transparent 70%),
+        radial-gradient(ellipse 35% 50% at 5% 85%, rgba(184,115,51,0.1) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      font-size: 0.72rem; font-weight: 600;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--cuivre); margin-bottom: 1.8rem;
+    }
+    .hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.6rem, 5.5vw, 5rem);
+      font-weight: 900; line-height: 1.07;
+      color: var(--ecru); max-width: 780px;
+      margin-bottom: 2rem; letter-spacing: -0.02em;
+    }
+    .hero h1 em { font-style: italic; color: var(--cuivre); }
+    .hero-sub {
+      font-size: 1.1rem; color: rgba(245,240,232,0.65);
+      max-width: 520px; line-height: 1.75; margin-bottom: 2.5rem;
+    }
+    .hero-btn {
+      display: inline-block; background: var(--cuivre); color: var(--blanc);
+      padding: 0.9rem 2.2rem; border-radius: 4px;
+      text-decoration: none; font-weight: 600; font-size: 1rem;
+      transition: opacity 0.2s, transform 0.2s;
+      box-shadow: 0 4px 20px rgba(184,115,51,0.35);
+      align-self: flex-start;
+    }
+    .hero-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .hero-scroll {
+      position: absolute; bottom: 2.5rem; left: 2.5rem;
+      font-size: 0.72rem; color: rgba(245,240,232,0.3);
+      letter-spacing: 0.12em; text-transform: uppercase;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .hero-scroll::before {
+      content: ''; display: block; width: 1px; height: 30px;
+      background: rgba(245,240,232,0.2);
+    }
+
+    /* SECTIONS BASE */
+    .section-inner { max-width: 1080px; margin: 0 auto; }
+    .section-label {
+      font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--cuivre); margin-bottom: 0.9rem;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 3.2vw, 2.8rem);
+      font-weight: 700; line-height: 1.15; color: var(--vert);
+    }
+
+    /* DOULEURS */
+    .douleurs { background: var(--ecru); padding: 6rem 2.5rem; }
+    .douleurs-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1px; margin-top: 3.5rem; background: var(--gris-lt);
+    }
+    .douleur-card { background: var(--blanc); padding: 2.4rem 2rem; }
+    .douleur-who {
+      font-size: 0.68rem; font-weight: 600;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      color: var(--cuivre); margin-bottom: 1.4rem;
+    }
+    .douleur-before { margin-bottom: 1.8rem; }
+    .douleur-before h3 {
+      font-size: 0.72rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--gris); margin-bottom: 0.9rem;
+    }
+    .douleur-before ul { list-style: none; }
+    .douleur-before ul li {
+      font-size: 0.9rem; color: #9CA3AF;
+      padding: 0.45rem 0; border-top: 1px solid var(--gris-lt);
+      display: flex; align-items: flex-start; gap: 0.7rem;
+      text-decoration: line-through;
+      text-decoration-color: rgba(184,115,51,0.4);
+    }
+    .douleur-before ul li::before {
+      content: '✕'; color: #D1A47A; font-size: 0.7rem;
+      margin-top: 0.15rem; flex-shrink: 0;
+    }
+    .douleur-after {
+      background: rgba(28,58,42,0.04);
+      border-left: 2px solid var(--vert-lt);
+      padding: 1rem 1.1rem; border-radius: 0 2px 2px 0;
+    }
+    .douleur-after p { font-size: 0.9rem; color: var(--vert); line-height: 1.6; }
+    .douleur-after strong { font-weight: 600; }
+
+    /* SOLUTION */
+    .solution { background: var(--vert); padding: 6rem 2.5rem; }
+    .solution .section-title { color: var(--ecru); max-width: 700px; }
+    .solution-body {
+      margin-top: 2.5rem; display: grid;
+      grid-template-columns: 1fr 1fr; gap: 4rem; align-items: start;
+    }
+    .solution-text p {
+      font-size: 1.05rem; color: rgba(245,240,232,0.65);
+      line-height: 1.8; margin-bottom: 1.2rem;
+    }
+    .solution-text p strong { color: var(--ecru); font-weight: 600; }
+    .solution-stats { display: flex; flex-direction: column; gap: 2rem; }
+    .stat { border-top: 1px solid rgba(245,240,232,0.12); padding-top: 1.5rem; }
+    .stat-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 3rem; font-weight: 900; color: var(--cuivre);
+      line-height: 1; margin-bottom: 0.4rem;
+    }
+    .stat p { font-size: 0.88rem; color: rgba(245,240,232,0.5); line-height: 1.5; }
+
+    /* WORKFLOW */
+    .workflow { background: var(--blanc); padding: 6rem 2.5rem; }
+    .workflow-steps {
+      margin-top: 3.5rem; display: grid;
+      grid-template-columns: repeat(5, 1fr); position: relative;
+    }
+    .workflow-steps::before {
+      content: ''; position: absolute;
+      top: 1.6rem; left: 12%; right: 12%;
+      height: 1px; background: var(--gris-lt); z-index: 0;
+    }
+    .step { text-align: center; padding: 0 0.8rem; position: relative; z-index: 1; }
+    .step-dot {
+      width: 3.2rem; height: 3.2rem; border-radius: 50%;
+      background: var(--blanc); border: 1.5px solid var(--vert);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.1rem; font-size: 1.1rem;
+    }
+    .step h4 { font-size: 0.8rem; font-weight: 600; color: var(--vert); margin-bottom: 0.35rem; }
+    .step p { font-size: 0.76rem; color: var(--gris); line-height: 1.5; }
+
+    /* PORTAILS */
+    .portails { background: var(--ecru); padding: 6rem 2.5rem; }
+    .portails-list { margin-top: 3.5rem; display: flex; flex-direction: column; gap: 1px; background: var(--gris-lt); }
+    .portail-row { background: var(--blanc); display: grid; grid-template-columns: 260px 1fr; }
+    .portail-left { padding: 2.5rem 2rem; border-right: 1px solid var(--gris-lt); }
+    .portail-left .icon { font-size: 1.8rem; margin-bottom: 1rem; }
+    .portail-left .role {
+      font-size: 0.68rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--cuivre); margin-bottom: 0.5rem;
+    }
+    .portail-left h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.25rem; font-weight: 700; color: var(--vert);
+    }
+    .portail-right {
+      padding: 2.5rem; display: grid;
+      grid-template-columns: 1fr 1fr; gap: 1.5rem 3rem; align-content: center;
+    }
+    .portail-feature h4 { font-size: 0.82rem; font-weight: 600; color: var(--vert); margin-bottom: 0.3rem; }
+    .portail-feature p { font-size: 0.82rem; color: var(--gris); line-height: 1.5; }
+
+    /* LISTE D'ATTENTE */
+    .waitlist { background: var(--vert); padding: 6rem 2.5rem; }
+    .waitlist-inner { max-width: 640px; margin: 0 auto; text-align: center; }
+    .waitlist .section-label { color: var(--cuivre); }
+    .waitlist .section-title { color: var(--ecru); margin: 0 auto 1rem; }
+    .waitlist-sub {
+      color: rgba(245,240,232,0.55); font-size: 0.95rem;
+      line-height: 1.7; margin-bottom: 2.5rem;
+    }
+    .tabs {
+      display: flex; gap: 0.5rem;
+      justify-content: center; margin-bottom: 2rem; flex-wrap: wrap;
+    }
+    .tab {
+      padding: 0.5rem 1.2rem; border-radius: 100px;
+      border: 1.5px solid rgba(245,240,232,0.2);
+      background: transparent; font-size: 0.85rem; font-weight: 500;
+      color: rgba(245,240,232,0.5); cursor: pointer;
+      transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .tab.active, .tab:hover {
+      border-color: var(--cuivre);
+      background: var(--cuivre); color: var(--blanc);
+    }
+    .form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .form-row input {
+      flex: 1; min-width: 180px;
+      padding: 0.85rem 1.1rem;
+      border: 1.5px solid rgba(245,240,232,0.15);
+      border-radius: 4px; font-size: 0.95rem;
+      font-family: 'Inter', sans-serif;
+      background: rgba(255,255,255,0.07); color: var(--ecru);
+      outline: none; transition: border-color 0.2s;
+    }
+    .form-row input::placeholder { color: rgba(245,240,232,0.35); }
+    .form-row input:focus { border-color: var(--cuivre); }
+    .form-row button {
+      background: var(--cuivre); color: var(--blanc);
+      border: none; padding: 0.85rem 1.8rem; border-radius: 4px;
+      font-size: 0.95rem; font-weight: 600;
+      font-family: 'Inter', sans-serif; cursor: pointer;
+      transition: opacity 0.2s; white-space: nowrap;
+    }
+    .form-row button:hover { opacity: 0.88; }
+    .form-note { font-size: 0.75rem; color: rgba(245,240,232,0.3); margin-top: 1rem; }
+    .success-msg {
+      display: none; margin-top: 1.5rem;
+      background: rgba(62,122,88,0.25);
+      border: 1px solid rgba(62,122,88,0.5);
+      border-radius: 4px; padding: 1.2rem;
+      color: var(--ecru); font-size: 0.95rem; line-height: 1.6;
+    }
+    .avantages {
+      display: flex; gap: 2rem; justify-content: center;
+      margin-bottom: 2.5rem; flex-wrap: wrap;
+    }
+    .avantage {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.82rem; color: rgba(245,240,232,0.5);
+    }
+    .avantage::before { content: '✓'; color: var(--cuivre); font-weight: 700; }
+
+    /* FOOTER */
+    footer {
+      background: #111E17; color: rgba(245,240,232,0.3);
+      padding: 2.5rem; display: flex; align-items: center;
+      justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+    }
+    footer .nav-logo { color: var(--ecru); }
+    footer p { font-size: 0.8rem; }
+
+    /* RESPONSIVE */
+    @media (max-width: 960px) {
+      .douleurs-grid { grid-template-columns: 1fr; }
+      .solution-body { grid-template-columns: 1fr; gap: 2.5rem; }
+      .workflow-steps { grid-template-columns: 1fr 1fr; gap: 2rem; }
+      .workflow-steps::before { display: none; }
+      .portail-row { grid-template-columns: 1fr; }
+      .portail-left { border-right: none; border-bottom: 1px solid var(--gris-lt); }
+      .portail-right { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      nav { padding: 1rem 1.2rem; }
+      .hero, .douleurs, .solution, .workflow, .portails, .waitlist { padding: 4rem 1.2rem; }
+      footer { padding: 2rem 1.2rem; flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo" style="display:flex; align-items:baseline; gap:0.5rem; white-space:nowrap;">Pivot<span style="color:var(--cuivre); margin-right:0.4rem;">.</span><span style="font-family:'Inter',sans-serif; font-size:0.85rem; font-weight:500; color:var(--gris); letter-spacing:0.04em;">La Racine</span></div>
+  <a href="#waitlist" class="nav-cta">Être parmi les premiers →</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <p class="hero-eyebrow">Lancement dans quelques semaines · Secteur paysage</p>
+  <h1>Arrêtez de<br>ressaisir ce que<br>vous avez <em>déjà fait.</em></h1>
+  <p class="hero-sub">Pivot connecte vos fournisseurs — pépiniéristes, matériaux, mobilier urbain — et votre maître d'œuvre autour de vos fournitures chantier. Sans copier-coller, sans impression, sans scan.</p>
+  <a href="#waitlist" class="hero-btn">Réserver ma place →</a>
+  <div class="hero-scroll">Découvrir</div>
+</section>
+
+<!-- DOULEURS -->
+<section class="douleurs">
+  <div class="section-inner">
+    <p class="section-label">Le quotidien sans Pivot</p>
+    <h2 class="section-title">Des heures perdues sur des tâches qui n'ont pas de valeur.</h2>
+    <div class="douleurs-grid">
+      <div class="douleur-card">
+        <p class="douleur-who">🌿 Entrepreneur paysagiste</p>
+        <div class="douleur-before">
+          <h3>Aujourd'hui</h3>
+          <ul>
+            <li>Recopier le devis ligne par ligne dans un email de consultation</li>
+            <li>Relancer chaque pépinière individuellement</li>
+            <li>Faire le comparatif à la main dans Excel</li>
+            <li>Ressaisir les prix retenus pour passer la commande</li>
+            <li>Mettre en page une DAF, un DOE, fusionner des PDF sur le web</li>
+          </ul>
+        </div>
+        <div class="douleur-after">
+          <p>Avec Pivot : <strong>importez votre devis une fois.</strong> Les consultations partent, les réponses rentrent, vous gardez la main sur chaque décision — et quand vous avez fait vos choix, la DAF comme le DOE se génèrent en un clic. Fini de jongler entre Excel, votre boîte mail et un logiciel de rédaction pour produire des documents que vous reconstituez à chaque chantier.</p>
+        </div>
+      </div>
+      <div class="douleur-card">
+        <p class="douleur-who">🪴 Pépiniériste</p>
+        <div class="douleur-before">
+          <h3>Aujourd'hui</h3>
+          <ul>
+            <li>Recevoir une consultation par email, mal formatée</li>
+            <li>Imprimer le mail pour annoter les prix au crayon</li>
+            <li>Scanner la feuille et renvoyer par email</li>
+            <li>Ne jamais savoir si l'offre a été retenue</li>
+          </ul>
+        </div>
+        <div class="douleur-after">
+          <p>Avec Pivot : <strong>un lien, un formulaire.</strong> Vous renseignez prix et disponibilités directement — sans imprimante, sans scanner.</p>
+        </div>
+      </div>
+      <div class="douleur-card">
+        <p class="douleur-who">📐 Maître d'œuvre</p>
+        <div class="douleur-before">
+          <h3>Aujourd'hui</h3>
+          <ul>
+            <li>Recevoir une DAF papier à valider par courrier ou scan</li>
+            <li>Reconstituer les achats depuis une boîte mail pour le DOE</li>
+            <li>Ne pas savoir en temps réel où en sont les commandes</li>
+            <li>Imprimer pour apposer sa signature</li>
+          </ul>
+        </div>
+        <div class="douleur-after">
+          <p>Avec Pivot : <strong>VISA DAF en ligne.</strong> Suivez l'avancement de tous vos chantiers et tous vos lots depuis un tableau de bord. Fini les surprises de la fourniture manquante en fin de chantier.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOLUTION -->
+<section class="solution">
+  <div class="section-inner">
+    <p class="section-label" style="color:var(--cuivre)">Ce que Pivot change</p>
+    <h2 class="section-title">Un fil unique entre tous les acteurs, du devis au DOE.</h2>
+    <div class="solution-body">
+      <div class="solution-text">
+        <p>Pivot n'est pas un autre outil de devis. C'est le <strong>liant entre ce qui existe déjà</strong> : votre logiciel métier, vos fournisseurs habituels, votre maître d'œuvre.</p>
+        <p>Chaque acteur a son portail avec ses droits. L'information circule <strong>sans ressaisie</strong> d'un bout à l'autre du chantier — de la première consultation pépinière jusqu'à la pièce de fin de chantier.</p>
+        <p>Conçu par un paysagiste, pour des paysagistes. Lancé sur le végétal — là où la complexité des approvisionnements est la plus forte — Pivot est conçu pour couvrir tous vos lots de fournitures.</p>
+      </div>
+      <div class="solution-stats">
+        <div class="stat">
+          <div class="stat-num">0×</div>
+          <p>Ressaisie entre le devis, la consultation fournisseur et la commande</p>
+        </div>
+        <div class="stat">
+          <div class="stat-num">3</div>
+          <p>Portails distincts — entrepreneur, fournisseur, maître d'œuvre — connectés en temps réel</p>
+        </div>
+        <div class="stat">
+          <div class="stat-num">1 clic</div>
+          <p>Pour générer le DOE en fin de chantier, marchés privés et publics</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WORKFLOW -->
+<section class="workflow">
+  <div class="section-inner">
+    <p class="section-label">Le parcours</p>
+    <h2 class="section-title">Du devis au DOE, sans rupture de chaîne.</h2>
+    <div class="workflow-steps">
+      <div class="step">
+        <div class="step-dot">📄</div>
+        <h4>Import devis</h4>
+        <p>Nomenclature végétale importée une seule fois</p>
+      </div>
+      <div class="step">
+        <div class="step-dot">📤</div>
+        <h4>Consultations</h4>
+        <p>Demandes de prix aux pépinières et fournisseurs ciblés</p>
+      </div>
+      <div class="step">
+        <div class="step-dot">✅</div>
+        <h4>VISA MOE</h4>
+        <p>Le maître d'œuvre valide en ligne, sans impression</p>
+      </div>
+      <div class="step">
+        <div class="step-dot">🛒</div>
+        <h4>Commande</h4>
+        <p>Bon au fournisseur retenu, traçabilité complète</p>
+      </div>
+      <div class="step">
+        <div class="step-dot">📁</div>
+        <h4>DOE généré</h4>
+        <p>Dossier de fin de chantier en un clic</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PORTAILS -->
+<section class="portails">
+  <div class="section-inner">
+    <p class="section-label">Trois portails spécialisés</p>
+    <h2 class="section-title">Conçu pour le végétal. Pensé pour chaque acteur.</h2>
+    <div class="portails-list">
+      <div class="portail-row">
+        <div class="portail-left">
+          <div class="icon">🌿</div>
+          <p class="role">Entrepreneur paysagiste</p>
+          <h3>Portail Entrepreneur</h3>
+        </div>
+        <div class="portail-right">
+          <div class="portail-feature">
+            <h4>Import de nomenclature</h4>
+            <p>Chargez votre devis végétal une fois, Pivot structure les lignes de consultation.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Consultations multi-fournisseurs</h4>
+            <p>Envoyez vos demandes à plusieurs pépinières en simultané, sans copier-coller.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>DAF générée automatiquement</h4>
+            <p>Une fois vos fournisseurs retenus, la DAF se génère en un clic depuis le comparatif — structurée, sans ressaisie, prête à soumettre au maître d'œuvre. Plus besoin d'un logiciel dédié à 300€/mois pour ça.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>DOE en un clic</h4>
+            <p>Pivot trace chaque commande et réception tout au long du chantier. En fin de chantier, le DOE est déjà constitué — vous n'avez plus qu'à l'exporter. Marchés privés et publics.</p>
+          </div>
+        </div>
+      </div>
+      <div class="portail-row">
+        <div class="portail-left">
+          <div class="icon">🪴</div>
+          <p class="role">Pépiniériste</p>
+          <h3>Portail Pépinière</h3>
+        </div>
+        <div class="portail-right">
+          <div class="portail-feature">
+            <h4>Accès par lien unique</h4>
+            <p>Pas de compte à créer. Un lien sécurisé, vous répondez directement.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Réponse structurée</h4>
+            <p>Prix, disponibilités, délais : renseignés ligne par ligne, sans imprimante ni scanner.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Catalogue de disponibilités</h4>
+            <p>Publiez vos stocks hebdomadaires — les paysagistes inscrits vous trouvent directement.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Photos depuis le téléphone</h4>
+            <p>Photographiez vos végétaux en quelques taps depuis l'appli mobile. Elles arrivent instantanément chez le client.</p>
+          </div>
+        </div>
+      </div>
+      <div class="portail-row">
+        <div class="portail-left">
+          <div class="icon">📐</div>
+          <p class="role">Maître d'œuvre · Économiste</p>
+          <h3>Portail MOE</h3>
+        </div>
+        <div class="portail-right">
+          <div class="portail-feature">
+            <h4>VISA en ligne</h4>
+            <p>Recevez les DAF de l'entrepreneur et validez-les depuis votre navigateur — sans imprimer, sans scanner votre signature.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Suivi d'avancement</h4>
+            <p>Visualisez l'état des commandes en cours sur vos chantiers, tous lots confondus, en temps réel.</p>
+          </div>
+          <div class="portail-feature">
+            <h4>Accès gratuit</h4>
+            <p>Le portail MOE est gratuit. Pas d'abonnement, pas de compte à payer — votre entrepreneur vous invite. Vous pouvez inviter vos lots.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LISTE D'ATTENTE -->
+<section class="waitlist" id="waitlist">
+  <div class="waitlist-inner">
+    <p class="section-label">Accès anticipé</p>
+    <h2 class="section-title">Soyez parmi les premiers.</h2>
+    <p class="waitlist-sub">Pivot ouvre dans quelques semaines. Les inscrits en avant-première bénéficieront d'un tarif fondateur et d'un onboarding personnalisé.</p>
+
+    <div class="avantages">
+      <span class="avantage">Tarif fondateur</span>
+      <span class="avantage">Onboarding personnalisé</span>
+      <span class="avantage">Aucun engagement</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="setTab(this, 'entrepreneur')">🌿 Paysagiste</button>
+      <button class="tab" onclick="setTab(this, 'fournisseur')">🪴 Pépiniériste / Fournisseur</button>
+      <button class="tab" onclick="setTab(this, 'moe')">📐 Maître d'œuvre</button>
+    </div>
+
+    <div class="form-row">
+      <input type="text" id="input-prenom" placeholder="Prénom" autocomplete="given-name">
+      <input type="email" id="input-email" placeholder="Email professionnel" autocomplete="email">
+      <button onclick="inscrire()">Je m'inscris</button>
+    </div>
+    <p class="form-note">Aucun spam. Pas de carte bancaire. Juste une place réservée.</p>
+    <div class="success-msg" id="success-msg">
+      ✅ C'est noté ! Vous serez parmi les premiers contactés à l'ouverture de Pivot.
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="nav-logo">Pivot<span style="color:var(--cuivre)">.</span></div>
+  <p>Conçu par un paysagiste, pour des paysagistes · 2026</p>
+</footer>
+
+<script>
+  let roleActif = 'entrepreneur';
+
+  function setTab(el, role) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    roleActif = role;
+  }
+
+  async function inscrire() {
+    const prenom = document.getElementById('input-prenom').value.trim();
+    const email  = document.getElementById('input-email').value.trim();
+
+    if (!prenom || !email || !email.includes('@')) {
+      alert('Merci de renseigner votre prénom et un email valide.');
+      return;
+    }
+
+    const SUPABASE_URL = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/waitlist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ prenom, email, role: roleActif })
+      });
+
+      if (res.ok || res.status === 201) {
+        document.getElementById('success-msg').style.display = 'block';
+        document.getElementById('input-prenom').value = '';
+        document.getElementById('input-email').value = '';
+      } else {
+        alert('Une erreur est survenue. Merci de réessayer.');
+      }
+    } catch (e) {
+      // Fallback si Supabase pas encore branché
+      console.log('Inscription :', { prenom, email, role: roleActif });
+      document.getElementById('success-msg').style.display = 'block';
+      document.getElementById('input-prenom').value = '';
+      document.getElementById('input-email').value = '';
+    }
+  }
+</script>
+
+</body>
+</html>
