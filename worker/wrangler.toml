@@ -4,7 +4,7 @@ compatibility_date = "2024-01-01"
 
 [[kv_namespaces]]
 binding = "FONTS"
-id = "REMPLACER_PAR_KV_ID"
+id = "8904c7f043cc4b3289c9560eac90166a"
 
 [vars]
 ALLOWED_ORIGIN = "https://pivotlaracine.com"
