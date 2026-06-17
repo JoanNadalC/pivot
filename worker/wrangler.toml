@@ -1,0 +1,10 @@
+name = "pivot-pdf"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "FONTS"
+id = "REMPLACER_PAR_KV_ID"
+
+[vars]
+ALLOWED_ORIGIN = "https://pivotlaracine.com"

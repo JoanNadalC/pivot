@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pivot — Administration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .stat-card { transition: transform .15s; }
+    .stat-card:hover { transform: translateY(-2px); }
+    .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: 500; }
+    .badge-actif    { background:#dcfce7; color:#166534; }
+    .badge-essai    { background:#fef9c3; color:#854d0e; }
+    .badge-suspendu { background:#fee2e2; color:#991b1b; }
+    .badge-stripe   { background:#ede9fe; color:#5b21b6; }
+    .badge-virement { background:#e0f2fe; color:#075985; }
+    .badge-gratuit  { background:#f0fdf4; color:#166534; }
+    .badge-sans     { background:#f3f4f6; color:#6b7280; }
+    tbody tr:hover td { background:#f8fafc; }
+    .note-input { border:none; outline:none; background:transparent; width:100%; font-size:.8rem; color:#6b7280; }
+    .note-input:focus { background:#fefce8; border-radius:4px; padding:1px 4px; color:#1f2937; }
+    .note-input::placeholder { color:#d1d5db; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+
+<!-- AUTH VIEW -->
+<div id="auth-view" class="min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+    <div class="flex items-center gap-2 mb-6">
+      <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+        <span class="text-white text-sm font-bold">A</span>
+      </div>
+      <span class="font-bold text-lg">Pivot Admin</span>
+    </div>
+    <div class="flex border-b mb-5">
+      <button onclick="showAdminTab('login')" id="atab-login" class="flex-1 py-2 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">Connexion</button>
+      <button onclick="showAdminTab('signup')" id="atab-signup" class="flex-1 py-2 text-sm font-medium text-gray-400">Créer un compte</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="admin-login">
+      <input id="auth-email" type="email" placeholder="Email"
+        class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+      <div class="relative mb-4">
+        <input id="auth-pwd" type="password" placeholder="Mot de passe"
+          class="w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          onkeydown="if(event.key==='Enter') doLogin()" />
+        <button type="button" onclick="togglePwd('auth-pwd',this)" tabindex="-1" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">👁</button>
+      </div>
+      <button onclick="doLogin()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
+        Se connecter
+      </button>
+    </div>
+
+    <!-- SIGNUP -->
+    <div id="admin-signup" class="hidden">
+      <input id="signup-email" type="email" placeholder="Email"
+        class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+      <div class="relative mb-1">
+        <input id="signup-pwd" type="password" placeholder="Mot de passe"
+          class="w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <button type="button" onclick="togglePwd('signup-pwd',this)" tabindex="-1" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">👁</button>
+      </div>
+      <button type="button" onclick="suggestPwd('signup-pwd','signup-pwd2')" class="text-xs text-indigo-600 hover:text-indigo-800 mb-3 flex items-center gap-1">🔑 Suggérer un mot de passe sécurisé</button>
+      <div class="relative mb-4">
+        <input id="signup-pwd2" type="password" placeholder="Confirmer le mot de passe"
+          class="w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          onkeydown="if(event.key==='Enter') doSignup()" />
+        <button type="button" onclick="togglePwd('signup-pwd2',this)" tabindex="-1" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">👁</button>
+      </div>
+      <button onclick="doSignup()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
+        Créer le compte
+      </button>
+      <p class="text-xs text-gray-400 mt-3 text-center">Le compte doit ensuite être activé en base<br>avec <code class="bg-gray-100 px-1 rounded">is_admin = true</code></p>
+    </div>
+
+    <p id="auth-err" class="text-red-500 text-xs mt-3 hidden"></p>
+  </div>
+</div>
+
+<!-- APP VIEW -->
+<div id="app-view" class="hidden">
+
+  <header class="bg-white border-b shadow-sm sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
+          <span class="text-white text-xs font-bold">A</span>
+        </div>
+        <span class="font-bold">Pivot Admin</span>
+        <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Backoffice</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="admin-name" class="text-sm text-gray-500"></span>
+        <button onclick="doLogout()" class="text-sm text-gray-400 hover:text-red-500">Déconnexion</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- STATS -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div class="stat-card bg-white rounded-xl p-4 shadow-sm border-l-4 border-indigo-500">
+        <div class="text-2xl font-bold text-indigo-600" id="stat-total">—</div>
+        <div class="text-xs text-gray-500 mt-1">Structures</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl p-4 shadow-sm border-l-4 border-green-500">
+        <div class="text-2xl font-bold text-green-600" id="stat-actif">—</div>
+        <div class="text-xs text-gray-500 mt-1">Actives</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl p-4 shadow-sm border-l-4 border-amber-400">
+        <div class="text-2xl font-bold text-amber-600" id="stat-essai">—</div>
+        <div class="text-xs text-gray-500 mt-1">En essai</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl p-4 shadow-sm border-l-4 border-red-400">
+        <div class="text-2xl font-bold text-red-500" id="stat-suspendu">—</div>
+        <div class="text-xs text-gray-500 mt-1">Suspendues</div>
+      </div>
+      <div class="stat-card bg-white rounded-xl p-4 shadow-sm border-l-4 border-sky-400">
+        <div class="text-2xl font-bold text-sky-600" id="stat-licences">—</div>
+        <div class="text-xs text-gray-500 mt-1">Licences actives</div>
+      </div>
+    </div>
+
+    <!-- FILTRES + RECHERCHE -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="flex items-center justify-between px-4 pt-2 border-b flex-wrap gap-2">
+        <div class="flex gap-0">
+          <button onclick="setFilter('tous')" id="tab-tous" class="tab-btn tab-active px-4 py-3 text-sm">Tous</button>
+          <button onclick="setFilter('entrepreneur')" id="tab-entrepreneur" class="tab-btn px-4 py-3 text-sm text-gray-500">🏗 Entrepreneurs</button>
+          <button onclick="setFilter('fournisseur')"  id="tab-fournisseur"  class="tab-btn px-4 py-3 text-sm text-gray-500">🏭 Fournisseurs</button>
+          <button onclick="setFilter('moe')"          id="tab-moe"          class="tab-btn px-4 py-3 text-sm text-gray-500">📐 MOE</button>
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+          <select id="filter-statut" onchange="renderTable()" class="border rounded-lg px-2 py-1.5 text-xs text-gray-600 focus:outline-none">
+            <option value="">Tous statuts</option>
+            <option value="actif">Actif</option>
+            <option value="essai">Essai</option>
+            <option value="suspendu">Suspendu</option>
+            <option value="sans_structure">Sans abonnement</option>
+          </select>
+          <input id="search-input" type="text" placeholder="Rechercher…" oninput="renderTable()"
+            class="border rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          <button onclick="openCreateModal()" class="bg-indigo-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-700">+ Nouvelle structure</button>
+          <button onclick="loadAll()" class="text-gray-400 hover:text-indigo-600 text-lg" title="Rafraîchir">↻</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-500 text-xs border-b">
+            <tr>
+              <th class="px-4 py-3 text-left">Structure</th>
+              <th class="px-4 py-3 text-left">Référent</th>
+              <th class="px-4 py-3 text-left">Type</th>
+              <th class="px-4 py-3 text-left">Plan</th>
+              <th class="px-4 py-3 text-left">Licences</th>
+              <th class="px-4 py-3 text-left">Paiement</th>
+              <th class="px-4 py-3 text-left">Statut</th>
+              <th class="px-4 py-3 text-left">Échéance</th>
+              <th class="px-4 py-3 text-left min-w-[180px]">Notes</th>
+              <th class="px-4 py-3 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+  onclick="if(event.target===this) closeModal()">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-white text-sm shadow-lg"></div>
+
+<script>
+const SUPABASE_URL     = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+
+function togglePwd(id, btn) {
+  const input = document.getElementById(id);
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+function suggestPwd(id, confirmId) {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+  const arr = new Uint8Array(16); crypto.getRandomValues(arr);
+  const pwd = Array.from(arr).map(b => chars[b % chars.length]).join('');
+  const input = document.getElementById(id);
+  input.value = pwd; input.type = 'text';
+  if (confirmId) { const c = document.getElementById(confirmId); if (c) { c.value = pwd; c.type = 'text'; } }
+  navigator.clipboard.writeText(pwd).catch(() => {});
+  if (typeof toast === 'function') toast('Mot de passe copié dans le presse-papiers 🔑');
+}
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const state = { user: null, structures: [], filter: 'tous' };
+
+// ── AUTH ──────────────────────────────────────────────────────
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (session?.user) await afterLogin(session.user);
+}
+
+function showAdminTab(tab) {
+  document.getElementById('admin-login').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('admin-signup').classList.toggle('hidden', tab !== 'signup');
+  document.getElementById('atab-login').className  = `flex-1 py-2 text-sm font-medium border-b-2 ${tab==='login'  ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`;
+  document.getElementById('atab-signup').className = `flex-1 py-2 text-sm font-medium border-b-2 ${tab==='signup' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`;
+  document.getElementById('auth-err').classList.add('hidden');
+}
+
+async function doSignup() {
+  const email = document.getElementById('signup-email').value.trim();
+  const pwd   = document.getElementById('signup-pwd').value;
+  const pwd2  = document.getElementById('signup-pwd2').value;
+  const errEl = document.getElementById('auth-err');
+  errEl.classList.add('hidden');
+
+  if (!email || !pwd) { errEl.textContent = 'Email et mot de passe requis.'; errEl.classList.remove('hidden'); return; }
+  if (pwd !== pwd2)   { errEl.textContent = 'Les mots de passe ne correspondent pas.'; errEl.classList.remove('hidden'); return; }
+  if (pwd.length < 8) { errEl.textContent = 'Mot de passe trop court (8 caractères min).'; errEl.classList.remove('hidden'); return; }
+
+  const { data, error } = await db.auth.signUp({ email, password: pwd });
+  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden'); return; }
+
+  // Créer l'entrée profiles (sans is_admin — à activer manuellement en SQL)
+  if (data.user) {
+    await db.from('profiles').upsert({ id: data.user.id, email }, { onConflict: 'id' });
+  }
+
+  errEl.className = 'text-green-600 text-xs mt-3';
+  errEl.textContent = '✅ Compte créé. Exécutez maintenant le SQL ci-dessous, puis connectez-vous.';
+  errEl.classList.remove('hidden');
+
+  // Afficher le SQL à exécuter
+  const sql = `UPDATE profiles SET is_admin = true WHERE email = '${email}';`;
+  const pre = document.createElement('pre');
+  pre.className = 'mt-2 bg-gray-100 text-xs rounded p-2 text-gray-700 whitespace-pre-wrap break-all';
+  pre.textContent = sql;
+  errEl.after(pre);
+}
+
+async function doLogin() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pwd   = document.getElementById('auth-pwd').value;
+  const errEl = document.getElementById('auth-err');
+  errEl.classList.add('hidden');
+  const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
+  if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden'); return; }
+  await afterLogin(data.user);
+}
+
+async function afterLogin(user) {
+  const { data: prof } = await db.from('profiles').select('is_admin, nom').eq('id', user.id).maybeSingle();
+  if (!prof?.is_admin) {
+    await db.auth.signOut();
+    const errEl = document.getElementById('auth-err');
+    errEl.textContent = 'Accès refusé — compte non administrateur.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  state.user = user;
+  document.getElementById('auth-view').classList.add('hidden');
+  document.getElementById('app-view').classList.remove('hidden');
+  document.getElementById('admin-name').textContent = prof.nom || user.email;
+  await loadAll();
+}
+
+async function doLogout() { await db.auth.signOut(); location.reload(); }
+
+// ── CHARGEMENT ────────────────────────────────────────────────
+async function loadAll() {
+  document.getElementById('tbody').innerHTML =
+    '<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Chargement…</td></tr>';
+
+  // Charger tous les comptes des 3 portails + structures + membres
+  const [eRes, fRes, mRes, strRes, memRes] = await Promise.all([
+    db.from('compte_entrepreneur').select('id, email, nom').order('created_at', { ascending: false }),
+    db.from('compte_fournisseur').select('id, email, nom, nom_entreprise').order('created_at', { ascending: false }),
+    db.from('compte_moe').select('id, email, nom').order('created_at', { ascending: false }),
+    db.from('structures').select('*'),
+    db.from('structure_membres').select('user_id, structure_id, role')
+  ]);
+
+  // Index structures par id
+  const structMap = {};
+  (strRes.data || []).forEach(s => { structMap[s.id] = s; });
+
+  // Index membership par user_id
+  const memMap = {};
+  const countMap = {};
+  (memRes.data || []).forEach(m => {
+    memMap[m.user_id] = m;
+    countMap[m.structure_id] = (countMap[m.structure_id] || 0) + 1;
+  });
+
+  // Charger les notes admin depuis profiles
+  const allIds = [
+    ...(eRes.data||[]), ...(fRes.data||[]), ...(mRes.data||[])
+  ].map(u => u.id);
+  let notesMap = {};
+  if (allIds.length) {
+    const { data: profs } = await db.from('profiles').select('id, notes_admin').in('id', allIds);
+    (profs || []).forEach(p => { notesMap[p.id] = p.notes_admin || ''; });
+  }
+
+  // Construire la liste unifiée des comptes
+  const comptes = [
+    ...(eRes.data || []).map(u => ({ ...u, _type: 'entrepreneur', _nom: u.nom || u.email })),
+    ...(fRes.data || []).map(u => ({ ...u, _type: 'fournisseur',  _nom: u.nom_entreprise || u.nom || u.email })),
+    ...(mRes.data || []).map(u => ({ ...u, _type: 'moe',          _nom: u.nom || u.email }))
+  ].map(u => {
+    const mem = memMap[u.id];
+    const struct = mem ? structMap[mem.structure_id] : null;
+    return {
+      ...u,
+      _structure: struct || null,
+      _role: mem?.role || null,
+      _nb_membres: struct ? (countMap[struct.id] || 0) : null,
+      _notes: notesMap[u.id] || ''
+    };
+  });
+
+  state.comptes     = comptes;
+  state.structures  = strRes.data || []; // conservé pour les modales d'édition
+  updateStats();
+  renderTable();
+}
+
+function updateStats() {
+  const c = state.comptes || [];
+  document.getElementById('stat-total').textContent    = c.length;
+  document.getElementById('stat-actif').textContent    = c.filter(x => x._structure?.statut_abonnement === 'actif' || x._type === 'moe').length;
+  document.getElementById('stat-essai').textContent    = c.filter(x => x._structure?.statut_abonnement === 'essai').length;
+  document.getElementById('stat-suspendu').textContent = c.filter(x => x._structure?.statut_abonnement === 'suspendu').length;
+  document.getElementById('stat-licences').textContent = c.filter(x => x._structure?.statut_abonnement === 'actif').length;
+}
+
+// ── TABLE ─────────────────────────────────────────────────────
+function setFilter(f) {
+  state.filter = f;
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('tab-active'); b.classList.add('text-gray-500'); });
+  const btn = document.getElementById(`tab-${f}`);
+  btn.classList.add('tab-active'); btn.classList.remove('text-gray-500');
+  renderTable();
+}
+
+const TYPE_LABEL = { entrepreneur:'🏗 Entrepreneur', fournisseur:'🏭 Fournisseur', moe:'📐 MOE' };
+const PLAN_LABEL = {
+  unique: 'Unique', gratuit: 'Gratuit',
+  consultation_envoyee: 'Consultations envoyées',
+  consultation_ouverte: 'Consultations ouvertes'
+};
+
+function renderTable() {
+  const q       = document.getElementById('search-input').value.toLowerCase();
+  const statFil = document.getElementById('filter-statut').value;
+  let list = state.comptes || [];
+  if (state.filter !== 'tous') list = list.filter(c => c._type === state.filter);
+  if (statFil) {
+    list = list.filter(c => {
+      const st = c._type === 'moe' ? 'gratuit' : (c._structure?.statut_abonnement || 'sans_structure');
+      return st === statFil;
+    });
+  }
+  if (q) list = list.filter(c =>
+    (c._nom||'').toLowerCase().includes(q) ||
+    (c.email||'').toLowerCase().includes(q) ||
+    (c._structure?.nom||'').toLowerCase().includes(q)
+  );
+
+  if (!list.length) {
+    document.getElementById('tbody').innerHTML =
+      '<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Aucun résultat</td></tr>';
+    return;
+  }
+
+  document.getElementById('tbody').innerHTML = list.map(c => {
+    const isMoe    = c._type === 'moe';
+    const struct   = c._structure;
+    const statut   = isMoe ? 'gratuit' : (struct?.statut_abonnement || null);
+    const statutBadge = statut ? `badge-${statut}` : 'badge-sans';
+    const statutLabel = isMoe ? 'Gratuit' : (statut || 'Sans abonnement');
+    const plan     = isMoe ? 'gratuit' : (struct?.plan || '—');
+    const paiement = struct?.mode_paiement || null;
+    const echeance = struct?.date_echeance;
+    const echeanceStr = echeance ? new Date(echeance).toLocaleDateString('fr-FR') : '—';
+    const isExpired   = echeance && new Date(echeance) < new Date();
+    const ecClass     = isExpired ? 'text-red-500 font-medium' : 'text-gray-600';
+    const nbM      = c._nb_membres ?? '—';
+    const nbMax    = struct?.nb_licences_max ?? '—';
+
+    return `<tr class="hover:bg-gray-50">
+      <td class="px-4 py-3">
+        <p class="font-medium text-gray-800 text-sm">${escHtml(c._nom)}</p>
+        <p class="text-xs text-gray-400">${escHtml(c.email || '')}</p>
+      </td>
+      <td class="px-4 py-3 text-xs">
+        ${struct
+          ? `<span class="font-medium text-gray-700">${escHtml(struct.nom)}</span>
+             ${c._role === 'referent' ? '<span class="ml-1 text-indigo-500 text-xs">★</span>' : ''}`
+          : '<span class="text-gray-300 italic">Sans structure</span>'}
+      </td>
+      <td class="px-4 py-3 text-xs">${TYPE_LABEL[c._type] || c._type}</td>
+      <td class="px-4 py-3 text-xs text-gray-700">${PLAN_LABEL[plan] || plan}</td>
+      <td class="px-4 py-3 text-center text-xs">
+        ${struct ? `<span class="font-medium">${nbM}</span><span class="text-gray-400"> / ${nbMax}</span>` : '—'}
+      </td>
+      <td class="px-4 py-3">
+        ${!isMoe && paiement
+          ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${paiement === 'virement' ? 'badge-virement' : 'badge-stripe'}">
+              ${paiement === 'virement' ? '🏦 Virement' : '💳 Stripe'}
+            </span>`
+          : '<span class="text-gray-300 text-xs">—</span>'}
+      </td>
+      <td class="px-4 py-3">
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium ${statutBadge}">${statutLabel}</span>
+      </td>
+      <td class="px-4 py-3 text-xs ${ecClass}">${echeanceStr}</td>
+      <td class="px-4 py-3">
+        <button onclick="openNotesModal('${c.id}')"
+          class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border transition
+            ${c._notes ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}">
+          📝 ${c._notes ? escHtml(c._notes.substring(0,30)) + (c._notes.length > 30 ? '…' : '') : 'Ajouter une note'}
+        </button>
+      </td>
+      <td class="px-4 py-3">
+        <div class="flex gap-1 flex-wrap">
+          ${struct ? `
+            <button onclick="openEditModal('${struct.id}')" class="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-600" title="Modifier">✏️</button>
+            ${!isMoe && paiement === 'virement' && statut !== 'actif'
+              ? `<button onclick="validateVirement('${struct.id}')" class="text-xs px-2 py-1 border border-blue-300 rounded hover:bg-blue-50 text-blue-700">🏦 Valider</button>`
+              : ''}
+            ${!isMoe
+              ? statut === 'actif'
+                ? `<button onclick="toggleStatut('${struct.id}','actif')" class="text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600" title="Suspendre">⏸</button>`
+                : `<button onclick="toggleStatut('${struct.id}','suspendu')" class="text-xs px-2 py-1 border border-green-300 rounded hover:bg-green-50 text-green-700" title="Activer">▶</button>`
+              : ''}
+            <button onclick="openMembresModal('${struct.id}')" class="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-600" title="Membres">👥</button>
+          ` : `
+            <button onclick="openCreateStructureForUser('${c.id}','${c._type}','${escHtml(c._nom)}','${escHtml(c.email||'')}')"
+              class="text-xs px-2 py-1 border border-indigo-300 rounded hover:bg-indigo-50 text-indigo-600">+ Structure</button>
+          `}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── NOTES INLINE ──────────────────────────────────────────────
+function openNotesModal(userId) {
+  const c = state.comptes.find(x => x.id === userId);
+  if (!c) return;
+  showModal(`
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-800">📝 Notes</h2>
+        <p class="text-xs text-gray-400 mt-0.5">${escHtml(c._nom)} · ${TYPE_LABEL[c._type] || c._type}</p>
+      </div>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+    </div>
+    <textarea id="notes-textarea" rows="8"
+      class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+      placeholder="Facturation, retard de paiement, relances, pointage…">${escHtml(c._notes || '')}</textarea>
+    <div class="flex gap-3 mt-4">
+      <button onclick="saveNoteModal('${userId}')" class="flex-1 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>`);
+}
+
+async function saveNoteModal(userId) {
+  const value = document.getElementById('notes-textarea').value;
+  const c = state.comptes.find(x => x.id === userId);
+  if (!c) return;
+  const { error } = await db.rpc('admin_save_note', { p_user_id: userId, p_notes: value });
+  if (error) return toast(error.message, 'err');
+  c._notes = value;
+  closeModal();
+  renderTable();
+  toast('Note enregistrée');
+}
+
+async function saveNote(structureId, value) {
+  const s = state.structures.find(x => x.id === structureId);
+  if (!s || s.notes_admin === value) return;
+  s.notes_admin = value;
+  state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.notes_admin = value; });
+  await db.from('structures').update({ notes_admin: value }).eq('id', structureId);
+}
+
+// ── ACTIONS RAPIDES ───────────────────────────────────────────
+async function toggleStatut(structureId, current) {
+  const newStatut = current === 'actif' ? 'suspendu' : 'actif';
+  await db.from('structures').update({ statut_abonnement: newStatut }).eq('id', structureId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) s.statut_abonnement = newStatut;
+  state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = newStatut; });
+  updateStats(); renderTable();
+  toast(`Structure ${newStatut === 'actif' ? 'activée' : 'suspendue'}`);
+}
+
+async function openCreateStructureForUser(userId, type, nom, email) {
+  showModal(`
+    <h2 class="text-lg font-semibold text-gray-800 mb-1">+ Créer une structure</h2>
+    <p class="text-sm text-gray-500 mb-4">Pour <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+    <label class="block text-xs text-gray-500 mb-1">Nom de la structure *</label>
+    <input id="cs-nom" type="text" value="${escHtml(nom)}" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+    <label class="block text-xs text-gray-500 mb-1">Plan</label>
+    <select id="cs-plan" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
+      ${type === 'moe' ? '<option value="gratuit">Gratuit</option>' : type === 'fournisseur'
+        ? '<option value="consultation_envoyee">Consultations envoyées</option><option value="consultation_ouverte">Consultations ouvertes</option>'
+        : '<option value="unique">Unique</option>'}
+    </select>
+    <label class="block text-xs text-gray-500 mb-1">Nb licences max</label>
+    <input id="cs-licences" type="number" value="1" min="1" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
+    <label class="block text-xs text-gray-500 mb-1">Mode de paiement</label>
+    <select id="cs-paiement" class="w-full border rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none">
+      <option value="stripe">💳 Stripe</option>
+      <option value="virement">🏦 Virement bancaire</option>
+    </select>
+    <div class="flex gap-3">
+      <button onclick="createStructureForUser('${userId}','${type}')" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Créer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>`);
+}
+
+async function createStructureForUser(userId, type) {
+  const nom      = document.getElementById('cs-nom').value.trim();
+  const plan     = document.getElementById('cs-plan').value;
+  const licences = parseInt(document.getElementById('cs-licences').value) || 1;
+  const paiement = document.getElementById('cs-paiement').value;
+  if (!nom) return toast('Le nom est obligatoire', 'err');
+  try {
+    const statut = type === 'moe' ? 'actif' : 'essai';
+    const { data: struct, error } = await db.from('structures').insert({
+      nom, type, plan, nb_licences_max: licences,
+      mode_paiement: paiement, statut_abonnement: statut, referent_id: userId
+    }).select().single();
+    if (error) throw error;
+    await db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' });
+    await db.from('profiles').update({ structure_id: struct.id }).eq('id', userId);
+    closeModal();
+    toast('Structure créée');
+    await loadAll();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function validateVirement(structureId) {
+  const d = new Date(); d.setMonth(d.getMonth() + 1);
+  const echeance = d.toISOString().slice(0,10);
+  await db.from('structures').update({
+    statut_abonnement: 'actif', mode_paiement: 'virement', date_echeance: echeance
+  }).eq('id', structureId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) { s.statut_abonnement = 'actif'; s.mode_paiement = 'virement'; s.date_echeance = echeance; }
+  updateStats(); renderTable();
+  toast('Virement validé — structure activée pour 1 mois');
+}
+
+// ── MODAL CRÉATION ────────────────────────────────────────────
+function openCreateModal() {
+  showModal(`
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">+ Nouvelle structure</h2>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Nom de la structure</label>
+        <input id="c-nom" type="text" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ex: Cabinet Martin MOE" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Type</label>
+          <select id="c-type" class="w-full border rounded-lg px-3 py-2 text-sm" onchange="updatePlanOptions('c-plan', this.value)">
+            <option value="entrepreneur">🏗 Entrepreneur</option>
+            <option value="fournisseur">🏭 Fournisseur</option>
+            <option value="moe">📐 MOE</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Plan</label>
+          <select id="c-plan" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="unique">Unique</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nb licences max</label>
+          <select id="c-licences" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="1">1 licence</option>
+            <option value="5">2–5 licences</option>
+            <option value="10">5–10 licences</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Statut initial</label>
+          <select id="c-statut" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="essai">Essai</option>
+            <option value="actif">Actif</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Mode paiement</label>
+          <select id="c-mode" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="stripe">💳 Stripe</option>
+            <option value="virement">🏦 Virement</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Échéance</label>
+          <input id="c-echeance" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Email référent (compte existant)</label>
+        <input id="c-referent" type="email" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="email@exemple.fr" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Notes</label>
+        <textarea id="c-notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-5">
+      <button onclick="createStructure()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Créer</button>
+      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+  updatePlanOptions('c-plan', 'entrepreneur');
+}
+
+function updatePlanOptions(selectId, type) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const opts = {
+    entrepreneur: [['unique','Unique']],
+    moe:          [['gratuit','Gratuit']],
+    fournisseur:  [['consultation_envoyee','Consultations envoyées'],['consultation_ouverte','Consultations ouvertes']]
+  };
+  sel.innerHTML = (opts[type] || opts.entrepreneur).map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+}
+
+async function createStructure() {
+  const nom      = document.getElementById('c-nom').value.trim();
+  const type     = document.getElementById('c-type').value;
+  const plan     = document.getElementById('c-plan').value;
+  const licences = parseInt(document.getElementById('c-licences').value);
+  const statut   = document.getElementById('c-statut').value;
+  const mode     = document.getElementById('c-mode').value;
+  const echeance = document.getElementById('c-echeance').value || null;
+  const refEmail = document.getElementById('c-referent').value.trim();
+  const notes    = document.getElementById('c-notes').value.trim();
+
+  if (!nom) return toast('Nom requis', 'err');
+
+  // Retrouver le referent_id à partir de l'email
+  let referent_id = null;
+  if (refEmail) {
+    const tables = type === 'entrepreneur' ? ['compte_entrepreneur']
+                 : type === 'fournisseur'  ? ['compte_fournisseur']
+                 : ['compte_moe'];
+    for (const t of tables) {
+      const { data } = await db.from(t).select('id').eq('email', refEmail).maybeSingle();
+      if (data) { referent_id = data.id; break; }
+    }
+    if (!referent_id) return toast('Email référent introuvable dans la base', 'err');
+  }
+
+  const { data, error } = await db.from('structures').insert({
+    nom, type, plan, nb_licences_max: licences,
+    statut_abonnement: statut, mode_paiement: mode,
+    date_echeance: echeance, notes_admin: notes, referent_id
+  }).select().single();
+
+  if (error) return toast(error.message, 'err');
+
+  // Ajouter le référent comme membre
+  if (referent_id) {
+    await db.from('structure_membres').insert({ structure_id: data.id, user_id: referent_id, role: 'referent' });
+    await db.from('profiles').upsert({ id: referent_id, structure_id: data.id }, { onConflict: 'id' });
+  }
+
+  closeModal();
+  toast('Structure créée');
+  await loadAll();
+}
+
+// ── MODAL ÉDITION ─────────────────────────────────────────────
+function openEditModal(structureId) {
+  const s = state.structures.find(x => x.id === structureId);
+  if (!s) return;
+  showModal(`
+    <h2 class="text-lg font-semibold text-gray-800 mb-1">${escHtml(s.nom || '—')}</h2>
+    <p class="text-xs text-gray-400 mb-4">${TYPE_LABEL[s.type] || s.type}</p>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Nom</label>
+        <input id="e-nom" type="text" value="${escHtml(s.nom||'')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Plan</label>
+          <select id="e-plan" class="w-full border rounded-lg px-3 py-2 text-sm">
+            ${planOptionsHtml(s.type, s.plan)}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Licences max</label>
+          <select id="e-licences" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="1"  ${s.nb_licences_max==1?'selected':''}>1 licence</option>
+            <option value="5"  ${s.nb_licences_max==5?'selected':''}>2–5 licences</option>
+            <option value="10" ${s.nb_licences_max==10?'selected':''}>5–10 licences</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Statut</label>
+          <select id="e-statut" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="essai"    ${s.statut_abonnement==='essai'?'selected':''}>Essai</option>
+            <option value="actif"    ${s.statut_abonnement==='actif'?'selected':''}>Actif</option>
+            <option value="suspendu" ${s.statut_abonnement==='suspendu'?'selected':''}>Suspendu</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Mode paiement</label>
+          <select id="e-mode" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <option value="stripe"   ${s.mode_paiement==='stripe'?'selected':''}>💳 Stripe</option>
+            <option value="virement" ${s.mode_paiement==='virement'?'selected':''}>🏦 Virement</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Date d'échéance</label>
+        <input id="e-echeance" type="date" value="${s.date_echeance||''}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Notes internes</label>
+        <textarea id="e-notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm resize-none">${escHtml(s.notes_admin||'')}</textarea>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-5">
+      <button onclick="saveEdit('${structureId}')" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+}
+
+function planOptionsHtml(type, current) {
+  const opts = {
+    entrepreneur: [['unique','Unique']],
+    moe:          [['gratuit','Gratuit']],
+    fournisseur:  [['consultation_envoyee','Consultations envoyées'],['consultation_ouverte','Consultations ouvertes']]
+  };
+  return (opts[type] || opts.entrepreneur).map(([v,l]) =>
+    `<option value="${v}" ${current===v?'selected':''}>${l}</option>`
+  ).join('');
+}
+
+async function saveEdit(structureId) {
+  const nom      = document.getElementById('e-nom').value.trim();
+  const plan     = document.getElementById('e-plan').value;
+  const licences = parseInt(document.getElementById('e-licences').value);
+  const statut   = document.getElementById('e-statut').value;
+  const mode     = document.getElementById('e-mode').value;
+  const echeance = document.getElementById('e-echeance').value || null;
+  const notes    = document.getElementById('e-notes').value.trim();
+
+  const { error } = await db.from('structures').update({
+    nom, plan, nb_licences_max: licences,
+    statut_abonnement: statut, mode_paiement: mode,
+    date_echeance: echeance, notes_admin: notes
+  }).eq('id', structureId);
+
+  if (error) return toast(error.message, 'err');
+
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) Object.assign(s, { nom, plan, nb_licences_max: licences,
+    statut_abonnement: statut, mode_paiement: mode, date_echeance: echeance, notes_admin: notes });
+
+  updateStats(); renderTable(); closeModal();
+  toast('Modifications enregistrées');
+}
+
+// ── MODAL MEMBRES ─────────────────────────────────────────────
+async function openMembresModal(structureId) {
+  const s = state.structures.find(x => x.id === structureId);
+  showModal(`
+    <h2 class="text-lg font-semibold text-gray-800 mb-1">👥 Membres — ${escHtml(s?.nom||'')}</h2>
+    <p class="text-xs text-gray-400 mb-4">${s?.nb_membres||0} / ${s?.nb_licences_max||1} licences utilisées</p>
+    <div id="membres-list" class="text-sm text-gray-500 mb-4">Chargement…</div>
+    <button onclick="closeModal()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Fermer</button>
+  `);
+
+  const { data: membres } = await db.from('structure_membres')
+    .select('user_id, role').eq('structure_id', structureId);
+
+  if (!membres?.length) {
+    document.getElementById('membres-list').textContent = 'Aucun membre enregistré.';
+    return;
+  }
+
+  const ids = membres.map(m => m.user_id);
+  const [eRes, fRes, mRes] = await Promise.all([
+    db.from('compte_entrepreneur').select('id, email, nom').in('id', ids),
+    db.from('compte_fournisseur').select('id, email, nom').in('id', ids),
+    db.from('compte_moe').select('id, email, nom').in('id', ids)
+  ]);
+  const userMap = {};
+  [...(eRes.data||[]), ...(fRes.data||[]), ...(mRes.data||[])].forEach(u => { userMap[u.id] = u; });
+
+  document.getElementById('membres-list').innerHTML = membres.map(m => {
+    const u = userMap[m.user_id] || {};
+    return `<div class="flex items-center justify-between py-2 border-b last:border-0">
+      <div>
+        <div class="font-medium text-gray-700">${escHtml(u.nom || '—')}</div>
+        <div class="text-xs text-gray-400">${escHtml(u.email || m.user_id.slice(0,8)+'…')}</div>
+      </div>
+      <span class="text-xs px-2 py-0.5 rounded-full ${m.role==='referent'?'bg-indigo-100 text-indigo-700':'bg-gray-100 text-gray-600'}">
+        ${m.role}
+      </span>
+    </div>`;
+  }).join('');
+}
+
+// ── HELPERS ───────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
+
+let _toastTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-white text-sm shadow-lg ${type==='err'?'bg-red-500':'bg-gray-800'}`;
+  el.classList.remove('hidden');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+init();
+</script>
+</body>
+</html>

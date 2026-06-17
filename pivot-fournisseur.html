@@ -1,0 +1,2297 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pivot — Fournisseur</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 600; }
+    .famille-card { border-left: 4px solid var(--famille-color); }
+    .variante-row { background: #fff7ed; }
+    .badge-statut { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; }
+    .toast { position: fixed; bottom: 1rem; right: 1rem; z-index: 9999; }
+    .tab-btn { position: relative; }
+    .tab-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: none; }
+    .tab-dot.visible { display: block; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+<!-- AUTH -->
+<div id="auth-view" class="min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+      <svg width="120" height="109" viewBox="0 0 320 290" xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-1">
+        <defs>
+          <linearGradient id="cg-fa" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#16a34a" stop-opacity="0.45"/><stop offset="100%" stop-color="#15803d" stop-opacity="0.18"/></linearGradient>
+          <linearGradient id="rg-fa" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.75"/><stop offset="100%" stop-color="#16a34a" stop-opacity="0.45"/></linearGradient>
+        </defs>
+        <g transform="translate(-31,6)"><g transform="rotate(-10,160,160)">
+          <polygon points="158,245 80,95 240,95" fill="url(#cg-fa)" stroke="#16a34a" stroke-width="0.6" stroke-opacity="0.25"/>
+          <line x1="80" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.3"/>
+          <line x1="240" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.2"/>
+          <ellipse cx="160" cy="95" rx="80" ry="19" fill="url(#rg-fa)" stroke="#22c55e" stroke-width="0.6" stroke-opacity="0.3"/>
+          <ellipse cx="148" cy="91" rx="32" ry="8" fill="#fff" opacity="0.18"/>
+        </g></g>
+        <text x="162" y="278" text-anchor="middle" font-family="'Helvetica Neue',Arial,sans-serif" font-size="44" font-weight="800" letter-spacing="-2" fill="#15803d">pivot</text>
+      </svg>
+      <p class="text-gray-500 text-sm">Portail Fournisseur</p>
+    </div>
+    <!-- Mode token -->
+    <div id="auth-token-mode" class="hidden mb-6 p-4 bg-blue-50 rounded-xl">
+      <p class="text-sm text-blue-700 font-medium mb-1">Accès par lien d'invitation</p>
+      <p id="token-fournisseur-nom" class="text-sm text-blue-600"></p>
+    </div>
+    <div id="auth-tabs" class="flex border-b mb-6">
+      <button onclick="showAuthTab('login')" id="tab-login" class="flex-1 py-2 text-sm font-medium tab-active">Connexion</button>
+      <button onclick="showAuthTab('register')" id="tab-register" class="flex-1 py-2 text-sm font-medium text-gray-500">Inscription</button>
+    </div>
+    <div id="auth-login">
+      <input id="login-email" type="email" placeholder="Email" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+      <div class="relative mb-4">
+        <input id="login-password" type="password" placeholder="Mot de passe" class="w-full border rounded-lg px-3 py-2 pr-10 text-sm">
+        <button type="button" onclick="togglePwd('login-password',this)" tabindex="-1" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">👁</button>
+      </div>
+      <button onclick="doLogin()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Se connecter</button>
+    </div>
+    <div id="auth-register" class="hidden">
+      <input id="reg-nom" type="text" placeholder="Nom complet" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+      <input id="reg-entreprise" type="text" placeholder="Nom de l'entreprise" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+      <input id="reg-email" type="email" placeholder="Email" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+      <div class="relative mb-1">
+        <input id="reg-password" type="password" placeholder="Mot de passe (min 6 car.)" class="w-full border rounded-lg px-3 py-2 pr-10 text-sm">
+        <button type="button" onclick="togglePwd('reg-password',this)" tabindex="-1" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">👁</button>
+      </div>
+      <button type="button" onclick="suggestPwd('reg-password')" class="text-xs text-blue-700 hover:text-blue-900 mb-3 flex items-center gap-1">🔑 Suggérer un mot de passe sécurisé</button>
+      <button onclick="doRegister()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Créer mon compte</button>
+    </div>
+    <p id="auth-error" class="text-red-500 text-sm mt-3 hidden"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-view" class="hidden">
+  <!-- TOPBAR -->
+  <header class="bg-white shadow-sm sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg width="52" height="20" viewBox="0 0 320 290" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="cg-ft" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#16a34a" stop-opacity="0.45"/><stop offset="100%" stop-color="#15803d" stop-opacity="0.18"/></linearGradient>
+            <linearGradient id="rg-ft" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.75"/><stop offset="100%" stop-color="#16a34a" stop-opacity="0.45"/></linearGradient>
+          </defs>
+          <g transform="translate(-31,6)"><g transform="rotate(-10,160,160)">
+            <polygon points="158,245 80,95 240,95" fill="url(#cg-ft)" stroke="#16a34a" stroke-width="0.6" stroke-opacity="0.25"/>
+            <line x1="80" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.3"/>
+            <line x1="240" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.2"/>
+            <ellipse cx="160" cy="95" rx="80" ry="19" fill="url(#rg-ft)" stroke="#22c55e" stroke-width="0.6" stroke-opacity="0.3"/>
+            <ellipse cx="148" cy="91" rx="32" ry="8" fill="#fff" opacity="0.18"/>
+          </g></g>
+          <text x="162" y="278" text-anchor="middle" font-family="'Helvetica Neue',Arial,sans-serif" font-size="44" font-weight="800" letter-spacing="-2" fill="#15803d">pivot</text>
+        </svg>
+        <span class="text-xs text-gray-400 border rounded px-2 py-0.5">Fournisseur</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="toggleNotifs()" class="relative text-gray-600 hover:text-blue-700">
+          🔔<span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">0</span>
+        </button>
+        <span id="user-name" class="text-sm text-gray-600"></span>
+        <button id="btn-mon-equipe" onclick="openEquipeModal()" class="hidden text-sm text-gray-600 hover:text-blue-700 border border-gray-200 rounded-lg px-2 py-1">👥 Mon équipe</button>
+        <button id="btn-logout" onclick="doLogout()" class="text-sm text-gray-400 hover:text-red-500 hidden">Déconnexion</button>
+      </div>
+    </div>
+    <!-- Notifs dropdown -->
+    <div id="notif-panel" class="hidden absolute right-4 top-14 bg-white border rounded-xl shadow-lg w-80 z-50 max-h-96 overflow-y-auto">
+      <div class="p-3 border-b flex justify-between items-center">
+        <span class="font-semibold text-sm">Notifications</span>
+        <button onclick="markAllNotifsRead()" class="text-xs text-blue-600">Tout marquer lu</button>
+      </div>
+      <div id="notif-list"></div>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="bg-white border-b sticky top-14 z-30">
+    <div class="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
+      <button onclick="setTab('consultations')" id="ot-consultations" class="tab-btn px-4 py-3 text-sm whitespace-nowrap tab-active">📋 Consultations<span class="tab-dot" id="badge-consultations"></span></button>
+      <button onclick="setTab('saisie')" id="ot-saisie" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">💰 Saisie des prix<span class="tab-dot" id="badge-saisie"></span></button>
+      <button onclick="setTab('catalogue')" id="ot-catalogue" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📚 Catalogue</button>
+      <button onclick="setTab('historique')" id="ot-historique" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📊 Historique</button>
+      <button onclick="setTab('profil')" id="ot-profil" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">👤 Profil</button>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- TAB: CONSULTATIONS -->
+    <div id="tab-consultations" class="tab-content">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">Mes consultations</h2>
+      <div id="consultations-list" class="space-y-3"></div>
+    </div>
+
+    <!-- TAB: SAISIE DES PRIX -->
+    <div id="tab-saisie" class="tab-content hidden">
+      <div class="flex items-center gap-3 mb-4">
+        <select id="cons-select" class="border rounded px-3 py-2 text-sm flex-1" onchange="loadSaisie()">
+          <option value="">-- Sélectionner une consultation --</option>
+        </select>
+        <button onclick="saveReponses(false)" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200">💾 Sauvegarder</button>
+        <button onclick="preValidateReponses()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✅ Valider & envoyer</button>
+      </div>
+      <!-- Remise globale -->
+      <div class="bg-blue-50 rounded-xl p-3 mb-4 flex items-center gap-3">
+        <span class="text-sm text-blue-700">Remise globale :</span>
+        <input id="remise-globale" type="number" min="0" max="100" step="0.5" class="border rounded px-2 py-1 text-sm w-20" value="0" onchange="applyRemiseGlobale()">
+        <span class="text-sm text-blue-700">%</span>
+      </div>
+      <div id="saisie-content"></div>
+    </div>
+
+    <!-- TAB: CATALOGUE -->
+    <div id="tab-catalogue" class="tab-content hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-800">Mon catalogue</h2>
+        <div class="flex gap-2">
+          <button onclick="openAddCatalogueModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ Ajouter article</button>
+          <button onclick="document.getElementById('cat-import').click()" class="border border-blue-600 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">📂 Import CSV</button>
+          <input id="cat-import" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
+        </div>
+      </div>
+      <div class="overflow-x-auto bg-white rounded-xl shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-500 text-xs">
+            <tr>
+              <th class="px-3 py-2 text-left">Désignation</th>
+              <th class="px-3 py-2 text-left">Référence</th>
+              <th class="px-3 py-2 text-left">Famille</th>
+              <th class="px-3 py-2 text-right">Prix HT</th>
+              <th class="px-3 py-2 text-left">Unité</th>
+              <th class="px-3 py-2 text-left">Fiche technique</th>
+              <th class="px-3 py-2 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="catalogue-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: HISTORIQUE -->
+    <div id="tab-historique" class="tab-content hidden">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">Historique des prix envoyés</h2>
+      <div id="historique-content" class="space-y-4"></div>
+    </div>
+
+    <!-- TAB: PROFIL -->
+    <div id="tab-profil" class="tab-content hidden">
+      <div class="max-w-lg">
+        <h2 class="text-lg font-bold text-gray-800 mb-4">Mon profil</h2>
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+          <h3 class="font-semibold mb-3">Informations entreprise</h3>
+          <label class="block text-xs text-gray-500 mb-1">Nom complet</label>
+          <input id="p-nom" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Nom de l'entreprise</label>
+          <input id="p-entreprise" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Téléphone</label>
+          <input id="p-tel" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Adresse</label>
+          <input id="p-adresse" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <label class="block text-xs text-gray-500 mb-1">SIRET</label>
+          <input id="p-siret" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4">
+          <label class="block text-xs text-gray-500 mb-1">Logo (apparaît dans les PDFs)</label>
+          <div id="p-logo-preview-wrap" class="mb-2 hidden"><img id="p-logo-preview" class="h-16 object-contain rounded border" /></div>
+          <input id="p-logo-file" type="file" accept="image/*" class="text-xs text-gray-600 mb-1" onchange="previewProfilLogo(this)" />
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+          <h3 class="font-semibold mb-3">Préférences notifications</h3>
+          <select id="p-notif" class="w-full border rounded px-3 py-2 text-sm mb-3">
+            <option value="each">Immédiat (à chaque événement)</option>
+            <option value="daily">Quotidien (récap 8h)</option>
+            <option value="weekly">Hebdomadaire (lundi 8h)</option>
+            <option value="none">Aucun email</option>
+          </select>
+        </div>
+        <button onclick="saveProfil()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium w-full hover:bg-blue-700">Enregistrer le profil</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div id="modal-box" class="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden">
+  <div id="toast-inner" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm shadow-lg"></div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const SUPABASE_URL = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+
+function togglePwd(id, btn) {
+  const input = document.getElementById(id);
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+function suggestPwd(id, confirmId) {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+  const arr = new Uint8Array(16); crypto.getRandomValues(arr);
+  const pwd = Array.from(arr).map(b => chars[b % chars.length]).join('');
+  const input = document.getElementById(id);
+  input.value = pwd; input.type = 'text';
+  if (confirmId) { const c = document.getElementById(confirmId); if (c) { c.value = pwd; c.type = 'text'; } }
+  navigator.clipboard.writeText(pwd).catch(() => {});
+  if (typeof toast === 'function') toast('Mot de passe copié dans le presse-papiers 🔑');
+}
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ============================================================
+// ÉTAT GLOBAL
+// ============================================================
+const state = {
+  user: null,
+  profile: null,
+  fournisseurId: null,   // fournisseurs.id (différent de auth.uid())
+  isGuest: false,
+  guestToken: null,
+  guestNom: null,
+  consultations: [],
+  currentConsultation: null,
+  fournitures: [],
+  catalogue: [],
+  familles: [],
+  reponses: {},          // fourniture_id -> { prix, commentaire, ... }
+  reponsesEnvoyees: {},  // fourniture_id -> bool (envoyé = locked)
+  notifications: []
+};
+
+// ============================================================
+// UTILITAIRES
+// ============================================================
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  const ti = document.getElementById('toast-inner');
+  ti.textContent = msg;
+  ti.className = `px-4 py-2 rounded-lg text-sm shadow-lg ${type === 'err' ? 'bg-red-600' : 'bg-gray-900'} text-white`;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+function showModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+function fmt(n) {
+  if (n == null || n === '') return '—';
+  return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+function statutBadge(statut) {
+  const map = {
+    brouillon: 'bg-gray-100 text-gray-600',
+    envoyee: 'bg-blue-100 text-blue-700',
+    repondue: 'bg-green-100 text-green-700',
+    cloturee: 'bg-gray-200 text-gray-500'
+  };
+  const labels = {
+    brouillon: 'Brouillon', envoyee: 'Envoyée',
+    repondue: 'Répondue', cloturee: 'Clôturée'
+  };
+  return `<span class="badge-statut ${map[statut] || 'bg-gray-100 text-gray-600'}">${labels[statut] || statut}</span>`;
+}
+
+function chantierStatutBadge(statut) {
+  const map = {
+    appel_offre:   'bg-orange-100 text-orange-700',
+    en_cours:      'bg-blue-100 text-blue-700',
+    termine:       'bg-green-100 text-green-700',
+    parachevement: 'bg-purple-100 text-purple-700'
+  };
+  const labels = {
+    appel_offre:   'Appel d\'offre',
+    en_cours:      'Chantier en cours',
+    termine:       'Chantier terminé',
+    parachevement: 'Parachèvement'
+  };
+  if (!statut) return '';
+  return `<span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${map[statut] || 'bg-gray-100 text-gray-500'}">${labels[statut] || statut}</span>`;
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function showAuthTab(tab) {
+  document.getElementById('auth-login').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('auth-register').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('tab-login').classList.toggle('tab-active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('tab-active', tab === 'register');
+  document.getElementById('tab-login').classList.toggle('text-gray-500', tab !== 'login');
+  document.getElementById('tab-register').classList.toggle('text-gray-500', tab !== 'register');
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  try {
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    const { data: profil } = await db.from('compte_fournisseur').select('id').eq('id', data.user.id).maybeSingle();
+    if (!profil) {
+      await db.auth.signOut();
+      throw new Error('Ce compte est associé au portail Entrepreneur. Connectez-vous sur le portail approprié.');
+    }
+  } catch (err) {
+    showAuthError(err.message);
+  }
+}
+
+async function doRegister() {
+  const nom = document.getElementById('reg-nom').value.trim();
+  const nomEntreprise = document.getElementById('reg-entreprise').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  try {
+    const { data, error } = await db.auth.signUp({ email, password });
+    if (error) throw error;
+    if (data.user) {
+      await db.from('compte_fournisseur').insert({ id: data.user.id, nom, nom_entreprise: nomEntreprise, email });
+    }
+    toast('Compte créé ! Vérifiez votre email.');
+    showAuthTab('login');
+  } catch (err) {
+    showAuthError(err.message);
+  }
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function doLogout() {
+  await db.auth.signOut();
+  location.reload();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+async function init() {
+  await loadFamilles();
+  const urlParams = new URLSearchParams(location.search);
+  const token = urlParams.get('token');
+  const teamToken = urlParams.get('team_invite');
+  if (teamToken) state.pendingTeamToken = teamToken;
+
+  if (token) {
+    history.replaceState({}, '', location.pathname);
+    await initGuestMode(token);
+    return;
+  }
+
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    state.user = session.user;
+    await loadProfile();
+    showApp();
+    await loadConsultationsCompte();
+    await loadCatalogue();
+    startRealtimeConsultations();
+    loadNotifications();
+    if (state.pendingTeamToken) await processTeamInvite();
+  }
+
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && !state.user) {
+      const { data: profil } = await db.from('compte_fournisseur')
+        .select('id').eq('id', session.user.id).maybeSingle();
+      if (!profil) { await db.auth.signOut(); return; }
+      state.user = session.user;
+      await loadProfile();
+      showApp();
+      await loadConsultationsCompte();
+      await loadCatalogue();
+      startRealtimeConsultations();
+      loadNotifications();
+      if (state.pendingTeamToken) await processTeamInvite();
+    } else if (event === 'SIGNED_OUT') {
+      state.user = null;
+      document.getElementById('auth-view').classList.remove('hidden');
+      document.getElementById('app-view').classList.add('hidden');
+    }
+  });
+}
+
+async function initGuestMode(token) {
+  try {
+    const { data: cons, error } = await db.rpc('get_consultation_by_token', { p_token: token });
+    if (error) throw error;
+    if (!cons || cons.length === 0) {
+      document.getElementById('auth-token-mode').innerHTML = '<p class="text-red-600 text-sm">Lien expiré ou invalide. Contactez votre consultant.</p>';
+      document.getElementById('auth-token-mode').classList.remove('hidden');
+      return;
+    }
+    state.isGuest = true;
+    state.guestToken = token;
+
+    // Récupérer nom fournisseur depuis invitation
+    const { data: inv } = await db.rpc('get_consultation_by_token', { p_token: token });
+    state.consultations = cons;
+
+    document.getElementById('auth-token-mode').classList.remove('hidden');
+    document.getElementById('token-fournisseur-nom').textContent = 'Consultation : ' + (cons[0]?.titre || '');
+    document.getElementById('auth-tabs').classList.add('hidden');
+    document.getElementById('auth-login').classList.add('hidden');
+    document.getElementById('auth-register').classList.add('hidden');
+
+    // Entrer directement dans l'app
+    showApp(true);
+    setTab('saisie');
+    populateConsSelect();
+    if (state.consultations.length > 0) {
+      document.getElementById('cons-select').value = state.consultations[0].id;
+      await loadSaisie();
+    }
+  } catch (err) {
+    document.getElementById('auth-token-mode').innerHTML = `<p class="text-red-600 text-sm">Erreur : ${err.message}</p>`;
+    document.getElementById('auth-token-mode').classList.remove('hidden');
+  }
+}
+
+async function loadFamilles() {
+  try {
+    const { data } = await db.from('familles_fournitures').select('*').order('ordre');
+    state.familles = data || [];
+  } catch (err) {
+    console.error('loadFamilles', err);
+  }
+}
+
+async function loadProfile() {
+  try {
+    const { data } = await db.from('compte_fournisseur')
+      .select('*')
+      .eq('id', state.user.id)
+      .maybeSingle();
+    state.profile = data;
+    state.fournisseurId = data?.fournisseur_id || null;
+    if (data) {
+      document.getElementById('user-name').textContent = data.nom_entreprise || data.nom || '';
+      fillProfil(data);
+    }
+
+    // Charger le plan d'abonnement (via user_subscription view)
+    const { data: sub } = await db.from('user_subscription')
+      .select('plan, statut_abonnement')
+      .eq('user_id', state.user.id)
+      .maybeSingle();
+    state.plan = sub?.plan || 'consultation_envoyee';
+    state.abonnementActif = !sub || sub.statut_abonnement === 'actif' || sub.statut_abonnement === 'essai';
+    // Si fournisseur_id non renseigné dans le compte, chercher l'entrée carnet correspondante
+    if (!state.fournisseurId) {
+      const { data: carnet } = await db.from('fournisseurs')
+        .select('id')
+        .or(`fournisseur_portail_id.eq.${state.user.id},compte_fournisseur_id.eq.${state.user.id}`)
+        .maybeSingle();
+      if (carnet) {
+        state.fournisseurId = carnet.id;
+        await db.from('compte_fournisseur')
+          .update({ fournisseur_id: carnet.id })
+          .eq('id', state.user.id);
+      }
+    }
+
+    // Check référent
+    const { data: mem } = await db.from('structure_membres')
+      .select('structure_id, role')
+      .eq('user_id', state.user.id)
+      .maybeSingle();
+    state.structureId = mem?.structure_id || null;
+    state.isReferent = mem?.role === 'referent';
+    if (state.isReferent) document.getElementById('btn-mon-equipe').classList.remove('hidden');
+  } catch (err) {
+    console.error('loadProfile', err);
+  }
+}
+
+function fillProfil(p) {
+  if (!p) return;
+  document.getElementById('p-nom').value = p.nom || '';
+  document.getElementById('p-entreprise').value = p.nom_entreprise || '';
+  document.getElementById('p-tel').value = p.tel || '';
+  document.getElementById('p-adresse').value = p.adresse || '';
+  document.getElementById('p-siret').value = p.siret || '';
+  document.getElementById('p-notif').value = p.notif_preference || 'each';
+  if (p.logo_url) {
+    const wrap = document.getElementById('p-logo-preview-wrap');
+    const img = document.getElementById('p-logo-preview');
+    img.src = p.logo_url;
+    wrap?.classList.remove('hidden');
+  }
+}
+
+function previewProfilLogo(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const wrap = document.getElementById('p-logo-preview-wrap');
+  const img = document.getElementById('p-logo-preview');
+  img.src = URL.createObjectURL(file);
+  wrap?.classList.remove('hidden');
+}
+
+async function saveProfil() {
+  try {
+    const file = document.getElementById('p-logo-file')?.files?.[0];
+    let logo_url = state.profile?.logo_url || null;
+
+    if (file) {
+      const ext = file.name.split('.').pop();
+      const path = `${state.user.id}/logo.${ext}`;
+      const { error: upErr } = await db.storage.from('logos').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: urlData } = db.storage.from('logos').getPublicUrl(path);
+      logo_url = urlData.publicUrl + '?t=' + Date.now();
+    }
+
+    await db.from('compte_fournisseur').update({
+      nom: document.getElementById('p-nom').value.trim(),
+      nom_entreprise: document.getElementById('p-entreprise').value.trim(),
+      tel: document.getElementById('p-tel').value.trim(),
+      adresse: document.getElementById('p-adresse').value.trim(),
+      siret: document.getElementById('p-siret').value.trim(),
+      notif_preference: document.getElementById('p-notif').value,
+      logo_url
+    }).eq('id', state.user.id);
+
+    state.profile = { ...state.profile, logo_url };
+    state.logoBase64 = null;
+    toast('Profil enregistré !');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+async function _loadLogoBase64() {
+  if (state.logoBase64 !== undefined && state.logoBase64 !== null) return state.logoBase64;
+  const url = state.profile?.logo_url;
+  if (!url) { state.logoBase64 = null; return null; }
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => { state.logoBase64 = e.target.result; resolve(state.logoBase64); };
+      reader.readAsDataURL(blob);
+    });
+  } catch { state.logoBase64 = null; return null; }
+}
+
+function showApp(guestOnly) {
+  document.getElementById('auth-view').classList.add('hidden');
+  document.getElementById('app-view').classList.remove('hidden');
+  if (!guestOnly) document.getElementById('btn-logout').classList.remove('hidden');
+  if (state.isGuest) {
+    document.getElementById('user-name').textContent = 'Accès invité';
+    // Masquer les onglets non pertinents pour invité
+    document.getElementById('ot-catalogue').classList.add('hidden');
+    document.getElementById('ot-historique').classList.add('hidden');
+    document.getElementById('ot-profil').classList.add('hidden');
+  }
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+async function loadNotifications() {
+  if (!state.user || state.isGuest) return;
+  try {
+    const { data } = await db.from('notifications')
+      .select('*').eq('user_id', state.user.id).eq('read', false)
+      .order('created_at', { ascending: false }).limit(20);
+    state.notifications = data || [];
+    _updateNotifBadge();
+  } catch (err) { console.error('loadNotifications', err); }
+}
+
+function _updateNotifBadge() {
+  const unread = state.notifications.filter(n => !n.read).length;
+  const badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  if (unread > 0) { badge.textContent = unread; badge.classList.remove('hidden'); }
+  else { badge.classList.add('hidden'); }
+}
+
+function toggleNotifs() {
+  const panel = document.getElementById('notif-panel');
+  const isHidden = panel.classList.toggle('hidden');
+  if (!isHidden) renderNotifList();
+}
+
+function renderNotifList() {
+  const el = document.getElementById('notif-list');
+  const unread = state.notifications.filter(n => !n.read);
+  if (!unread.length) {
+    el.innerHTML = '<p class="text-sm text-gray-400 p-3">Aucune nouvelle notification</p>';
+    return;
+  }
+  el.innerHTML = unread.map(n => {
+    const tab = n.type === 'modification_autorisee' ? 'saisie' : 'consultations';
+    return `<div class="p-3 bg-blue-50 border-b cursor-pointer hover:bg-blue-100"
+        onclick="notifNavigate('${n.id}','${tab}','${n.consultation_id||''}')">
+      <p class="text-sm">${n.message}</p>
+      <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleDateString('fr-FR')}</p>
+    </div>`;
+  }).join('');
+}
+
+async function notifNavigate(notifId, tab, consId) {
+  document.getElementById('notif-panel').classList.add('hidden');
+  await db.from('notifications').update({ read: true }).eq('id', notifId);
+  state.notifications = state.notifications.filter(n => n.id !== notifId);
+  _updateNotifBadge();
+  if (consId) {
+    const cons = state.consultations.find(c => c.id === consId);
+    if (cons) { state.currentConsultation = cons; populateConsSelect(); }
+  }
+  setTab(tab);
+}
+
+async function markAllNotifsRead() {
+  if (!state.user) return;
+  await db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false);
+  state.notifications = [];
+  _updateNotifBadge();
+  renderNotifList();
+}
+
+document.addEventListener('click', e => {
+  const panel = document.getElementById('notif-panel');
+  if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && !e.target.closest('button[onclick="toggleNotifs()"]')) {
+    panel.classList.add('hidden');
+  }
+});
+
+// ============================================================
+// NAVIGATION PAR ONGLETS
+// ============================================================
+function setTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('tab-active');
+    btn.classList.add('text-gray-500');
+  });
+  const activeBtn = document.getElementById(`ot-${tab}`);
+  if (activeBtn) {
+    activeBtn.classList.add('tab-active');
+    activeBtn.classList.remove('text-gray-500');
+  }
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  const tc = document.getElementById(`tab-${tab}`);
+  if (tc) tc.classList.remove('hidden');
+
+  clearTabBadge(tab);
+  if (tab === 'consultations') renderConsultations();
+  if (tab === 'saisie') {
+    populateConsSelect();
+    if (state.user) {
+      const ids = state.notifications.filter(n => n.type === 'modification_autorisee').map(n => n.id);
+      if (ids.length) { db.from('notifications').update({ read: true }).in('id', ids); state.notifications = state.notifications.filter(n => !ids.includes(n.id)); _updateNotifBadge(); }
+    }
+  }
+  if (tab === 'catalogue') renderCatalogue();
+  if (tab === 'historique') loadHistorique();
+  if (tab === 'profil' && state.profile) fillProfil(state.profile);
+}
+
+function showTabBadge(tabName) {
+  const el = document.getElementById(`badge-${tabName}`);
+  if (el) el.classList.add('visible');
+}
+function clearTabBadge(tabName) {
+  const el = document.getElementById(`badge-${tabName}`);
+  if (el) el.classList.remove('visible');
+  if (state.user) {
+    try { localStorage.setItem(`pivot_seen_${state.user.id}_${tabName}`, new Date().toISOString()); } catch(e) {}
+  }
+}
+function getTabLastSeen(tabName) {
+  if (!state.user) return null;
+  try { return localStorage.getItem(`pivot_seen_${state.user.id}_${tabName}`); } catch(e) { return null; }
+}
+
+// ============================================================
+// REALTIME
+// ============================================================
+let _realtimeChannel = null;
+function startRealtimeConsultations() {
+  if (_realtimeChannel) db.removeChannel(_realtimeChannel);
+  _realtimeChannel = db.channel('fournisseur-consultations')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'consultation_fournisseurs',
+      filter: `compte_fournisseur_id=eq.${state.user.id}`
+    }, async () => {
+      await loadConsultationsCompte();
+    })
+    .subscribe();
+}
+
+// ============================================================
+// CONSULTATIONS
+// ============================================================
+async function loadConsultationsCompte() {
+  try {
+    const compteId = state.user.id;
+
+    // Chemin 1 : via compte_fournisseur_id direct dans consultation_fournisseurs (nouvelles consultations)
+    const { data: cfDirect } = await db.from('consultation_fournisseurs')
+      .select('consultation_id')
+      .eq('compte_fournisseur_id', compteId);
+
+    // Chemin 2 : via les entrées carnet référençant ce compte (par id ou par email)
+    const email = state.profile?.email || state.user.email;
+    const { data: carnetEntries } = await db.from('fournisseurs')
+      .select('id')
+      .or(`fournisseur_portail_id.eq.${compteId},compte_fournisseur_id.eq.${compteId},email.eq.${email}`);
+
+    const fournisseurIds = [
+      ...(carnetEntries || []).map(f => f.id),
+      state.fournisseurId
+    ].filter(Boolean);
+
+    let cfViaCarnet = [];
+    if (fournisseurIds.length) {
+      const { data } = await db.from('consultation_fournisseurs')
+        .select('consultation_id')
+        .in('fournisseur_id', fournisseurIds);
+      cfViaCarnet = data || [];
+    }
+
+    const ids = [...new Set([
+      ...(cfDirect || []).map(x => x.consultation_id),
+      ...cfViaCarnet.map(x => x.consultation_id)
+    ])];
+
+    if (!ids.length) {
+      state.consultations = [];
+      renderConsultations();
+      return;
+    }
+
+    const { data: cons } = await db.from('consultations')
+      .select('*')
+      .in('id', ids)
+      .order('created_at', { ascending: false });
+
+    let toutes = (cons || []).map(c => ({ ...c, _source: 'envoyee' }));
+
+    // Si plan "consultation_ouverte" : charger aussi les consultations ouvertes
+    if (state.plan === 'consultation_ouverte') {
+      const { data: ouvertes } = await db.from('consultations')
+        .select('*')
+        .eq('is_ouverte', true)
+        .eq('statut', 'envoyee')
+        .order('created_at', { ascending: false });
+
+      const existingIds = new Set(toutes.map(c => c.id));
+      const nouvelles = (ouvertes || [])
+        .filter(c => !existingIds.has(c.id))
+        .map(c => ({ ...c, _source: 'ouverte' }));
+      toutes = [...toutes, ...nouvelles]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+
+    // Charger les noms d'entrepreneurs séparément (peut être bloqué par RLS)
+    const entrepreurIds = [...new Set(toutes.map(c => c.entrepreneur_id).filter(Boolean))];
+    if (entrepreurIds.length) {
+      try {
+        const { data: entData } = await db.from('compte_entrepreneur')
+          .select('id, nom, societe, logo_url').in('id', entrepreurIds);
+        const entMap = {};
+        (entData || []).forEach(e => { entMap[e.id] = e; });
+        toutes = toutes.map(c => ({ ...c, entrepreneur: entMap[c.entrepreneur_id] || null }));
+      } catch (_) {}
+    }
+
+    // Charger les données des chantiers via la fonction SECURITY DEFINER
+    try {
+      const { data: chData } = await db.rpc('get_chantiers_for_fournisseur');
+      const chMap = {};
+      (chData || []).forEach(ch => { chMap[ch.id] = ch; });
+      toutes = toutes.map(c => ({
+        ...c,
+        _chantier: chMap[c.chantier_id] || null,
+        _statut_chantier: chMap[c.chantier_id]?.statut || null
+      }));
+    } catch (_) {}
+
+    // Vérifier quelles consultations ont déjà une réponse envoyée
+    const fIdCheck = state.fournisseurId || state.user?.id;
+    if (fIdCheck) {
+      try {
+        const { data: repData } = await db.from('reponses_fournisseurs')
+          .select('consultation_id')
+          .eq('fournisseur_id', fIdCheck)
+          .not('devis_valide_at', 'is', null);
+        const repSet = new Set((repData || []).map(r => r.consultation_id));
+        toutes = toutes.map(c => ({ ...c, _fournisseur_a_repondu: repSet.has(c.id) }));
+      } catch (_) {}
+    }
+
+    state.consultations = toutes;
+
+    // Badge si nouvelles consultations depuis dernière visite
+    const lastSeen = getTabLastSeen('consultations');
+    const hasNew = state.consultations.some(c => !lastSeen || c.created_at > lastSeen);
+    if (hasNew) showTabBadge('consultations');
+
+    renderConsultations();
+  } catch (err) {
+    console.error('loadConsultations', err);
+  }
+}
+
+// Tri courant : 'reception' | 'date_limite' | 'entreprise'
+let _consTri = 'reception';
+
+function setConsTri(tri) {
+  _consTri = tri;
+  document.querySelectorAll('.cons-tri-btn').forEach(b => {
+    b.classList.toggle('bg-blue-600', b.dataset.tri === tri);
+    b.classList.toggle('text-white', b.dataset.tri === tri);
+    b.classList.toggle('bg-white', b.dataset.tri !== tri);
+    b.classList.toggle('text-gray-600', b.dataset.tri !== tri);
+  });
+  renderConsultations();
+}
+
+function renderConsultations() {
+  const el = document.getElementById('consultations-list');
+  if (!state.consultations.length) {
+    el.innerHTML = `
+      <p class="text-gray-400 text-sm italic">Aucune consultation reçue.</p>
+      ${state.plan === 'consultation_envoyee' ? `
+        <div class="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-700">
+          💡 Passez au forfait <strong>Consultations ouvertes</strong> pour accéder aux appels d'offres publiés par tous les entrepreneurs de la plateforme.
+        </div>` : ''}
+    `;
+    return;
+  }
+
+  // Helpers
+  const entNom = (c) => c.entrepreneur ? (c.entrepreneur.societe || c.entrepreneur.nom || '') : '';
+  const entInitiales = (c) => {
+    const n = entNom(c);
+    return n ? n.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() : '?';
+  };
+  const entLogo = (c) => c.entrepreneur?.logo_url
+    ? `<img src="${escHtml(c.entrepreneur.logo_url)}" class="w-10 h-10 rounded-full object-cover shrink-0" alt="">`
+    : `<div class="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center shrink-0">${entInitiales(c)}</div>`;
+
+  const cardHtml = (c) => {
+    const ch = c._chantier;
+    const moe = ch?._moe_nom || '';
+    const dateLimite = c.date_limite_reponse
+      ? new Date(c.date_limite_reponse).toLocaleDateString('fr-FR') : null;
+    const isUrgent = c.date_limite_reponse && !c._fournisseur_a_repondu
+      && (new Date(c.date_limite_reponse) - Date.now()) < 7 * 86400000;
+    return `
+    <div class="bg-white rounded-xl p-3 shadow-sm border ${c._source === 'ouverte' ? 'border-indigo-200' : 'border-gray-100'} flex items-center gap-3">
+      ${entLogo(c)}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="font-semibold text-sm text-gray-800 truncate">${escHtml(entNom(c) || 'Entreprise inconnue')}</span>
+          ${c._source === 'ouverte' ? `<span class="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">🌐 Ouverte</span>` : ''}
+          ${c._fournisseur_a_repondu ? `<span class="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">✅ Répondu</span>` : ''}
+        </div>
+        ${ch ? `<div class="text-xs text-gray-500 mt-0.5 truncate">
+          🏗 ${escHtml(ch.ville || '')}${ch.ville && ch.nom ? ' · ' : ''}${escHtml(ch.nom || '')}
+        </div>` : `<div class="text-xs text-gray-400 mt-0.5 truncate italic">${escHtml(c.titre || 'Consultation sans titre')}</div>`}
+        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+          ${moe ? `<span class="text-xs text-gray-400">👷 ${escHtml(moe)}</span>` : ''}
+          ${dateLimite ? `<span class="text-xs ${isUrgent ? 'text-red-600 font-semibold' : 'text-gray-400'}">📅 ${dateLimite}${isUrgent ? ' ⚠' : ''}</span>` : ''}
+          ${c._statut_chantier ? chantierStatutBadge(c._statut_chantier) : ''}
+        </div>
+      </div>
+      <div class="shrink-0 flex flex-col gap-1 items-end">
+        <button onclick="goToSaisie('${c.id}')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 whitespace-nowrap">
+          ${c._fournisseur_a_repondu ? '✏ Voir' : 'Saisir les prix'}
+        </button>
+        <button onclick="ignorerConsultation('${c.id}')" class="text-xs text-gray-300 hover:text-red-400 transition-colors" title="Ignorer cette consultation">Ignorer</button>
+      </div>
+    </div>`;
+  };
+
+  // Séparer envoyées / ouvertes, puis répondues / en cours (exclure ignorées)
+  const ignorees = getIgnoreesSet();
+  const envoyees = state.consultations.filter(c => c._source !== 'ouverte' && !ignorees.has(c.id));
+  const ouvertes = state.consultations.filter(c => c._source === 'ouverte' && !ignorees.has(c.id));
+  const enCours   = envoyees.filter(c => !c._fournisseur_a_repondu);
+  const repondues = envoyees.filter(c =>  c._fournisseur_a_repondu);
+
+  // Fonction de tri
+  const trierCons = (arr) => {
+    if (_consTri === 'date_limite') {
+      return [...arr].sort((a, b) => {
+        if (!a.date_limite_reponse) return 1;
+        if (!b.date_limite_reponse) return -1;
+        return new Date(a.date_limite_reponse) - new Date(b.date_limite_reponse);
+      });
+    }
+    if (_consTri === 'entreprise') {
+      return [...arr].sort((a, b) => entNom(a).localeCompare(entNom(b), 'fr'));
+    }
+    // 'reception' : ordre créé_at desc (déjà l'ordre par défaut)
+    return [...arr].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  };
+
+  // Groupement par entreprise
+  const makeGroups = (arr) => {
+    const groups = {};
+    for (const c of arr) {
+      const key = c.entrepreneur_id || '_none';
+      const nom = entNom(c) || 'Entreprise inconnue';
+      const logo = c.entrepreneur?.logo_url || null;
+      if (!groups[key]) groups[key] = { nom, logo, cons: [] };
+      groups[key].cons.push(c);
+    }
+    // Trier les groupes par nom entreprise
+    return Object.entries(groups).sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'));
+  };
+
+  const renderGroups = (arr, defaultOpen) => {
+    const groupsArr = makeGroups(trierCons(arr));
+    return groupsArr.map(([key, g]) => {
+      const panelId = `consgroup-${key}-${defaultOpen ? 'o' : 'c'}`;
+      const chevronId = `chevron-${key}-${defaultOpen ? 'o' : 'c'}`;
+      return `
+      <div class="mb-2">
+        <button onclick="toggleConsGroup('${panelId}','${chevronId}')" class="w-full flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 text-left">
+          ${g.logo
+            ? `<img src="${escHtml(g.logo)}" class="w-7 h-7 rounded-full object-cover shrink-0">`
+            : `<div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">${escHtml(g.nom.slice(0,2).toUpperCase())}</div>`}
+          <span class="font-semibold text-sm text-gray-800 flex-1 truncate">${escHtml(g.nom)}</span>
+          <span class="text-xs text-gray-400 shrink-0">${g.cons.length} <span id="${chevronId}">${defaultOpen ? '▾' : '▸'}</span></span>
+        </button>
+        <div id="${panelId}" class="mt-1 space-y-2 pl-1" ${defaultOpen ? '' : 'style="display:none"'}>
+          ${g.cons.map(cardHtml).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  // Barre de tri
+  const triBar = `
+    <div class="flex gap-1.5 mb-4 flex-wrap">
+      <span class="text-xs text-gray-400 self-center mr-1">Trier :</span>
+      ${[['reception','📥 Réception'],['date_limite','📅 Date limite'],['entreprise','🏢 Entreprise']].map(([t,l]) => `
+        <button data-tri="${t}" onclick="setConsTri('${t}')" class="cons-tri-btn text-xs px-3 py-1 rounded-lg border transition-colors ${_consTri === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">${l}</button>
+      `).join('')}
+    </div>`;
+
+  let html = triBar;
+
+  if (enCours.length) {
+    html += `<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">En attente de réponse (${enCours.length})</div>`;
+    html += renderGroups(enCours, true);
+  }
+
+  if (repondues.length) {
+    html += `
+      <button onclick="toggleConsGroup('repondues-panel','repondues-chevron')" class="w-full flex items-center justify-between px-3 py-2 mt-3 mb-2 bg-green-50 border border-green-200 rounded-xl hover:bg-green-100 text-left">
+        <span class="text-xs font-semibold text-green-700 uppercase tracking-wide">✅ Répondues (${repondues.length})</span>
+        <span id="repondues-chevron" class="text-green-500 text-xs">▸</span>
+      </button>
+      <div id="repondues-panel" style="display:none">
+        ${renderGroups(repondues, false)}
+      </div>`;
+  }
+
+  if (ouvertes.length) {
+    html += `
+      <div class="mt-4 mb-2 flex items-center gap-2">
+        <div class="flex-1 h-px bg-indigo-100"></div>
+        <span class="text-xs text-indigo-500 font-medium">🌐 Consultations ouvertes</span>
+        <div class="flex-1 h-px bg-indigo-100"></div>
+      </div>
+      ${ouvertes.map(cardHtml).join('')}`;
+  }
+
+  // Section consultations ignorées
+  const toutesIgnorees = state.consultations.filter(c => ignorees.has(c.id));
+  if (toutesIgnorees.length) {
+    html += `
+      <button onclick="toggleConsGroup('ignorees-panel','ignorees-chevron')" class="w-full flex items-center justify-between px-3 py-2 mt-4 mb-2 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 text-left">
+        <span class="text-xs font-medium text-gray-400">Ignorées (${toutesIgnorees.length})</span>
+        <span id="ignorees-chevron" class="text-gray-300 text-xs">▸</span>
+      </button>
+      <div id="ignorees-panel" style="display:none" class="space-y-2">
+        ${toutesIgnorees.map(c => `
+          <div class="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center gap-3 opacity-60">
+            <div class="flex-1 min-w-0 text-sm text-gray-500 truncate">${escHtml(entNom(c) || 'Entreprise inconnue')} — ${escHtml(c.titre || 'Consultation sans titre')}</div>
+            <button onclick="restaurerConsultation('${c.id}')" class="text-xs text-blue-500 hover:text-blue-700 shrink-0">Restaurer</button>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function toggleConsGroup(panelId, chevronId) {
+  const panel = document.getElementById(panelId);
+  const chevron = document.getElementById(chevronId);
+  if (!panel) return;
+  const hidden = panel.style.display === 'none';
+  panel.style.display = hidden ? '' : 'none';
+  if (chevron) chevron.textContent = hidden ? '▾' : '▸';
+}
+
+function goToSaisie(consultationId) {
+  setTab('saisie');
+  setTimeout(async () => {
+    document.getElementById('cons-select').value = consultationId;
+    await loadSaisie();
+  }, 100);
+}
+
+function _ignoreesKey() { return `pivot_ignorees_${state.user?.id || 'anon'}`; }
+
+function getIgnoreesSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(_ignoreesKey()) || '[]')); }
+  catch (_) { return new Set(); }
+}
+
+function ignorerConsultation(id) {
+  const set = getIgnoreesSet();
+  set.add(id);
+  localStorage.setItem(_ignoreesKey(), JSON.stringify([...set]));
+  renderConsultations();
+}
+
+function restaurerConsultation(id) {
+  const set = getIgnoreesSet();
+  set.delete(id);
+  localStorage.setItem(_ignoreesKey(), JSON.stringify([...set]));
+  renderConsultations();
+}
+
+// ============================================================
+// SAISIE DES PRIX
+// ============================================================
+function populateConsSelect() {
+  const sel = document.getElementById('cons-select');
+  const currentVal = sel.value;
+  sel.innerHTML = '<option value="">-- Sélectionner une consultation --</option>';
+  state.consultations.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.titre || 'Consultation sans titre';
+    sel.appendChild(opt);
+  });
+  if (currentVal) sel.value = currentVal;
+}
+
+async function loadSaisie() {
+  const consId = document.getElementById('cons-select').value;
+  if (!consId) { document.getElementById('saisie-content').innerHTML = ''; return; }
+  state.currentConsultation = state.consultations.find(c => c.id === consId);
+
+  try {
+    let fournitures = [];
+    if (state.isGuest) {
+      const { data } = await db.rpc('get_fournitures_by_token', { p_token: state.guestToken });
+      fournitures = data || [];
+      // Charger inclure_caracteristiques depuis la consultation via token
+      const { data: consData } = await db.rpc('get_consultation_by_token', { p_token: state.guestToken });
+      if (consData) state.currentConsultation = { ...(state.currentConsultation || {}), ...consData };
+    } else {
+      const { data: cons } = await db.from('consultations')
+        .select('chantier_id, inclure_caracteristiques, familles')
+        .eq('id', consId).single();
+      if (cons) {
+        state.currentConsultation = { ...(state.currentConsultation || {}), ...cons };
+        const { data } = await db.from('fournitures')
+          .select('*, famille:familles_fournitures(nom, icone, couleur)')
+          .eq('chantier_id', cons.chantier_id).order('ordre');
+        fournitures = data || [];
+        // Filtrer par famille si la consultation le précise
+        if (cons.familles?.length) {
+          fournitures = fournitures.filter(f => !f.famille_id || cons.familles.includes(f.famille_id));
+        }
+      }
+    }
+    state.fournitures = fournitures;
+
+    // Charger réponses existantes
+    state.reponses = {};
+    state.reponsesEnvoyees = {};
+    state.fraisPort = 0;
+    if (!state.isGuest) {
+      const fId = state.fournisseurId || state.user?.id;
+      if (fId) {
+        const [repsRes, cfRes] = await Promise.all([
+          db.from('reponses_fournisseurs').select('*')
+            .eq('consultation_id', consId).eq('fournisseur_id', fId),
+          db.from('consultation_fournisseurs').select('frais_port')
+            .eq('consultation_id', consId).eq('fournisseur_id', fId).maybeSingle()
+            .then(r => r, () => ({ data: null }))
+        ]);
+        (repsRes.data || []).forEach(r => {
+          const key = `${r.fourniture_id}_${r.variante_ordre}`;
+          state.reponses[key] = r;
+          if (r.devis_valide_at) state.reponsesEnvoyees[key] = true;
+        });
+        state.fraisPort = cfRes.data?.frais_port ?? 0;
+
+        // Vérifier si une demande de modification est déjà en attente
+        state.demandeModifPending = false;
+        try {
+          const { data: dm } = await db.from('demandes_modification')
+            .select('id').eq('consultation_id', consId).eq('fournisseur_id', fId)
+            .eq('statut', 'pending').maybeSingle();
+          state.demandeModifPending = !!dm;
+        } catch (_) {}
+      }
+    }
+
+    renderSaisie();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function renderSaisie() {
+  const container = document.getElementById('saisie-content');
+  const fournitures = state.fournitures.filter(f => !f.is_variante);
+  const inclureCaract = state.currentConsultation?.inclure_caracteristiques || false;
+  const consId = document.getElementById('cons-select')?.value || state.currentConsultation?.id;
+
+  const famMap = {};
+  state.familles.forEach(fam => {
+    const items = fournitures.filter(f => f.famille_id === fam.id);
+    if (items.length) famMap[fam.id] = { fam, items };
+  });
+  const unknownItems = fournitures.filter(f => !f.famille_id);
+  if (unknownItems.length) famMap['_autres'] = { fam: { id: '_autres', nom: 'Sans famille', icone: '📦', couleur: '#9ca3af' }, items: unknownItems };
+
+  if (!Object.keys(famMap).length) {
+    container.innerHTML = '<p class="text-gray-400 text-sm italic">Aucune fourniture dans cette consultation.</p>';
+    return;
+  }
+
+  // Vérifier si des lignes sont verrouillées (au moins une réponse envoyée)
+  const allKeys = fournitures.map(f => `${f.id}_0`);
+  const allLocked = allKeys.length > 0 && allKeys.every(k => !!state.reponsesEnvoyees[k]);
+  const anyLocked = allKeys.some(k => !!state.reponsesEnvoyees[k]);
+
+  let banner = '';
+  if (anyLocked) {
+    banner = `<div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <p class="text-sm font-semibold text-green-800">✅ Réponse ${allLocked ? 'complète' : 'partielle'} envoyée</p>
+        <p class="text-xs text-green-600 mt-0.5">Vos prix sont verrouillés. Pour les modifier, demandez l'autorisation au consultant.</p>
+      </div>
+      ${!state.isGuest ? (state.demandeModifPending
+        ? `<span class="text-sm text-amber-700 bg-amber-100 border border-amber-300 px-4 py-2 rounded-lg">⏳ Demande envoyée, en attente</span>`
+        : `<button onclick="demanderModification('${consId}')" class="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-600">🔓 Demander modification</button>`) : ''}
+    </div>`;
+  }
+
+  const fraisPort = state.fraisPort ?? 0;
+  const fraisPortHtml = `
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-4 flex items-center gap-3">
+      <span class="text-sm font-medium text-gray-700">🚚 Frais de port (HT) :</span>
+      <input id="frais-port-input" type="number" min="0" step="0.01" value="${fraisPort}"
+        class="border rounded px-3 py-1.5 text-sm w-32 focus:outline-none focus:border-blue-400"
+        ${allLocked ? 'disabled' : ''}
+        placeholder="0.00">
+      <span class="text-sm text-gray-400">€</span>
+    </div>`;
+
+  container.innerHTML = banner + Object.values(famMap).map(({ fam, items }) => `
+    <div class="famille-card bg-white rounded-xl shadow-sm mb-4 overflow-hidden" style="--famille-color: ${fam.couleur || '#9ca3af'}">
+      <div class="flex items-center gap-2 px-5 py-3 font-semibold text-sm" style="background: ${fam.couleur || '#9ca3af'}15">
+        <span>${fam.icone || '📦'}</span><span>${fam.nom}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="saisie-table-${fam.id}">
+          <thead class="bg-gray-50 text-gray-400 text-xs">
+            <tr>
+              <th class="px-3 py-2 text-left">N°Poste</th>
+              <th class="px-3 py-2 text-left">Désignation</th>
+              ${inclureCaract ? '<th class="px-3 py-2 text-left min-w-40">Spécifications requises</th>' : ''}
+              <th class="px-3 py-2 text-right">Qté</th>
+              <th class="px-3 py-2 text-left">U</th>
+              <th class="px-3 py-2 text-right min-w-28">Prix unit. HT *</th>
+              <th class="px-3 py-2 text-left min-w-24">Délai livr.</th>
+              <th class="px-3 py-2 text-left min-w-32">Commentaire</th>
+              <th class="px-3 py-2 text-left">Fiche tech.</th>
+              <th class="px-3 py-2 text-center w-24">Variante</th>
+            </tr>
+          </thead>
+          <tbody id="saisie-tbody-${fam.id}">
+            ${items.map(f => {
+              // Ligne principale
+              let html = renderLigneSaisie(f, 0, inclureCaract);
+              // Variantes sauvegardées
+              const variantesOrdres = Object.keys(state.reponses)
+                .filter(k => k.startsWith(f.id + '_') && parseInt(k.split('_')[1]) > 0)
+                .map(k => parseInt(k.split('_')[1]))
+                .sort();
+              for (const ord of variantesOrdres) {
+                html += renderLigneSaisie({ ...f, is_variante: true }, ord, inclureCaract);
+              }
+              return html;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join('') + fraisPortHtml;
+}
+
+function renderLigneSaisie(f, varOrdre, inclureCaract) {
+  const key    = `${f.id}_${varOrdre}`;
+  const rep    = state.reponses[key] || {};
+  const locked = !!state.reponsesEnvoyees[key];
+  const isVar  = varOrdre > 0;
+  const cataloguePrix = findCataloguePrice(f.designation);
+  const initPrix = rep.prix_unit_ht != null ? rep.prix_unit_ht : (cataloguePrix || '');
+  const famNom = (state.familles.find(x => x.id === f.famille_id)?.nom || '').toLowerCase();
+  const isVegetal = famNom.includes('végét') || famNom.includes('vegetal') || famNom.includes('végétal');
+
+  // Colonne specs (lecture seule pour la ligne principale, éditable pour variantes)
+  let specCell = '';
+  if (inclureCaract) {
+    if (!isVar) {
+      const caract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
+      specCell = caract.length
+        ? `<td class="px-3 py-2 align-top">
+            <div class="space-y-0.5">
+              ${caract.map(c => `<div class="text-xs"><span class="text-gray-500">${escHtml(c.cle)} :</span> <span class="font-medium">${escHtml(c.valeur)}</span></div>`).join('')}
+            </div>
+          </td>`
+        : '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
+    } else {
+      // Variante : champs éditables pour les caractéristiques
+      const varCaract = Array.isArray(rep.variante_caracteristiques) ? rep.variante_caracteristiques : [];
+      specCell = `<td class="px-3 py-2 align-top" id="var-caract-cell-${f.id}-${varOrdre}">
+        ${renderVarCaractFields(f.id, varOrdre, varCaract, locked)}
+      </td>`;
+    }
+  }
+
+  return `
+    <tr class="${isVar ? 'bg-orange-50' : 'hover:bg-gray-50'} border-b" data-fourniture="${f.id}" data-ordre="${varOrdre}">
+      <td class="px-3 py-2 text-gray-400 text-xs">${isVar ? '↳ var' : (f.numero_poste || '')}</td>
+      <td class="px-3 py-2 ${isVar ? 'italic text-orange-700' : 'font-medium'}">
+        ${isVar
+          ? `<input type="text" class="border rounded px-2 py-1 text-xs w-full var-design-${f.id}-${varOrdre}" value="${escHtml(rep.variante_description || '')}" placeholder="Description variante" ${locked ? 'disabled' : ''}>`
+          : escHtml(f.designation)}
+        ${isVegetal && !isVar && (f.taille || f.contenant) ? ` <span class="text-gray-400">${[f.taille, f.contenant].filter(Boolean).map(escHtml).join(' · ')}</span>` : ''}
+        ${isVegetal && isVar ? `
+          <div class="flex gap-1 mt-1">
+            <input type="text" class="border rounded px-1.5 py-0.5 text-xs w-24 var-taille-${f.id}-${varOrdre}" value="${escHtml(rep._taille || f.taille || '')}" placeholder="Taille/Calibre" ${locked ? 'disabled' : ''}>
+            <input type="text" class="border rounded px-1.5 py-0.5 text-xs w-24 var-contenant-${f.id}-${varOrdre}" value="${escHtml(rep._contenant || f.contenant || '')}" placeholder="Conditionnement" ${locked ? 'disabled' : ''}>
+          </div>` : ''}
+      </td>
+      ${specCell}
+      <td class="px-3 py-2 text-right">${f.qte || ''}</td>
+      <td class="px-3 py-2">${f.unite || 'U'}</td>
+      <td class="px-3 py-2">
+        <input type="number" step="0.01" min="0" class="border rounded px-2 py-1 text-sm w-28 prix-input" data-key="${key}" value="${initPrix}" placeholder="0.00" ${locked ? 'disabled' : ''}>
+      </td>
+      <td class="px-3 py-2">
+        <input type="text" class="border rounded px-2 py-1 text-xs w-24 delai-input" data-key="${key}" value="${escHtml(rep.delai_livraison || '')}" placeholder="ex: 5j" ${locked ? 'disabled' : ''}>
+      </td>
+      <td class="px-3 py-2">
+        <input type="text" class="border rounded px-2 py-1 text-xs w-32 comm-input" data-key="${key}" value="${escHtml(rep.commentaire || '')}" placeholder="…" ${locked ? 'disabled' : ''}>
+      </td>
+      <td class="px-3 py-2 min-w-32">
+        <div class="flex flex-col gap-1" id="fiche-cell-${key}">
+          <input type="hidden" class="fiche-input" data-key="${key}" value="${escHtml(rep.fiche_technique_url || '')}">
+          ${rep.fiche_technique_url ? `
+            <a href="${escHtml(rep.fiche_technique_url)}" target="_blank" class="flex items-center gap-1 text-xs text-blue-600 hover:underline truncate max-w-32" title="${escHtml(rep.fiche_technique_url)}">
+              ${rep.fiche_technique_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '🖼' : '📄'} ${escHtml(rep._fiche_nom || 'Voir fichier')}
+            </a>
+          ` : '<span class="text-xs text-gray-300 italic">—</span>'}
+          ${!locked ? `
+            <div class="flex gap-1">
+              <label class="cursor-pointer flex items-center gap-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded px-2 py-0.5 text-xs font-medium" title="Joindre une fiche technique PDF">
+                📄 PDF<input type="file" accept=".pdf" class="hidden" onchange="uploadFicheFournisseur('${key}',this)">
+              </label>
+              <label class="cursor-pointer flex items-center gap-0.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5 text-xs font-medium" title="Joindre une photo">
+                🖼 Photo<input type="file" accept="image/*" class="hidden" onchange="uploadFicheFournisseur('${key}',this)">
+              </label>
+            </div>
+          ` : ''}
+        </div>
+      </td>
+      <td class="px-3 py-2 text-center whitespace-nowrap">
+        ${!locked && !isVar ? `<button onclick="addVarianteFournisseur('${f.id}')" class="text-orange-400 hover:text-orange-600 text-xs font-medium">＋ variante</button>` : ''}
+        ${locked ? '<span class="text-green-500 text-xs">✅</span>' : ''}
+      </td>
+    </tr>
+  `;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// MON ÉQUIPE
+// ============================================================
+async function openEquipeModal() {
+  if (!state.isReferent || !state.structureId) return;
+  showModal('<p class="text-gray-400 text-sm text-center py-6">Chargement…</p>');
+  try {
+    const [strRes, memRes, invRes] = await Promise.all([
+      db.from('structures').select('nom, nb_licences_max').eq('id', state.structureId).single(),
+      db.from('structure_membres').select('user_id, role').eq('structure_id', state.structureId),
+      db.from('team_invitations').select('id, email_invite, token, statut').eq('structure_id', state.structureId).eq('statut', 'pending')
+    ]);
+    const structure = strRes.data || {};
+    const membres = memRes.data || [];
+    const invitations = invRes.data || [];
+
+    const userIds = membres.map(m => m.user_id);
+    let userDetails = [];
+    if (userIds.length) {
+      const { data } = await db.from('compte_fournisseur').select('id, nom, nom_entreprise, email').in('id', userIds);
+      userDetails = data || [];
+    }
+    const userMap = {};
+    userDetails.forEach(u => { userMap[u.id] = u; });
+
+    const nbMax = structure.nb_licences_max || '∞';
+    const nbUsed = membres.length;
+
+    const membresHtml = membres.map(m => {
+      const u = userMap[m.user_id] || {};
+      const isSelf = m.user_id === state.user.id;
+      const canRemove = !isSelf && m.role !== 'referent';
+      const nom = u.nom_entreprise || u.nom || '—';
+      return `<div class="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800">${escHtml(nom)}</p>
+          <p class="text-xs text-gray-500">${escHtml(u.email || m.user_id)}</p>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full ${m.role === 'referent' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}">${m.role}</span>
+        ${canRemove ? `<button onclick="retirerMembre('${m.user_id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">Retirer</button>` : ''}
+      </div>`;
+    }).join('');
+
+    const invitationsHtml = invitations.length ? `
+      <h3 class="text-sm font-semibold text-gray-600 mt-4 mb-2">Invitations en attente</h3>
+      ${invitations.map(inv => `
+        <div class="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
+          <div class="flex-1 text-sm text-gray-600">${escHtml(inv.email_invite)}</div>
+          <button onclick="copyTeamLink('${inv.token}')" class="text-xs text-blue-500 hover:text-blue-700 px-2 py-1 border border-blue-200 rounded">📋 Copier</button>
+          <button onclick="annulerTeamInvite('${inv.id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">✕</button>
+        </div>`).join('')}` : '';
+
+    const canInvite = nbMax === '∞' || nbUsed < nbMax;
+
+    document.querySelector('#modal-container .bg-white').innerHTML = `
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-800">👥 Mon équipe</h2>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+      </div>
+      <p class="text-sm text-gray-500 mb-1">${escHtml(structure.nom || '')}</p>
+      <div class="flex items-center gap-2 mb-4">
+        <div class="flex-1 bg-gray-200 rounded-full h-2">
+          <div class="bg-blue-500 h-2 rounded-full" style="width:${nbMax === '∞' ? 50 : Math.min(100, nbUsed/nbMax*100)}%"></div>
+        </div>
+        <span class="text-xs text-gray-600 whitespace-nowrap">${nbUsed} / ${nbMax} licences</span>
+      </div>
+      <div class="mb-2">${membresHtml}</div>
+      ${invitationsHtml}
+      <div class="mt-4 pt-4 border-t border-gray-100">
+        ${canInvite
+          ? `<button onclick="openInviterMembreModal()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ Inviter un membre</button>`
+          : `<p class="text-center text-sm text-orange-500">Limite de licences atteinte. Contactez l'administrateur Pivot pour augmenter votre quota.</p>`}
+      </div>`;
+  } catch (err) {
+    toast(err.message, 'err');
+    closeModal();
+  }
+}
+
+function openInviterMembreModal() {
+  document.querySelector('#modal-container .bg-white').innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">Inviter un membre</h2>
+      <button onclick="openEquipeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-sm text-gray-500 mb-4">Entrez l'email du collaborateur à inviter.</p>
+    <input id="invite-email" type="email" placeholder="email@entreprise.fr" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <button onclick="inviterMembre()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Envoyer l'invitation</button>`;
+}
+
+async function inviterMembre() {
+  const email = document.getElementById('invite-email')?.value.trim().toLowerCase();
+  if (!email) return toast('Entrez un email', 'err');
+  try {
+    const { data: existing } = await db.from('compte_fournisseur').select('id').eq('email', email).maybeSingle();
+    if (existing) {
+      const { data: alreadyMember } = await db.from('structure_membres')
+        .select('id').eq('user_id', existing.id).eq('structure_id', state.structureId).maybeSingle();
+      if (alreadyMember) return toast('Cette personne est déjà membre', 'err');
+      const { error } = await db.from('structure_membres').insert({ user_id: existing.id, structure_id: state.structureId, role: 'membre' });
+      if (error) throw error;
+      await db.from('profiles').update({ structure_id: state.structureId }).eq('id', existing.id);
+      toast('Membre ajouté avec succès');
+    } else {
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
+      const { error } = await db.from('team_invitations').insert({
+        structure_id: state.structureId, email_invite: email,
+        token, statut: 'pending', invited_by: state.user.id
+      });
+      if (error) throw error;
+      const link = `${location.origin}${location.pathname}?team_invite=${token}`;
+      await navigator.clipboard.writeText(link).catch(() => {});
+      toast('Invitation créée — lien copié dans le presse-papiers');
+    }
+    await openEquipeModal();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function retirerMembre(userId) {
+  if (!confirm('Retirer ce membre de l\'équipe ?')) return;
+  try {
+    const { error } = await db.from('structure_membres').delete()
+      .eq('user_id', userId).eq('structure_id', state.structureId);
+    if (error) throw error;
+    await db.from('profiles').update({ structure_id: null }).eq('id', userId);
+    toast('Membre retiré');
+    await openEquipeModal();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function annulerTeamInvite(invId) {
+  const { error } = await db.from('team_invitations').update({ statut: 'cancelled' }).eq('id', invId);
+  if (error) return toast(error.message, 'err');
+  toast('Invitation annulée');
+  await openEquipeModal();
+}
+
+function copyTeamLink(token) {
+  const link = `${location.origin}${location.pathname}?team_invite=${token}`;
+  navigator.clipboard.writeText(link).then(() => toast('Lien copié')).catch(() => toast('Impossible de copier', 'err'));
+}
+
+async function processTeamInvite() {
+  const token = state.pendingTeamToken;
+  if (!token) return;
+  try {
+    history.replaceState({}, '', location.pathname);
+    const { data: inv, error } = await db.from('team_invitations')
+      .select('*').eq('token', token).maybeSingle();
+    if (error || !inv) return toast('Lien d\'invitation invalide ou expiré', 'err');
+    if (inv.statut !== 'pending') return toast('Cette invitation a déjà été utilisée', 'err');
+    const { data: alreadyMember } = await db.from('structure_membres')
+      .select('id').eq('user_id', state.user.id).eq('structure_id', inv.structure_id).maybeSingle();
+    if (!alreadyMember) {
+      const { error: e2 } = await db.from('structure_membres').insert({
+        user_id: state.user.id, structure_id: inv.structure_id, role: 'membre'
+      });
+      if (e2) throw e2;
+      await db.from('profiles').update({ structure_id: inv.structure_id }).eq('id', state.user.id);
+    }
+    await db.from('team_invitations').update({ statut: 'accepted' }).eq('id', inv.id);
+    state.pendingTeamToken = null;
+    state.structureId = inv.structure_id;
+    toast('Vous avez rejoint l\'équipe avec succès !');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function renderVarCaractFields(fournitureId, varOrdre, caract, locked) {
+  const rows = caract.map((c, i) => `
+    <div class="flex gap-1 mb-0.5 items-center">
+      <input type="text" class="border rounded px-1 py-0.5 text-xs w-20" value="${escHtml(c.cle)}"
+        placeholder="Nom" onchange="updateVarCaract('${fournitureId}',${varOrdre},${i},'cle',this.value)" ${locked ? 'disabled' : ''}>
+      <input type="text" class="border rounded px-1 py-0.5 text-xs flex-1" value="${escHtml(c.valeur)}"
+        placeholder="Valeur" onchange="updateVarCaract('${fournitureId}',${varOrdre},${i},'valeur',this.value)" ${locked ? 'disabled' : ''}>
+      ${!locked ? `<button onclick="removeVarCaract('${fournitureId}',${varOrdre},${i})" class="text-red-300 hover:text-red-500 text-xs">✕</button>` : ''}
+    </div>
+  `).join('');
+  return rows + (!locked
+    ? `<button onclick="addVarCaract('${fournitureId}',${varOrdre})" class="text-xs text-orange-500 hover:underline mt-0.5">+ spec</button>`
+    : '');
+}
+
+function getVarCaract(fournitureId, varOrdre) {
+  const key = `${fournitureId}_${varOrdre}`;
+  if (!state.reponses[key]) state.reponses[key] = {};
+  if (!Array.isArray(state.reponses[key].variante_caracteristiques)) state.reponses[key].variante_caracteristiques = [];
+  return state.reponses[key].variante_caracteristiques;
+}
+
+function addVarCaract(fournitureId, varOrdre) {
+  getVarCaract(fournitureId, varOrdre).push({ cle: '', valeur: '' });
+  refreshVarCaractCell(fournitureId, varOrdre);
+}
+
+function removeVarCaract(fournitureId, varOrdre, idx) {
+  getVarCaract(fournitureId, varOrdre).splice(idx, 1);
+  refreshVarCaractCell(fournitureId, varOrdre);
+}
+
+function updateVarCaract(fournitureId, varOrdre, idx, field, value) {
+  const arr = getVarCaract(fournitureId, varOrdre);
+  if (arr[idx]) arr[idx][field] = value;
+}
+
+function refreshVarCaractCell(fournitureId, varOrdre) {
+  const cell = document.getElementById(`var-caract-cell-${fournitureId}-${varOrdre}`);
+  if (cell) cell.innerHTML = renderVarCaractFields(fournitureId, varOrdre, getVarCaract(fournitureId, varOrdre), false);
+}
+
+function findCataloguePrice(designation) {
+  if (!designation || !state.catalogue.length) return null;
+  const match = state.catalogue.find(c =>
+    c.designation.toLowerCase().trim() === designation.toLowerCase().trim()
+  );
+  return match?.prix_unit_ht || null;
+}
+
+function applyRemiseGlobale() {
+  const remise = parseFloat(document.getElementById('remise-globale').value) || 0;
+  if (!remise) return;
+  document.querySelectorAll('.prix-input').forEach(input => {
+    const cataloguePrix = parseFloat(input.dataset.cataloguePrix);
+    if (cataloguePrix) {
+      input.value = (cataloguePrix * (1 - remise / 100)).toFixed(2);
+    }
+  });
+}
+
+function addVarianteFournisseur(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  // Compter variantes existantes (DOM + state)
+  const existingVars = document.querySelectorAll(`tr[data-fourniture="${fournitureId}"][data-ordre]`);
+  const maxOrdre = Math.max(0, ...[...existingVars].map(r => parseInt(r.dataset.ordre) || 0));
+  const newOrdre = maxOrdre + 1;
+
+  // Pré-remplir depuis la ligne parente
+  const parentRep = state.reponses[`${fournitureId}_0`] || {};
+  state.reponses[`${fournitureId}_${newOrdre}`] = {
+    est_variante: true,
+    variante_ordre: newOrdre,
+    variante_caracteristiques: Array.isArray(parentRep.variante_caracteristiques)
+      ? JSON.parse(JSON.stringify(parentRep.variante_caracteristiques)) : [],
+    variante_description: f.designation || '',
+    prix_unit_ht: parentRep.prix_unit_ht || '',
+    delai_livraison: parentRep.delai_livraison || '',
+    commentaire: ''
+  };
+
+  const inclureCaract = state.currentConsultation?.inclure_caracteristiques || false;
+  // Trouver la dernière ligne de ce fourniture dans le DOM
+  const allRows = [...document.querySelectorAll(`tr[data-fourniture="${fournitureId}"]`)];
+  const lastRow = allRows[allRows.length - 1];
+  if (!lastRow) return;
+
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = renderLigneSaisie({ ...f, is_variante: true }, newOrdre, inclureCaract);
+  const newRow = tmp.firstElementChild;
+  // Animation d'apparition
+  newRow.style.opacity = '0';
+  newRow.style.transition = 'opacity 0.2s';
+  lastRow.insertAdjacentElement('afterend', newRow);
+  requestAnimationFrame(() => { newRow.style.opacity = '1'; });
+}
+
+async function demanderModification(consId) {
+  const fId = state.fournisseurId || state.user?.id;
+  if (!consId || !fId) return toast('Consultation ou profil introuvable', 'err');
+
+  // Vérifier si une demande est déjà en cours
+  const { data: existing } = await db.from('demandes_modification')
+    .select('id, statut')
+    .eq('consultation_id', consId)
+    .eq('fournisseur_id', fId)
+    .eq('statut', 'pending')
+    .maybeSingle();
+
+  if (existing) {
+    return toast('Une demande est déjà en attente d\'autorisation.', 'err');
+  }
+
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">🔓 Demande de modification</h2>
+    <p class="text-sm text-gray-600 mb-4">Expliquez pourquoi vous souhaitez modifier vos prix. Le consultant recevra une notification et devra approuver votre demande.</p>
+    <label class="block text-xs text-gray-500 mb-1">Motif (optionnel)</label>
+    <textarea id="modif-motif" rows="3" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="Ex: Erreur de saisie sur la ligne végétaux…"></textarea>
+    <div class="flex gap-3">
+      <button onclick="confirmerDemandeModif('${consId}')" class="flex-1 bg-amber-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-amber-600">Envoyer la demande</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+    </div>
+  `);
+}
+
+async function confirmerDemandeModif(consId) {
+  const fId = state.fournisseurId || state.user?.id;
+  const motif = document.getElementById('modif-motif')?.value.trim() || '';
+  try {
+    // Insérer la demande
+    await db.from('demandes_modification').insert({
+      consultation_id: consId,
+      fournisseur_id: fId,
+      statut: 'pending',
+      message: motif
+    });
+    // Notifier l'entrepreneur
+    const { data: cons } = await db.from('consultations')
+      .select('entrepreneur_id, titre, chantier_id').eq('id', consId).maybeSingle();
+    if (cons?.entrepreneur_id) {
+      await db.from('notifications').insert({
+        type: 'demande_modification',
+        user_id: cons.entrepreneur_id,
+        message: `${state.profile?.nom || 'Un fournisseur'} demande à modifier sa réponse pour "${cons.titre || consId}"`,
+        consultation_id: consId,
+        chantier_id: cons.chantier_id || null
+      });
+    }
+    state.demandeModifPending = true;
+    closeModal();
+    renderSaisie();
+    toast('Demande envoyée. En attente d\'autorisation du consultant.');
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'err');
+  }
+}
+
+function collectReponses() {
+  const reponses = [];
+  document.querySelectorAll('tr[data-fourniture]').forEach(row => {
+    const fournitureId = row.dataset.fourniture;
+    const ordre        = parseInt(row.dataset.ordre);
+    const prixInput    = row.querySelector('.prix-input');
+    const delaiInput   = row.querySelector('.delai-input');
+    const commInput    = row.querySelector('.comm-input');
+    const ficheInput   = row.querySelector('.fiche-input');
+    const designInput    = row.querySelector(`[class*="var-design-${fournitureId}-${ordre}"]`);
+    const tailleInput    = row.querySelector(`[class*="var-taille-${fournitureId}-${ordre}"]`);
+    const contenantInput = row.querySelector(`[class*="var-contenant-${fournitureId}-${ordre}"]`);
+    if (!prixInput) return;
+    const prix = parseFloat(prixInput.value);
+    if (!prix && ordre === 0) return;
+    // Caractéristiques de variante (stockées en state)
+    const varCaract = ordre > 0
+      ? (state.reponses[`${fournitureId}_${ordre}`]?.variante_caracteristiques || [])
+      : [];
+    reponses.push({
+      fourniture_id:           fournitureId,
+      variante_ordre:          ordre,
+      est_variante:            ordre > 0,
+      prix_unit_ht:            prix || null,
+      delai_livraison:         delaiInput?.value.trim() || null,
+      commentaire:             commInput?.value.trim() || null,
+      fiche_technique_url:     ficheInput?.value.trim() || null,
+      variante_description:    designInput?.value.trim() || null,
+      variante_caracteristiques: varCaract.length ? varCaract : null,
+      _taille:                 tailleInput?.value.trim() || null,
+      _contenant:              contenantInput?.value.trim() || null
+    });
+  });
+  return reponses;
+}
+
+async function uploadFicheFournisseur(key, input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  toast('Upload en cours…');
+  try {
+    const userId = state.user?.id || 'guest';
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${userId}/${key}/${Date.now()}_${safeName}`;
+    const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
+    // Mettre à jour le champ caché et rafraîchir l'affichage
+    const ficheInput = document.querySelector(`.fiche-input[data-key="${key}"]`);
+    if (ficheInput) ficheInput.value = publicUrl;
+    const cell = document.getElementById(`fiche-cell-${key}`);
+    if (cell) {
+      const isImg = file.type.startsWith('image/');
+      const existing = cell.querySelector('a, span.italic');
+      const link = document.createElement('a');
+      link.href = publicUrl;
+      link.target = '_blank';
+      link.title = publicUrl;
+      link.className = 'flex items-center gap-1 text-xs text-blue-600 hover:underline truncate max-w-32';
+      link.innerHTML = `${isImg ? '🖼' : '📄'} ${escHtml(file.name)}`;
+      if (existing) existing.replaceWith(link);
+      else cell.insertBefore(link, cell.firstChild);
+    }
+    toast(file.type.startsWith('image/') ? 'Photo jointe — pensez à enregistrer' : 'Fiche jointe — pensez à enregistrer');
+  } catch (err) { toast('Upload échoué : ' + err.message, 'err'); }
+}
+
+// Vérifie SIRET puis ouvre le modal de confirmation selon profil invité/portail
+async function preValidateReponses() {
+  const consId = document.getElementById('cons-select').value;
+  if (!consId) return toast('Sélectionnez une consultation', 'err');
+  const lignes = collectReponses();
+  if (!lignes.length) return toast('Aucune donnée à enregistrer', 'err');
+
+  if (state.isGuest) {
+    // Vérifier SIRET invité
+    const siret = (state.guestSiret || '').trim();
+    if (!siret) {
+      showModal(`
+        <h2 class="text-lg font-bold mb-3">SIRET / Identifiant requis</h2>
+        <p class="text-sm text-gray-600 mb-3">Renseignez votre numéro SIRET (ou équivalent à l'étranger) pour valider votre réponse.</p>
+        <input id="guest-siret-input" type="text" placeholder="SIRET ou n° identifiant *" class="w-full border rounded px-3 py-2 text-sm mb-4">
+        <div class="flex gap-3">
+          <button onclick="confirmGuestSiretAndSend('${consId}')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Valider</button>
+          <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+        </div>
+      `);
+      return;
+    }
+    showGuestValidationModal(consId);
+  } else {
+    // Compte portail — vérifier SIRET profil
+    const siret = state.profile?.siret?.trim();
+    if (!siret) {
+      showModal(`
+        <h2 class="text-lg font-bold mb-3">SIRET requis</h2>
+        <p class="text-sm text-gray-600 mb-3">Renseignez votre SIRET dans votre profil avant de valider une réponse.</p>
+        <div class="flex gap-3">
+          <button onclick="closeModal();setTab('profil')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Aller au profil</button>
+          <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+        </div>
+      `);
+      return;
+    }
+    showPortailValidationModal(consId);
+  }
+}
+
+function confirmGuestSiretAndSend(consId) {
+  const siret = document.getElementById('guest-siret-input')?.value.trim();
+  if (!siret) return toast('SIRET obligatoire', 'err');
+  state.guestSiret = siret;
+  closeModal();
+  showGuestValidationModal(consId);
+}
+
+function showGuestValidationModal(consId) {
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">✅ Confirmer l'envoi</h2>
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+      <p class="text-sm font-semibold text-amber-800 mb-1">⚠️ Important — Devis papier obligatoire</p>
+      <p class="text-sm text-amber-700">Votre réponse en ligne sera enregistrée, mais vous devez également <strong>envoyer un devis officiel</strong> (PDF ou papier) à l'entrepreneur, comportant :</p>
+      <ul class="text-xs text-amber-700 mt-2 space-y-1 list-disc list-inside">
+        <li>Vos coordonnées et numéro SIRET</li>
+        <li>La désignation et les prix unitaires HT</li>
+        <li>Les conditions de paiement et délais</li>
+        <li>La date et votre signature</li>
+      </ul>
+    </div>
+    <p class="text-xs text-gray-400 mb-4">SIRET enregistré : <strong>${state.guestSiret || ''}</strong></p>
+    <div class="flex gap-3">
+      <button onclick="closeModal();saveReponses(true)" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">J'ai compris, envoyer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+    </div>
+  `);
+}
+
+function showPortailValidationModal(consId) {
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">✅ Confirmer l'envoi</h2>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+      <p class="text-sm text-blue-800 font-medium mb-1">📄 Génération automatique du devis</p>
+      <p class="text-sm text-blue-700">Un devis numéroté sera créé automatiquement avec vos coordonnées, vos prix saisis et un numéro de devis séquentiel. Il sera transmis à l'entrepreneur et téléchargé sur votre appareil.</p>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="closeModal();validateAndGenerateDevis('${consId}')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Confirmer & générer le devis</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+    </div>
+  `);
+}
+
+async function validateAndGenerateDevis(consId) {
+  const lignes = collectReponses();
+  if (!lignes.length) return toast('Aucune donnée à enregistrer', 'err');
+  toast('Génération du devis en cours…');
+  try {
+    const { pdfUrl, devisNum, pdfBlob } = await generateDevis(consId, lignes);
+    state.devisPdfUrl = pdfUrl;
+    await saveReponses(true);
+    // Téléchargement automatique
+    if (pdfBlob) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pdfBlob);
+      a.download = `${devisNum}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  } catch (err) {
+    toast('Erreur : ' + err.message, 'err');
+  }
+}
+
+async function generateDevis(consId, lignes) {
+  // Numéro séquentiel
+  const { data: counter, error: cErr } = await db.rpc('increment_devis_counter', { p_fournisseur_id: state.user.id });
+  if (cErr) throw cErr;
+  const year = new Date().getFullYear();
+  const devisNum = `DEV-${year}-${String(counter).padStart(4, '0')}`;
+
+  const p = state.profile || {};
+  const cons = state.currentConsultation || {};
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const logoB64 = await _loadLogoBase64();
+
+  // ── En-tête ──────────────────────────────────────────────────
+  doc.setFillColor(37, 99, 235);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DEVIS', 14, 18);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`N° ${devisNum}`, 196, 12, { align: 'right' });
+  doc.text(`Date : ${dateStr}`, 196, 20, { align: 'right' });
+  if (logoB64) { try { doc.addImage(logoB64, 14, 31, 30, 15); } catch(e) {} }
+
+  // ── Coordonnées fournisseur ───────────────────────────────────
+  doc.setTextColor(30, 30, 30);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(p.nom_entreprise || p.nom || '', 14, 42);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  let y = 49;
+  if (p.adresse)  { doc.text(p.adresse, 14, y); y += 6; }
+  if (p.siret)    { doc.text(`SIRET : ${p.siret}`, 14, y); y += 6; }
+  if (p.tel)      { doc.text(`Tél : ${p.tel}`, 14, y); y += 6; }
+  if (p.email)    { doc.text(p.email, 14, y); }
+
+  // ── Objet ─────────────────────────────────────────────────────
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Objet : ${cons.titre || 'Consultation'}`, 14, 82);
+  doc.setFont('helvetica', 'normal');
+
+  // ── Tableau des fournitures ───────────────────────────────────
+  const rows = [];
+  let totalHT = 0;
+  for (const l of lignes) {
+    const f = (state.fournitures || []).find(x => x.id === l.fourniture_id);
+    const design = l.est_variante ? (l.variante_description || 'Variante') : (f?.designation || '');
+    const qte = f?.qte ?? 1;
+    const unite = f?.unite || 'U';
+    const pu = l.prix_unit_ht || 0;
+    const total = pu * qte;
+    totalHT += total;
+    rows.push([
+      f?.numero_poste || '',
+      design,
+      String(qte),
+      unite,
+      pu.toFixed(2) + ' €',
+      total.toFixed(2) + ' €'
+    ]);
+  }
+
+  const fraisPort = parseFloat(document.getElementById('frais-port-input')?.value) || state.fraisPort || 0;
+  const totalAvecFrais = totalHT + fraisPort;
+  const footRows = fraisPort > 0
+    ? [
+        ['', '', '', '', 'Total HT fournitures', totalHT.toFixed(2) + ' €'],
+        ['', '', '', '', 'Frais de port HT', fraisPort.toFixed(2) + ' €'],
+        ['', '', '', '', 'TOTAL HT', totalAvecFrais.toFixed(2) + ' €']
+      ]
+    : [['', '', '', '', 'TOTAL HT', totalHT.toFixed(2) + ' €']];
+
+  doc.autoTable({
+    startY: 90,
+    head: [['N° poste', 'Désignation', 'Qté', 'Unité', 'P.U. HT', 'Total HT']],
+    body: rows,
+    foot: footRows,
+    styles: { fontSize: 9, cellPadding: 3 },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fontStyle: 'bold', fillColor: [243, 244, 246], textColor: [30, 30, 30] },
+    columnStyles: {
+      0: { cellWidth: 22 },
+      2: { halign: 'right', cellWidth: 14 },
+      3: { cellWidth: 14 },
+      4: { halign: 'right', cellWidth: 28 },
+      5: { halign: 'right', cellWidth: 28 }
+    }
+  });
+
+  let fy = doc.lastAutoTable.finalY + 12;
+
+  // ── Délai / commentaire ───────────────────────────────────────
+  const delais = [...new Set(lignes.filter(l => l.delai_livraison).map(l => l.delai_livraison))];
+  if (delais.length) {
+    doc.setFontSize(9);
+    doc.text(`Délai de livraison : ${delais.join(', ')}`, 14, fy);
+    fy += 8;
+  }
+
+  // ── Zone signature ────────────────────────────────────────────
+  doc.setFontSize(9);
+  doc.text('Bon pour accord — Date et signature :', 120, fy + 10);
+  doc.setDrawColor(200);
+  doc.rect(120, fy + 13, 70, 22);
+
+  // ── Pied de page ──────────────────────────────────────────────
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text('Devis valable 30 jours à compter de sa date d\'émission.', 14, 287);
+
+  // ── Upload Supabase Storage ───────────────────────────────────
+  const pdfBlob = doc.output('blob');
+  const path = `${state.user.id}/${consId}/${devisNum}.pdf`;
+  let pdfUrl = null;
+  try {
+    const { error: upErr } = await db.storage.from('devis-fournisseurs').upload(path, pdfBlob, {
+      contentType: 'application/pdf', upsert: true
+    });
+    if (!upErr) {
+      const { data: urlData } = db.storage.from('devis-fournisseurs').getPublicUrl(path);
+      pdfUrl = urlData?.publicUrl || null;
+    } else {
+      console.warn('Storage upload failed (bucket manquant ?):', upErr.message);
+    }
+  } catch (e) {
+    console.warn('Storage upload skipped:', e.message);
+  }
+
+  return { pdfUrl, devisNum, pdfBlob };
+}
+
+async function saveReponses(send) {
+  const consId = document.getElementById('cons-select').value;
+  if (!consId) return toast('Sélectionnez une consultation', 'err');
+  const lignes = collectReponses();
+  if (!lignes.length) return toast('Aucune donnée à enregistrer', 'err');
+
+  try {
+    if (state.isGuest) {
+      for (const ligne of lignes) {
+        await db.rpc('upsert_reponse_by_token', {
+          p_token: state.guestToken,
+          p_data: {
+            ...ligne,
+            fourniture_id: ligne.fourniture_id,
+            siret: state.guestSiret || null,
+            devis_valide_at: send ? new Date().toISOString() : null
+          }
+        });
+      }
+    } else {
+      const fournisseurId = state.fournisseurId;
+      if (!fournisseurId) return toast('Profil fournisseur non configuré', 'err');
+      const { data: cons } = await db.from('consultations').select('entrepreneur_id').eq('id', consId).single();
+      for (const ligne of lignes) {
+        const key = `${ligne.fourniture_id}_${ligne.variante_ordre}`;
+        await db.from('reponses_fournisseurs').upsert({
+          consultation_id: consId,
+          fourniture_id: ligne.fourniture_id,
+          fournisseur_id: fournisseurId,
+          entrepreneur_id: cons?.entrepreneur_id,
+          prix_unit_ht: ligne.prix_unit_ht,
+          delai_livraison: ligne.delai_livraison,
+          commentaire: ligne.commentaire,
+          fiche_technique_url: ligne.fiche_technique_url,
+          est_variante: ligne.est_variante,
+          variante_ordre: ligne.variante_ordre,
+          variante_description: ligne.variante_description,
+          siret: state.profile?.siret || null,
+          devis_pdf_url: send ? (state.devisPdfUrl || null) : null,
+          devis_valide_at: send ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'fourniture_id,fournisseur_id,variante_ordre' });
+        if (send) state.reponsesEnvoyees[key] = true;
+      }
+      // Sauvegarder les frais de port
+      const fraisPort = parseFloat(document.getElementById('frais-port-input')?.value) || 0;
+      state.fraisPort = fraisPort;
+      await db.from('consultation_fournisseurs')
+        .update({ frais_port: fraisPort })
+        .eq('consultation_id', consId)
+        .eq('fournisseur_id', fournisseurId);
+
+      if (send) {
+        const { data: consInfo } = await db.from('consultations').select('entrepreneur_id, titre, chantier_id').eq('id', consId).maybeSingle();
+        if (consInfo?.entrepreneur_id) {
+          await db.from('notifications').insert({
+            type: 'reponse_fournisseur',
+            user_id: consInfo.entrepreneur_id,
+            message: `Réponse reçue pour la consultation "${consInfo.titre || ''}"`,
+            consultation_id: consId,
+            chantier_id: consInfo.chantier_id || null
+          });
+        }
+        await db.from('consultations').update({ statut: 'repondue' }).eq('id', consId);
+        state.devisPdfUrl = null;
+      }
+    }
+    toast(send ? 'Réponse envoyée à l\'entrepreneur !' : 'Brouillon sauvegardé !');
+    if (send) await loadSaisie();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+// ============================================================
+// CATALOGUE
+// ============================================================
+async function loadCatalogue() {
+  const fId = state.fournisseurId || state.user?.id;
+  if (!fId) return;
+  try {
+    const { data } = await db.from('catalogue_fournisseur')
+      .select('*')
+      .eq('fournisseur_id', fId)
+      .order('designation');
+    state.catalogue = data || [];
+    renderCatalogue();
+  } catch (err) {
+    console.error('loadCatalogue', err);
+  }
+}
+
+function renderCatalogue() {
+  const tbody = document.getElementById('catalogue-tbody');
+  if (!tbody) return;
+  if (!state.catalogue.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-sm">Catalogue vide. Ajoutez des articles ou importez un CSV.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = state.catalogue.map(c => `
+    <tr class="hover:bg-gray-50 border-b">
+      <td class="px-3 py-2 font-medium">${c.designation}</td>
+      <td class="px-3 py-2 text-gray-500">${c.reference || '—'}</td>
+      <td class="px-3 py-2 text-gray-500">${c.famille || '—'}</td>
+      <td class="px-3 py-2 text-right font-medium">${fmt(c.prix_unit_ht)}</td>
+      <td class="px-3 py-2">${c.unite || 'U'}</td>
+      <td class="px-3 py-2">
+        ${c.fiche_technique_url ? `<a href="${c.fiche_technique_url}" target="_blank" class="text-blue-500 hover:underline text-xs">📄 Voir</a>` : '—'}
+      </td>
+      <td class="px-3 py-2 text-center">
+        <button onclick="editCatalogue('${c.id}')" class="text-blue-400 hover:text-blue-600 text-xs mr-2">✏️</button>
+        <button onclick="deleteCatalogue('${c.id}')" class="text-red-300 hover:text-red-500 text-xs">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openAddCatalogueModal(item) {
+  const isEdit = !!item;
+  showModal(`
+    <h2 class="text-lg font-bold mb-4">${isEdit ? 'Modifier' : 'Ajouter'} article catalogue</h2>
+    <label class="block text-xs text-gray-500 mb-1">Désignation *</label>
+    <input id="cat-design" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${isEdit ? item.designation : ''}">
+    <label class="block text-xs text-gray-500 mb-1">Référence</label>
+    <input id="cat-ref" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${isEdit ? (item.reference || '') : ''}">
+    <label class="block text-xs text-gray-500 mb-1">Famille</label>
+    <input id="cat-famille" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${isEdit ? (item.famille || '') : ''}" placeholder="ex: Végétaux">
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Prix unit. HT</label>
+        <input id="cat-prix" type="number" step="0.01" class="w-full border rounded px-3 py-2 text-sm" value="${isEdit ? (item.prix_unit_ht || '') : ''}">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Unité</label>
+        <input id="cat-unite" type="text" class="w-full border rounded px-3 py-2 text-sm" value="${isEdit ? (item.unite || 'U') : 'U'}">
+      </div>
+    </div>
+    <label class="block text-xs text-gray-500 mb-1">Fiche technique (URL)</label>
+    <input id="cat-fiche" type="url" class="w-full border rounded px-3 py-2 text-sm mb-4" value="${isEdit ? (item.fiche_technique_url || '') : ''}">
+    <div class="flex gap-3">
+      <button onclick="saveCatalogue(${isEdit ? "'" + item.id + "'" : 'null'})" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+}
+
+async function saveCatalogue(id) {
+  const designation = document.getElementById('cat-design').value.trim();
+  if (!designation) return toast('Désignation obligatoire', 'err');
+  const fId = state.fournisseurId || state.user?.id;
+  const obj = {
+    fournisseur_id: fId,
+    designation,
+    reference: document.getElementById('cat-ref').value.trim() || null,
+    famille: document.getElementById('cat-famille').value.trim() || null,
+    prix_unit_ht: document.getElementById('cat-prix').value || null,
+    unite: document.getElementById('cat-unite').value || 'U',
+    fiche_technique_url: document.getElementById('cat-fiche').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    if (id) {
+      const { data, error } = await db.from('catalogue_fournisseur').update(obj).eq('id', id).select().single();
+      if (error) throw error;
+      const idx = state.catalogue.findIndex(c => c.id === id);
+      if (idx >= 0) state.catalogue[idx] = data;
+    } else {
+      const { data, error } = await db.from('catalogue_fournisseur').insert(obj).select().single();
+      if (error) throw error;
+      state.catalogue.push(data);
+    }
+    closeModal();
+    renderCatalogue();
+    toast('Catalogue mis à jour !');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function editCatalogue(id) {
+  const item = state.catalogue.find(c => c.id === id);
+  if (item) openAddCatalogueModal(item);
+}
+
+async function deleteCatalogue(id) {
+  if (!confirm('Supprimer cet article ?')) return;
+  try {
+    await db.from('catalogue_fournisseur').delete().eq('id', id);
+    state.catalogue = state.catalogue.filter(c => c.id !== id);
+    renderCatalogue();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function importCatalogue(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const text = e.target.result;
+    const lines = text.split('\n').filter(l => l.trim());
+    const headers = lines[0].split(/[;,]/).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    let count = 0;
+    for (const row of lines.slice(1)) {
+      const cols = row.split(/[;,]/);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (cols[i] || '').trim().replace(/^"|"$/g, ''); });
+      const designation = obj.designation || obj.libelle || '';
+      if (!designation) continue;
+      try {
+        await db.from('catalogue_fournisseur').upsert({
+          fournisseur_id: state.fournisseurId || state.user?.id,
+          designation,
+          reference: obj.reference || obj.ref || null,
+          famille: obj.famille || null,
+          prix_unit_ht: parseFloat(obj.prix || obj['prix ht'] || '') || null,
+          unite: obj.unite || obj.u || 'U',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'fournisseur_id,designation,reference' });
+        count++;
+      } catch (err) {
+        console.error('import catalogue row', err);
+      }
+    }
+    await loadCatalogue();
+    toast(`${count} article(s) importé(s) !`);
+    event.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ============================================================
+// HISTORIQUE
+// ============================================================
+async function loadHistorique() {
+  const fId = state.fournisseurId || state.user?.id;
+  if (!fId) return;
+  const el = document.getElementById('historique-content');
+  try {
+    const { data: reps } = await db.from('reponses_fournisseurs')
+      .select('*, consultations(titre, chantier_id), fournitures(designation, numero_poste)')
+      .eq('fournisseur_id', fId)
+      .not('updated_at', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(50);
+    if (!reps || reps.length === 0) {
+      el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucun prix envoyé pour l\'instant.</p>';
+      return;
+    }
+    // Grouper par consultation
+    const consMap = {};
+    reps.forEach(r => {
+      const key = r.consultation_id;
+      if (!consMap[key]) consMap[key] = { titre: r.consultations?.titre || 'Consultation', items: [] };
+      consMap[key].items.push(r);
+    });
+    el.innerHTML = Object.values(consMap).map(({ titre, items }) => `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="px-4 py-3 bg-gray-50 font-semibold text-sm">${titre}</div>
+        <table class="w-full text-sm">
+          <thead class="text-xs text-gray-400">
+            <tr>
+              <th class="px-3 py-2 text-left">N°Poste</th>
+              <th class="px-3 py-2 text-left">Désignation</th>
+              <th class="px-3 py-2 text-right">Prix HT</th>
+              <th class="px-3 py-2 text-left">Délai</th>
+              <th class="px-3 py-2 text-left">Date envoi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(r => `
+              <tr class="border-t hover:bg-gray-50">
+                <td class="px-3 py-2 text-gray-400">${r.fournitures?.numero_poste || ''}</td>
+                <td class="px-3 py-2">${r.fournitures?.designation || '—'}</td>
+                <td class="px-3 py-2 text-right font-medium">${fmt(r.prix_unit_ht)}</td>
+                <td class="px-3 py-2">${r.delai_livraison || '—'}</td>
+                <td class="px-3 py-2 text-gray-400">${r.updated_at ? new Date(r.updated_at).toLocaleDateString('fr-FR') : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `).join('');
+  } catch (err) {
+    el.innerHTML = `<p class="text-red-400 text-sm">${err.message}</p>`;
+  }
+}
+
+// ============================================================
+// START
+// ============================================================
+init();
+</script>
+</body>
+</html>
