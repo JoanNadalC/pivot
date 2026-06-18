@@ -155,6 +155,7 @@
             <tr>
               <th class="px-4 py-3 text-left">Structure</th>
               <th class="px-4 py-3 text-left">Référent</th>
+              <th class="px-4 py-3 text-left">Rôle portail</th>
               <th class="px-4 py-3 text-left">Type</th>
               <th class="px-4 py-3 text-left">Plan</th>
               <th class="px-4 py-3 text-left">Licences</th>
@@ -315,9 +316,13 @@ async function loadAll() {
     ...(eRes.data||[]), ...(fRes.data||[]), ...(mRes.data||[])
   ].map(u => u.id);
   let notesMap = {};
+  let rolesMap = {};
   if (allIds.length) {
-    const { data: profs } = await db.from('profiles').select('id, notes_admin').in('id', allIds);
-    (profs || []).forEach(p => { notesMap[p.id] = p.notes_admin || ''; });
+    const { data: profs } = await db.from('profiles').select('id, notes_admin, role').in('id', allIds);
+    (profs || []).forEach(p => {
+      notesMap[p.id] = p.notes_admin || '';
+      rolesMap[p.id] = p.role || '';
+    });
   }
 
   // Construire la liste unifiée des comptes
@@ -333,7 +338,8 @@ async function loadAll() {
       _structure: struct || null,
       _role: mem?.role || null,
       _nb_membres: struct ? (countMap[struct.id] || 0) : null,
-      _notes: notesMap[u.id] || ''
+      _notes: notesMap[u.id] || '',
+      _portail_role: rolesMap[u.id] || ''
     };
   });
 
@@ -417,6 +423,19 @@ function renderTable() {
              ${c._role === 'referent' ? '<span class="ml-1 text-indigo-500 text-xs">★</span>' : ''}`
           : '<span class="text-gray-300 italic">Sans structure</span>'}
       </td>
+      <td class="px-4 py-3">
+        ${c._portail_role ? `
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${
+              c._portail_role === 'entreprise' ? 'bg-green-100 text-green-700' :
+              c._portail_role === 'fournisseur' ? 'bg-blue-100 text-blue-700' :
+              c._portail_role === 'moe' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+            }">${c._portail_role}</span>
+            <button onclick="openRoleModal('${c.id}','${c._portail_role}')" class="text-gray-300 hover:text-indigo-500 text-xs" title="Changer le rôle">✏️</button>
+          </div>` :
+          `<button onclick="openRoleModal('${c.id}','')" class="text-xs text-gray-400 hover:text-indigo-600 italic">Assigner →</button>`
+        }
+      </td>
       <td class="px-4 py-3 text-xs">${TYPE_LABEL[c._type] || c._type}</td>
       <td class="px-4 py-3 text-xs text-gray-700">${PLAN_LABEL[plan] || plan}</td>
       <td class="px-4 py-3 text-center text-xs">
@@ -464,6 +483,44 @@ function renderTable() {
 }
 
 // ── NOTES INLINE ──────────────────────────────────────────────
+function openRoleModal(userId, currentRole) {
+  const c = state.comptes.find(x => x.id === userId);
+  const roles = [
+    { value: 'entreprise', label: '🏗 Entreprise', color: 'green' },
+    { value: 'fournisseur', label: '🏭 Fournisseur', color: 'blue' },
+    { value: 'moe', label: '📐 Maître d\'œuvre', color: 'purple' },
+  ];
+  showModal(`
+    <h2 class="text-lg font-semibold text-gray-800 mb-1">Rôle portail</h2>
+    <p class="text-sm text-gray-500 mb-4">${escHtml(c?._nom || userId)}</p>
+    <div class="space-y-2 mb-5">
+      ${roles.map(r => `
+        <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-gray-50 ${currentRole === r.value ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200'}">
+          <input type="radio" name="portail-role" value="${r.value}" ${currentRole === r.value ? 'checked' : ''} class="accent-indigo-600">
+          <span class="text-sm font-medium text-gray-700">${r.label}</span>
+        </label>`).join('')}
+    </div>
+    <div class="flex justify-end gap-2">
+      <button onclick="closeModal()" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Annuler</button>
+      <button onclick="saveRole('${userId}')" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Enregistrer</button>
+    </div>
+  `);
+}
+
+async function saveRole(userId) {
+  const selected = document.querySelector('input[name="portail-role"]:checked');
+  if (!selected) return;
+  const role = selected.value;
+  const { error } = await db.from('profiles')
+    .upsert({ id: userId, role }, { onConflict: 'id' });
+  if (error) { alert('Erreur : ' + error.message); return; }
+  const c = state.comptes.find(x => x.id === userId);
+  if (c) c._portail_role = role;
+  closeModal();
+  renderTable();
+  toast('Rôle mis à jour');
+}
+
 function openNotesModal(userId) {
   const c = state.comptes.find(x => x.id === userId);
   if (!c) return;
