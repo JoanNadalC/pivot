@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion · Portail MOE · Pivot La Racine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --vert:    #1C3A2A;
+      --vert-md: #2D5940;
+      --vert-lt: #3E7A58;
+      --ecru:    #F5F0E8;
+      --cuivre:  #B87333;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+      --ardoise: #2A3340;
+      --ardoise-lt: #8FA3BB;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--ardoise); }
+
+    .page { display: flex; min-height: 100vh; }
+
+    /* ── PANNEAU GAUCHE ── */
+    .left {
+      flex: 1; background: var(--ardoise);
+      padding: 48px 52px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      position: relative; overflow: hidden;
+    }
+
+    .left-glow {
+      position: absolute; top: -40px; right: -60px;
+      width: 340px; height: 340px;
+      background: radial-gradient(circle, rgba(143,163,187,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .left-glow2 {
+      position: absolute; bottom: -80px; left: -40px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(184,115,51,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .grid-lines {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(245,240,232,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,240,232,0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    .logo-row { display: flex; align-items: baseline; position: relative; }
+
+    .logo-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px; font-weight: 900;
+      color: var(--ecru); letter-spacing: -0.02em;
+    }
+
+    .logo-dot { color: var(--cuivre); }
+
+    .logo-racine {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px; font-weight: 400; font-style: italic;
+      color: rgba(245,240,232,0.3); margin-left: 7px;
+    }
+
+    .portal-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(143,163,187,0.1);
+      border: 0.5px solid rgba(143,163,187,0.25);
+      color: var(--ardoise-lt);
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: 20px;
+      margin-top: 48px; width: fit-content;
+    }
+
+    .badge-dot {
+      width: 5px; height: 5px;
+      background: var(--ardoise-lt); border-radius: 50%;
+      animation: blink 2.2s infinite;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+    .headline { margin-top: 20px; position: relative; }
+
+    .headline h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 2.8vw, 2.4rem); font-weight: 900;
+      color: var(--ecru); line-height: 1.15; letter-spacing: -0.02em;
+    }
+
+    .headline h1 em { font-style: italic; color: var(--cuivre); }
+
+    .headline p {
+      font-size: 1.05rem; color: rgba(245,240,232,0.6);
+      margin-top: 0; line-height: 1.75; max-width: 360px;
+    }
+
+    .features { display: flex; flex-direction: column; gap: 10px; margin-top: 32px; }
+    .feature { display: flex; align-items: center; gap: 12px; }
+
+    .feat-icon {
+      width: 30px; height: 30px;
+      background: rgba(245,240,232,0.04);
+      border: 0.5px solid rgba(245,240,232,0.08);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    .feat-icon svg {
+      width: 14px; height: 14px;
+      stroke: var(--ardoise-lt); fill: none;
+      stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .feature span { font-size: 0.82rem; color: rgba(245,240,232,0.4); }
+
+    .gratuit-banner {
+      margin-top: 28px; padding: 14px 16px;
+      background: rgba(184,115,51,0.07);
+      border: 0.5px solid rgba(184,115,51,0.2);
+      border-radius: 6px;
+    }
+
+    .gratuit-banner p { font-size: 0.78rem; color: rgba(245,240,232,0.4); line-height: 1.6; }
+    .gratuit-banner strong { color: var(--cuivre); font-weight: 600; }
+
+    .left-footer {
+      position: relative; padding-top: 24px;
+      border-top: 0.5px solid rgba(245,240,232,0.06);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .left-footer span { font-size: 0.68rem; color: rgba(245,240,232,0.15); letter-spacing: 0.04em; }
+    .status { display: flex; align-items: center; gap: 6px; }
+    .status::before { content: ''; width: 5px; height: 5px; background: var(--vert-lt); border-radius: 50%; }
+
+    /* ── PANNEAU DROIT ── */
+    .right {
+      flex: 0 0 360px;
+      background: var(--blanc);
+      padding: 48px 36px;
+      display: flex; flex-direction: column; justify-content: center;
+      border-left: 0.5px solid var(--gris-lt);
+    }
+
+    .right-header { margin-bottom: 28px; }
+
+    .right-header h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; font-weight: 700;
+      color: var(--vert); margin-bottom: 5px; letter-spacing: -0.01em;
+    }
+
+    .right-header p { font-size: 0.82rem; color: var(--gris); }
+
+    .field { margin-bottom: 14px; }
+
+    .field label {
+      display: block; font-size: 0.65rem; font-weight: 600;
+      letter-spacing: 0.09em; text-transform: uppercase;
+      color: #9CA3AF; margin-bottom: 6px;
+    }
+
+    .field input {
+      width: 100%; background: #fff;
+      border: 0.5px solid var(--gris-lt); border-radius: 4px;
+      padding: 11px 14px;
+      font-size: 0.88rem; font-family: 'Inter', sans-serif;
+      color: var(--vert); outline: none; transition: border-color 0.15s;
+    }
+
+    .field input:focus { border-color: var(--ardoise); }
+    .field input::placeholder { color: #D1D5DB; }
+
+    .error-msg {
+      display: none; font-size: 0.78rem; color: #B91C1C;
+      background: #FEF2F2; border: 0.5px solid #FECACA;
+      border-radius: 4px; padding: 9px 12px; margin-bottom: 14px;
+    }
+
+    .error-msg.visible { display: block; }
+
+    .forgot { text-align: right; margin-top: -6px; margin-bottom: 20px; }
+    .forgot a { font-size: 0.75rem; color: #9CA3AF; text-decoration: none; }
+    .forgot a:hover { color: var(--cuivre); }
+
+    .btn-main {
+      width: 100%; background: var(--ardoise);
+      border: none; border-radius: 4px; padding: 12px 16px;
+      font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif;
+      color: var(--ecru); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.15s;
+    }
+
+    .btn-main:hover { background: #1E2A36; }
+    .btn-main:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-main svg {
+      width: 15px; height: 15px; stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .info-box {
+      margin-top: 18px; padding: 12px 14px;
+      background: #F0F4F8; border: 0.5px solid #DDE4EC;
+      border-radius: 4px;
+    }
+
+    .info-box p { font-size: 0.78rem; color: var(--gris); line-height: 1.6; }
+    .info-box strong { color: var(--ardoise); font-weight: 600; }
+
+    .form-footer { margin-top: 24px; text-align: center; }
+    .form-footer p { font-size: 0.75rem; color: #D1D5DB; margin-bottom: 16px; }
+    .form-footer a { color: var(--cuivre); text-decoration: none; }
+    .form-footer a:hover { text-decoration: underline; }
+
+    .portals-nav {
+      display: flex; justify-content: center; gap: 16px;
+      padding-top: 14px; border-top: 0.5px solid #F0EDE6;
+    }
+
+    .portal-link {
+      font-size: 0.7rem; font-weight: 500; color: #D1D5DB;
+      text-decoration: none; letter-spacing: 0.03em; transition: color 0.15s;
+    }
+
+    .portal-link:hover { color: var(--gris); }
+    .portal-link.active { color: var(--vert); font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .page { flex-direction: column; }
+      .left { padding: 36px 28px 40px; flex: none; }
+      .headline h1 { font-size: 1.7rem; }
+      .features, .gratuit-banner { display: none; }
+      .right { flex: none; border-left: none; border-top: 0.5px solid var(--gris-lt); padding: 36px 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- GAUCHE -->
+  <div class="left">
+    <div class="grid-lines"></div>
+    <div class="left-glow"></div>
+    <div class="left-glow2"></div>
+
+    <div class="logo-row">
+      <span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">La Racine</span></span>
+    </div>
+
+    <div>
+      <div class="portal-badge">
+        <span class="badge-dot"></span>
+        Portail Maître d'œuvre
+      </div>
+
+      <div class="headline">
+        <p>Recevez les DAF, donnez votre VISA en ligne et suivez l'avancement des approvisionnements des chantiers en temps réel.</p>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <span>VISA DAF en ligne — sans scanner</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <span>Suivi d'avancement en temps réel</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <span>Invité par l'entrepreneur — accès immédiat</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 13 10 15 14 11"/></svg>
+          </div>
+          <span>DOE accessible en fin de chantier</span>
+        </div>
+      </div>
+
+      <div class="gratuit-banner">
+        <p><strong>Portail gratuit.</strong> Pas d'abonnement, pas de carte bancaire. Votre entrepreneur paysagiste vous invite directement sur la plateforme.</p>
+      </div>
+    </div>
+
+    <div class="left-footer">
+      <span>© 2026 Pivot La Racine</span>
+      <span class="status">Système opérationnel</span>
+    </div>
+  </div>
+
+  <!-- DROITE -->
+  <div class="right">
+    <div class="right-header">
+      <h2>Connexion</h2>
+      <p>Accédez à votre espace maître d'œuvre</p>
+    </div>
+
+    <div class="error-msg" id="error-msg">
+      Email ou mot de passe incorrect. Vérifiez vos identifiants.
+    </div>
+
+    <div class="field">
+      <label for="email">Email professionnel</label>
+      <input type="email" id="email" name="email" placeholder="contact@cabinet-moe.fr" autocomplete="email" required />
+    </div>
+
+    <div class="field">
+      <label for="password">Mot de passe</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+    </div>
+
+    <div class="forgot">
+      <a href="/forgot-password">Mot de passe oublié ?</a>
+    </div>
+
+    <button class="btn-main" id="btn-login" onclick="handleLogin()">
+      Accéder au portail
+      <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </button>
+
+    <div class="info-box">
+      <p><strong>Première connexion ?</strong> Vous avez reçu une invitation par email de la part de votre entrepreneur. Suivez le lien dans cet email pour créer votre accès.</p>
+    </div>
+
+    <div class="form-footer">
+      <p>Un problème d'accès ? <a href="mailto:support@pivotlaracine.com">Contacter le support</a></p>
+      <div class="portals-nav">
+        <a href="/login/entreprise" class="portal-link">Entreprise</a>
+        <a href="/login/fournisseur" class="portal-link">Fournisseur</a>
+        <a href="/login/moe" class="portal-link active">Maître d'œuvre</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+  const PORTAIL_ROLE      = 'moe';
+  const REDIRECT_URL      = '/pivot-moe.html';
+
+  async function handleLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('btn-login');
+
+    document.getElementById('error-msg').classList.remove('visible');
+
+    if (!email || !password) {
+      showError('Veuillez renseigner votre email et votre mot de passe.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Connexion en cours…';
+
+    try {
+      const authRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const authData = await authRes.json();
+
+      if (!authRes.ok || authData.error) {
+        showError('Email ou mot de passe incorrect.');
+        return;
+      }
+
+      const profileRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${authData.user.id}&select=role`,
+        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authData.access_token}` } }
+      );
+
+      const profiles = await profileRes.json();
+
+      if (!profiles.length) {
+        showError('Aucun profil trouvé. Contactez l\'administrateur.');
+        await signOut(authData.access_token);
+        return;
+      }
+
+      const role = profiles[0].role;
+
+      if (role !== PORTAIL_ROLE) {
+        const labels = { entreprise: 'Portail Entreprise', fournisseur: 'Portail Fournisseur', moe: 'Portail Maître d\'œuvre' };
+        const urls   = { entreprise: '/login/entreprise', fournisseur: '/login/fournisseur', moe: '/login/moe' };
+        showError(`Ce compte est associé au ${labels[role] || role}. <a href="${urls[role] || '/'}">Se connecter sur le bon portail →</a>`);
+        await signOut(authData.access_token);
+        return;
+      }
+
+      localStorage.setItem('pivot_access_token',  authData.access_token);
+      localStorage.setItem('pivot_refresh_token', authData.refresh_token);
+      localStorage.setItem('pivot_role',          role);
+      window.location.href = REDIRECT_URL;
+
+    } catch (err) {
+      showError('Erreur réseau. Vérifiez votre connexion et réessayez.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Accéder au portail <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+    }
+  }
+
+  async function signOut(token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` },
+    });
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.innerHTML = msg;
+    el.classList.add('visible');
+  }
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+</script>
+
+</body>
+</html>

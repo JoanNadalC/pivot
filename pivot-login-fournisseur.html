@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion · Portail Fournisseur · Pivot La Racine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --vert:    #1C3A2A;
+      --vert-md: #2D5940;
+      --vert-lt: #3E7A58;
+      --ecru:    #F5F0E8;
+      --cuivre:  #B87333;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--vert); }
+
+    .page { display: flex; min-height: 100vh; }
+
+    /* ── PANNEAU GAUCHE ── */
+    .left {
+      flex: 1;
+      background: #12261C;
+      padding: 48px 52px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      position: relative; overflow: hidden;
+    }
+
+    .left-glow {
+      position: absolute; top: -60px; right: -80px;
+      width: 380px; height: 380px;
+      background: radial-gradient(circle, rgba(45,89,64,0.4) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .left-glow2 {
+      position: absolute; bottom: -60px; left: -40px;
+      width: 260px; height: 260px;
+      background: radial-gradient(circle, rgba(184,115,51,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .grid-lines {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(245,240,232,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,240,232,0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    .logo-row { display: flex; align-items: baseline; position: relative; }
+
+    .logo-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px; font-weight: 900;
+      color: var(--ecru); letter-spacing: -0.02em;
+    }
+
+    .logo-dot { color: var(--cuivre); }
+
+    .logo-racine {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px; font-weight: 400; font-style: italic;
+      color: rgba(245,240,232,0.35); margin-left: 7px;
+    }
+
+    .portal-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(62,122,88,0.15);
+      border: 0.5px solid rgba(62,122,88,0.3);
+      color: #7EC8A0;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: 20px;
+      margin-top: 48px; width: fit-content;
+    }
+
+    .badge-dot {
+      width: 5px; height: 5px;
+      background: #7EC8A0; border-radius: 50%;
+      animation: blink 2.2s infinite;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+    .headline { margin-top: 20px; position: relative; }
+
+    .headline h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 2.8vw, 2.4rem); font-weight: 900;
+      color: var(--ecru); line-height: 1.15; letter-spacing: -0.02em;
+    }
+
+    .headline h1 em { font-style: italic; color: #7EC8A0; }
+
+    .headline p {
+      font-size: 0.9rem; color: rgba(245,240,232,0.45);
+      margin-top: 14px; line-height: 1.75; max-width: 340px;
+    }
+
+    .features { display: flex; flex-direction: column; gap: 10px; margin-top: 32px; }
+    .feature { display: flex; align-items: center; gap: 12px; }
+
+    .feat-icon {
+      width: 30px; height: 30px;
+      background: rgba(245,240,232,0.04);
+      border: 0.5px solid rgba(245,240,232,0.09);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    .feat-icon svg {
+      width: 14px; height: 14px;
+      stroke: #7EC8A0; fill: none;
+      stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .feature span { font-size: 0.82rem; color: rgba(245,240,232,0.45); }
+
+    .note-acces {
+      margin-top: 28px; padding: 14px 16px;
+      background: rgba(126,200,160,0.07);
+      border: 0.5px solid rgba(126,200,160,0.2);
+      border-radius: 6px; position: relative;
+    }
+
+    .note-acces p {
+      font-size: 0.78rem; color: rgba(245,240,232,0.45); line-height: 1.6;
+    }
+
+    .note-acces strong { color: rgba(245,240,232,0.7); font-weight: 500; }
+
+    .left-footer {
+      position: relative; padding-top: 24px;
+      border-top: 0.5px solid rgba(245,240,232,0.07);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .left-footer span { font-size: 0.68rem; color: rgba(245,240,232,0.15); letter-spacing: 0.04em; }
+    .status { display: flex; align-items: center; gap: 6px; }
+    .status::before { content: ''; width: 5px; height: 5px; background: var(--vert-lt); border-radius: 50%; }
+
+    /* ── PANNEAU DROIT ── */
+    .right {
+      flex: 0 0 360px;
+      background: var(--blanc);
+      padding: 48px 36px;
+      display: flex; flex-direction: column; justify-content: center;
+      border-left: 0.5px solid var(--gris-lt);
+    }
+
+    .right-header { margin-bottom: 28px; }
+
+    .right-header h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; font-weight: 700;
+      color: var(--vert); margin-bottom: 5px; letter-spacing: -0.01em;
+    }
+
+    .right-header p { font-size: 0.82rem; color: var(--gris); }
+
+    .field { margin-bottom: 14px; }
+
+    .field label {
+      display: block; font-size: 0.65rem; font-weight: 600;
+      letter-spacing: 0.09em; text-transform: uppercase;
+      color: #9CA3AF; margin-bottom: 6px;
+    }
+
+    .field input {
+      width: 100%; background: #fff;
+      border: 0.5px solid var(--gris-lt); border-radius: 4px;
+      padding: 11px 14px;
+      font-size: 0.88rem; font-family: 'Inter', sans-serif;
+      color: var(--vert); outline: none; transition: border-color 0.15s;
+    }
+
+    .field input:focus { border-color: var(--vert-lt); }
+    .field input::placeholder { color: #D1D5DB; }
+
+    .error-msg {
+      display: none; font-size: 0.78rem; color: #B91C1C;
+      background: #FEF2F2; border: 0.5px solid #FECACA;
+      border-radius: 4px; padding: 9px 12px; margin-bottom: 14px;
+    }
+
+    .error-msg.visible { display: block; }
+
+    .forgot { text-align: right; margin-top: -6px; margin-bottom: 20px; }
+    .forgot a { font-size: 0.75rem; color: #9CA3AF; text-decoration: none; }
+    .forgot a:hover { color: var(--cuivre); }
+
+    .btn-main {
+      width: 100%; background: var(--vert-md);
+      border: none; border-radius: 4px; padding: 12px 16px;
+      font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif;
+      color: var(--ecru); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.15s;
+    }
+
+    .btn-main:hover { background: var(--vert); }
+    .btn-main:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-main svg {
+      width: 15px; height: 15px; stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    .divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; }
+    .div-line { flex: 1; height: 0.5px; background: var(--gris-lt); }
+    .div-label { font-size: 0.72rem; color: #D1D5DB; }
+
+    .btn-link-info {
+      width: 100%; background: transparent;
+      border: 0.5px solid var(--gris-lt); border-radius: 4px; padding: 11px 14px;
+      font-size: 0.82rem; font-family: 'Inter', sans-serif; color: var(--gris);
+      cursor: pointer; text-align: left; line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+
+    .btn-link-info:hover { border-color: var(--cuivre); color: var(--vert); }
+    .btn-link-info strong { display: block; font-weight: 600; font-size: 0.82rem; color: var(--vert); margin-bottom: 2px; }
+
+    .form-footer { margin-top: 24px; text-align: center; }
+    .form-footer p { font-size: 0.75rem; color: #D1D5DB; margin-bottom: 16px; }
+    .form-footer a { color: var(--cuivre); text-decoration: none; }
+    .form-footer a:hover { text-decoration: underline; }
+
+    .portals-nav {
+      display: flex; justify-content: center; gap: 16px;
+      padding-top: 14px; border-top: 0.5px solid #F0EDE6;
+    }
+
+    .portal-link {
+      font-size: 0.7rem; font-weight: 500; color: #D1D5DB;
+      text-decoration: none; letter-spacing: 0.03em; transition: color 0.15s;
+    }
+
+    .portal-link:hover { color: var(--gris); }
+    .portal-link.active { color: var(--vert); font-weight: 600; }
+
+    @media (max-width: 768px) {
+      .page { flex-direction: column; }
+      .left { padding: 36px 28px 40px; flex: none; }
+      .headline h1 { font-size: 1.7rem; }
+      .features, .note-acces { display: none; }
+      .right { flex: none; border-left: none; border-top: 0.5px solid var(--gris-lt); padding: 36px 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- GAUCHE -->
+  <div class="left">
+    <div class="grid-lines"></div>
+    <div class="left-glow"></div>
+    <div class="left-glow2"></div>
+
+    <div class="logo-row">
+      <span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">La Racine</span></span>
+    </div>
+
+    <div>
+      <div class="portal-badge">
+        <span class="badge-dot"></span>
+        Portail Fournisseur
+      </div>
+
+      <div class="headline">
+        <h1>Répondez aux consultations<br>avec <em>facilité.</em></h1>
+        <p>Recevez les consultations de paysagistes sur votre portail. Les prix se complètent en fonction des réponses précédentes, ajustez, validez. La réponse est faite via le portail.</p>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <span>Accès par lien sécurisé</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <span>Réponse structurée ligne par ligne</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <span>Catalogue de disponibilités hebdomadaires</span>
+        </div>
+        <div class="feature">
+          <div class="feat-icon">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </div>
+          <span>Photos végétaux depuis mobile</span>
+        </div>
+      </div>
+
+      <div class="note-acces">
+        <p><strong>Vous avez reçu un lien de consultation ?</strong> Pas besoin de connexion — cliquez directement sur le lien reçu par email pour répondre à la demande.</p>
+      </div>
+    </div>
+
+    <div class="left-footer">
+      <span>© 2026 Pivot La Racine</span>
+      <span class="status">Système opérationnel</span>
+    </div>
+  </div>
+
+  <!-- DROITE -->
+  <div class="right">
+    <div class="right-header">
+      <h2>Connexion</h2>
+      <p>Accédez à votre espace fournisseur</p>
+    </div>
+
+    <div class="error-msg" id="error-msg">
+      Email ou mot de passe incorrect. Vérifiez vos identifiants.
+    </div>
+
+    <div class="field">
+      <label for="email">Email professionnel</label>
+      <input type="email" id="email" name="email" placeholder="contact@pepiniere.fr" autocomplete="email" required />
+    </div>
+
+    <div class="field">
+      <label for="password">Mot de passe</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+    </div>
+
+    <div class="forgot">
+      <a href="/forgot-password">Mot de passe oublié ?</a>
+    </div>
+
+    <button class="btn-main" id="btn-login" onclick="handleLogin()">
+      Accéder au portail
+      <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </button>
+
+    <div class="divider">
+      <div class="div-line"></div>
+      <span class="div-label">vous avez reçu un lien ?</span>
+      <div class="div-line"></div>
+    </div>
+
+    <button class="btn-link-info" onclick="window.location.href='/consultation/lien'">
+      <strong>Répondre à une consultation</strong>
+      Collez votre lien reçu par email →
+    </button>
+
+    <div class="form-footer">
+      <p>Pas encore de compte ? <a href="/demander-acces">Demander un accès</a></p>
+      <div class="portals-nav">
+        <a href="/login/entreprise" class="portal-link">Entreprise</a>
+        <a href="/login/fournisseur" class="portal-link active">Fournisseur</a>
+        <a href="/login/moe" class="portal-link">Maître d'œuvre</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+  const PORTAIL_ROLE      = 'fournisseur';
+  const REDIRECT_URL      = '/pivot-fournisseur.html';
+
+  async function handleLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('btn-login');
+
+    document.getElementById('error-msg').classList.remove('visible');
+
+    if (!email || !password) {
+      showError('Veuillez renseigner votre email et votre mot de passe.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Connexion en cours…';
+
+    try {
+      const authRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const authData = await authRes.json();
+
+      if (!authRes.ok || authData.error) {
+        showError('Email ou mot de passe incorrect.');
+        return;
+      }
+
+      const profileRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${authData.user.id}&select=role`,
+        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authData.access_token}` } }
+      );
+
+      const profiles = await profileRes.json();
+
+      if (!profiles.length) {
+        showError('Aucun profil trouvé. Contactez l\'administrateur.');
+        await signOut(authData.access_token);
+        return;
+      }
+
+      const role = profiles[0].role;
+
+      if (role !== PORTAIL_ROLE) {
+        const labels = { entreprise: 'Portail Entreprise', fournisseur: 'Portail Fournisseur', moe: 'Portail Maître d\'œuvre' };
+        const urls   = { entreprise: '/login/entreprise', fournisseur: '/login/fournisseur', moe: '/login/moe' };
+        showError(`Ce compte est associé au ${labels[role] || role}. <a href="${urls[role] || '/'}">Se connecter sur le bon portail →</a>`);
+        await signOut(authData.access_token);
+        return;
+      }
+
+      localStorage.setItem('pivot_access_token',  authData.access_token);
+      localStorage.setItem('pivot_refresh_token', authData.refresh_token);
+      localStorage.setItem('pivot_role',          role);
+      window.location.href = REDIRECT_URL;
+
+    } catch (err) {
+      showError('Erreur réseau. Vérifiez votre connexion et réessayez.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Accéder au portail <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+    }
+  }
+
+  async function signOut(token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` },
+    });
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.innerHTML = msg;
+    el.classList.add('visible');
+  }
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+</script>
+
+</body>
+</html>
