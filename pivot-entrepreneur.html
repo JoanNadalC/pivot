@@ -5452,7 +5452,7 @@ function renderDaf() {
       </label>
       <button onclick="dafExportFiches()" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-green-700">📄 Export fiches sélectionnées</button>
       <button onclick="showConfigPalettePanel()" class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-200 border border-gray-300">🎨 Couleurs PDF</button>
-      <button onclick="genererDOE()" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700">📚 Générer DOE</button>
+      <button onclick="ouvrirParametresDOE()" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700">📚 Paramètres DOE</button>
     </div>`;
   for (const [famId, items] of Object.entries(famMap)) {
     const fam = state.familles.find(f => f.id === famId) || { nom: 'Autres', icone: '📦', couleur: '#6b7280' };
@@ -5831,7 +5831,7 @@ async function dafSaveAndGeneratePdf(fId) {
   const chCode = (ch.affaire||'CH').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase();
   const poste = row._numero_poste ?? f.numero_poste ?? '0';
   const ver = row.version || 1;
-  const numero = row.numero || `${poste}-${chCode}-${famCode}-${motCle}-v${ver}`;
+  const numero = row.numero || `${poste ? poste + '-' : ''}${chCode}-${famCode}-${motCle}-v${ver}`;
   const fichesJson = JSON.stringify((row.fiches||[]).map(ft=>({nom:ft.nom,url:ft.url||'',type:ft.type})));
   try {
     const { data, error } = await db.from('daf').insert({
@@ -5903,6 +5903,7 @@ async function dafGeneratePdf(fId) {
       };
     }
 
+    const moe = state.maitresOeuvre?.find(m => m.id === ch.moe_id);
     const payload = {
       config: { bandeau_bg: config.bandeau_bg || '#1a2e44', bandeau_text: config.bandeau_text || '#ffffff' },
       daf: {
@@ -5920,7 +5921,9 @@ async function dafGeneratePdf(fId) {
         date_emission:  new Date().toLocaleDateString('fr-FR'),
         date_livraison: row.date_livraison ? new Date(row.date_livraison).toLocaleDateString('fr-FR') : '',
         date_commande:  row.date_commande ? new Date(row.date_commande).toLocaleDateString('fr-FR') : '',
-        chantier:       ch.nom || '',
+        chantier:       ch.affaire || ch.nom || '',
+        ville:          ch.ville || '',
+        moe_nom:        moe?.societe || moe?.nom || '',
         caracteristiques: caract,
         visa,
         logo_base64: logoB64,
@@ -6062,6 +6065,203 @@ async function showConfigPalettePanel() {
 }
 
 // ── Générer DOE complet ──
+// ── Paramètres DOE ────────────────────────────────────────────
+let _doeState = { ref: '', chapitres: [] }; // état local du panneau DOE
+
+async function ouvrirParametresDOE() {
+  const ch = state.currentChantier;
+  if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
+
+  // Charger config existante
+  const { data: cfg } = await db.from('doe_config').select('*').eq('chantier_id', ch.id).maybeSingle();
+
+  // Chapitres auto depuis DAF visées (type fournitures, une par famille)
+  const dafsValides = state.daf.filter(d => ['visa_ok','commandee'].includes(d.statut));
+  const famMap = {};
+  for (const d of dafsValides) {
+    const f = state.fournitures.find(x => x.id === d.fourniture_id);
+    const famId = f?.famille_id || '_autres';
+    const fam = state.familles.find(x => x.id === famId) || { nom: 'Autres fournitures' };
+    if (!famMap[famId]) famMap[famId] = fam.nom;
+  }
+  const autoChapitres = Object.values(famMap).map((nom, i) => ({
+    num: i + 1, nom, type: 'fournitures', code: `fam_${i}`, _auto: true
+  }));
+
+  // Fusionner avec chapitres sauvegardés
+  const savedChaps = cfg?.chapitres || [];
+  const extraChaps = savedChaps.filter(c => c.type !== 'fournitures');
+  _doeState = {
+    ref: cfg?.ref_doe || `DOE-${(ch.affaire||'CHANT').replace(/[^a-zA-Z0-9]/g,'').slice(0,8).toUpperCase()}-v1`,
+    chapitres: [...autoChapitres, ...extraChaps]
+  };
+
+  _renderDOEModal();
+}
+
+function _renderDOEModal() {
+  document.getElementById('doe-modal')?.remove();
+  const panel = document.createElement('div');
+  panel.id = 'doe-modal';
+  panel.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50';
+  panel.innerHTML = `
+    <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b shrink-0">
+        <div>
+          <h2 class="text-base font-bold text-gray-800">Paramètres DOE</h2>
+          <p class="text-xs text-gray-400 mt-0.5">${escHtml(state.currentChantier?.affaire || '')}</p>
+        </div>
+        <button onclick="document.getElementById('doe-modal').remove()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      </div>
+
+      <!-- Référence -->
+      <div class="px-6 pt-4 shrink-0">
+        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Référence DOE</label>
+        <input id="doe-ref" type="text" value="${escHtml(_doeState.ref)}"
+          oninput="_doeState.ref=this.value"
+          class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+      </div>
+
+      <!-- Chapitres -->
+      <div class="px-6 pt-4 shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Chapitres</label>
+          <button onclick="_doeAjouterChapitre()" class="text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-300 px-2 py-1 rounded-lg">+ Ajouter chapitre</button>
+        </div>
+      </div>
+
+      <!-- Liste chapitres (scrollable) -->
+      <div id="doe-chapitres-list" class="px-6 pb-4 overflow-y-auto flex-1 space-y-2">
+        ${_renderDOEChapitres()}
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t shrink-0 flex items-center justify-between gap-3">
+        <p class="text-xs text-gray-400">${_doeState.chapitres.filter(c=>c.type==='fournitures').length} chapitre(s) auto · ${state.daf.filter(d=>['visa_ok','commandee'].includes(d.statut)).length} DAF visée(s)</p>
+        <div class="flex gap-2">
+          <button onclick="_doeSauvegarder()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700">Sauvegarder</button>
+          <button onclick="_doeGenerer()" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">📄 Générer le DOE</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(panel);
+  panel.addEventListener('click', e => { if (e.target === panel) panel.remove(); });
+}
+
+function _renderDOEChapitres() {
+  if (!_doeState.chapitres.length) return '<p class="text-xs text-gray-400 italic">Aucun chapitre.</p>';
+  return _doeState.chapitres.map((c, i) => {
+    const typeColor = c.type === 'fournitures' ? 'bg-green-100 text-green-700' : c.type === 'pdfs' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700';
+    const typeLabel = { fournitures: '📦 Fournitures auto', pdfs: '📄 PDFs uploadés', manuel: '✏️ Page manuelle' }[c.type] || c.type;
+    return `
+      <div class="border rounded-xl p-3 bg-gray-50" id="doe-chap-${i}">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-gray-300 text-sm select-none">${i+1}.</span>
+          <input type="text" value="${escHtml(c.nom)}" placeholder="Nom du chapitre"
+            onchange="_doeState.chapitres[${i}].nom=this.value"
+            class="flex-1 border-0 border-b border-gray-200 bg-transparent text-sm font-medium focus:outline-none focus:border-indigo-400 px-0">
+          <span class="text-xs px-2 py-0.5 rounded-full ${typeColor} shrink-0">${typeLabel}</span>
+          ${c._auto ? '' : `
+            <button onclick="_doeMontee(${i})" class="text-gray-300 hover:text-gray-600 text-xs px-1" title="Monter">↑</button>
+            <button onclick="_doeDescente(${i})" class="text-gray-300 hover:text-gray-600 text-xs px-1" title="Descendre">↓</button>
+            <button onclick="_doeSupprimerChapitre(${i})" class="text-red-300 hover:text-red-500 text-xs px-1">✕</button>
+          `}
+        </div>
+        ${c.type === 'pdfs' ? `
+          <div class="mt-2">
+            <label class="cursor-pointer inline-flex items-center gap-1.5 text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded-lg hover:bg-blue-50">
+              ⬆ Ajouter un PDF
+              <input type="file" accept=".pdf" class="hidden" onchange="_doeUploadPdf(${i}, this)">
+            </label>
+            <div id="doe-files-${i}" class="mt-1.5 space-y-1">
+              ${(c.fichiers||[]).map((f,fi) => `
+                <div class="flex items-center gap-2 text-xs text-gray-600">
+                  <span>📄 ${escHtml(f.nom)}</span>
+                  <button onclick="_doeRemovePdf(${i},${fi})" class="text-red-300 hover:text-red-500">✕</button>
+                </div>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>`;
+  }).join('');
+}
+
+function _doeAjouterChapitre() {
+  _doeState.chapitres.push({ nom: 'Nouveau chapitre', type: 'pdfs', code: `custom_${Date.now()}`, fichiers: [] });
+  document.getElementById('doe-chapitres-list').innerHTML = _renderDOEChapitres();
+}
+
+function _doeSupprimerChapitre(i) {
+  _doeState.chapitres.splice(i, 1);
+  document.getElementById('doe-chapitres-list').innerHTML = _renderDOEChapitres();
+}
+
+function _doeMontee(i) {
+  if (i <= 0) return;
+  // Ne pas dépasser les chapitres auto
+  const autoCount = _doeState.chapitres.filter(c => c._auto).length;
+  if (i <= autoCount) return;
+  [_doeState.chapitres[i-1], _doeState.chapitres[i]] = [_doeState.chapitres[i], _doeState.chapitres[i-1]];
+  document.getElementById('doe-chapitres-list').innerHTML = _renderDOEChapitres();
+}
+
+function _doeDescente(i) {
+  if (i >= _doeState.chapitres.length - 1) return;
+  [_doeState.chapitres[i], _doeState.chapitres[i+1]] = [_doeState.chapitres[i+1], _doeState.chapitres[i]];
+  document.getElementById('doe-chapitres-list').innerHTML = _renderDOEChapitres();
+}
+
+async function _doeUploadPdf(chapIdx, input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  toast('Upload en cours…');
+  try {
+    const ch = state.currentChantier;
+    const path = `${ch.id}/${_doeState.chapitres[chapIdx].code}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const { error } = await db.storage.from('doe-fichiers').upload(path, file, { contentType: 'application/pdf', upsert: true });
+    if (error) throw error;
+    const { data: { publicUrl } } = db.storage.from('doe-fichiers').getPublicUrl(path);
+    if (!_doeState.chapitres[chapIdx].fichiers) _doeState.chapitres[chapIdx].fichiers = [];
+    _doeState.chapitres[chapIdx].fichiers.push({ nom: file.name, url: publicUrl, path });
+    document.getElementById(`doe-files-${chapIdx}`).innerHTML = (_doeState.chapitres[chapIdx].fichiers||[]).map((f,fi) => `
+      <div class="flex items-center gap-2 text-xs text-gray-600">
+        <span>📄 ${escHtml(f.nom)}</span>
+        <button onclick="_doeRemovePdf(${chapIdx},${fi})" class="text-red-300 hover:text-red-500">✕</button>
+      </div>`).join('');
+    toast('PDF ajouté');
+  } catch (err) { toast('Erreur upload : ' + err.message, 'err'); }
+}
+
+function _doeRemovePdf(chapIdx, fileIdx) {
+  _doeState.chapitres[chapIdx].fichiers.splice(fileIdx, 1);
+  document.getElementById('doe-chapitres-list').innerHTML = _renderDOEChapitres();
+}
+
+async function _doeSauvegarder() {
+  const ch = state.currentChantier;
+  const { data: existing } = await db.from('doe_config').select('id').eq('chantier_id', ch.id).maybeSingle();
+  const payload = {
+    chantier_id: ch.id,
+    ref_doe: _doeState.ref,
+    chapitres: _doeState.chapitres.filter(c => !c._auto), // ne sauvegarder que les chapitres manuels
+    updated_at: new Date().toISOString()
+  };
+  if (existing?.id) {
+    await db.from('doe_config').update(payload).eq('id', existing.id);
+  } else {
+    await db.from('doe_config').insert(payload);
+  }
+  toast('Configuration DOE sauvegardée');
+}
+
+async function _doeGenerer() {
+  await _doeSauvegarder();
+  document.getElementById('doe-modal')?.remove();
+  genererDOE();
+}
+
 async function genererDOE() {
   const ch = state.currentChantier;
   if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
