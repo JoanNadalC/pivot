@@ -415,7 +415,7 @@ async function loadAll() {
     db.from('compte_fournisseur').select('id, email, nom, nom_entreprise, compte_bloque, plan').order('created_at', { ascending: false }),
     db.from('compte_moe').select('id, email, nom').order('created_at', { ascending: false }),
     db.from('structures').select('*'),
-    db.from('structure_membres').select('user_id, structure_id, role')
+    db.from('structure_membres').select('user_id, structure_id, role, has_licence')
   ]);
 
   // Index structures par id
@@ -1231,12 +1231,8 @@ async function rattacherUserStructure(userId) {
   if (!structId) return toast('Choisissez une structure', 'err');
   try {
     const { error: e1 } = await db.from('structure_membres')
-      .upsert({ structure_id: structId, user_id: userId, role }, { onConflict: 'structure_id,user_id' });
+      .upsert({ structure_id: structId, user_id: userId, role, has_licence: hasLic }, { onConflict: 'structure_id,user_id' });
     if (e1) throw e1;
-    // has_licence dans un update séparé (évite l'erreur de cache schéma)
-    await db.from('structure_membres')
-      .update({ has_licence: hasLic })
-      .eq('structure_id', structId).eq('user_id', userId);
     const { error: e2 } = await db.from('profiles').update({ structure_id: structId }).eq('id', userId);
     if (e2) throw e2;
     closeModal();
