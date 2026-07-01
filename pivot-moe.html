@@ -370,6 +370,7 @@ const state = {
   fournitures: [],
   familles: [],
   activeFamilles: [],
+  pendingMoeInvitations: [],
   lots: [],
   filterDaf: 'soumise',
   notifications: [],
@@ -718,6 +719,7 @@ async function _lancerApp(user) {
   showApp();
   history.replaceState({ view: 'list' }, '');
   await loadChantiers();
+  loadPendingMoeInvitations();
   loadNotifications();
   _initNotifRealtime();
   if (state.pendingTeamToken) await processTeamInvite();
@@ -1003,6 +1005,35 @@ async function loadChantiers() {
   }
 }
 
+async function loadPendingMoeInvitations() {
+  try {
+    const { data } = await db.from('chantier_invitations')
+      .select('id, chantier_id, nom_chantier, created_at')
+      .eq('moe_invited_id', state.user.id)
+      .eq('statut', 'pending');
+    state.pendingMoeInvitations = data || [];
+    renderChantiersList();
+  } catch (err) { console.error('loadPendingMoeInvitations', err); }
+}
+
+async function accepterInvitationMoe(invId, chantierId, nom) {
+  try {
+    const { error } = await db.from('chantiers').update({ moe_id: state.user.id }).eq('id', chantierId);
+    if (error) throw error;
+    await db.from('chantier_invitations').update({ statut: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invId);
+    state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
+    toast(`✅ Vous êtes maintenant MOE sur "${nom}" !`);
+    await loadChantiers();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function refuserInvitationMoe(invId) {
+  await db.from('chantier_invitations').update({ statut: 'refused' }).eq('id', invId);
+  state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
+  renderChantiersList();
+  toast('Invitation refusée');
+}
+
 function _showPendingMoeInvite(ch) {
   const panel = document.getElementById('pending-moe-invite');
   const nom = document.getElementById('pending-invite-nom');
@@ -1024,7 +1055,7 @@ function _showPendingMoeInvite(ch) {
 function renderChantiersList() {
   const el = document.getElementById('chantiers-list');
 
-  const pendingCard = state.pendingMoeChantier && state.pendingMoeToken ? `
+  const tokenCard = state.pendingMoeChantier && state.pendingMoeToken ? `
     <div style="background:white;border:2px solid #4f46e5;border-radius:14px;padding:18px 20px;border-left:4px solid #4f46e5">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
         <h3 style="font-size:15px;font-weight:700;color:#1e293b;line-height:1.3">🏗 ${escHtml(state.pendingMoeChantier.affaire || 'Chantier')}</h3>
@@ -1038,6 +1069,24 @@ function renderChantiersList() {
           style="flex:1;background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:7px 0;border-radius:8px;font-size:12px;cursor:pointer">Refuser</button>
       </div>
     </div>` : '';
+
+  const invitationCards = (state.pendingMoeInvitations || []).map(inv => `
+    <div style="background:white;border:2px solid #4f46e5;border-radius:14px;padding:18px 20px;border-left:4px solid #4f46e5">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+        <h3 style="font-size:15px;font-weight:700;color:#1e293b;line-height:1.3">🏗 ${escHtml(inv.nom_chantier || 'Chantier')}</h3>
+        <span style="font-size:10px;background:#eef2ff;color:#4338ca;padding:2px 8px;border-radius:999px;white-space:nowrap;flex-shrink:0">📬 Invitation</span>
+      </div>
+      <p style="font-size:11px;color:#6366f1;margin-bottom:10px">Un entrepreneur vous invite à intervenir en tant que MOE.</p>
+      <p style="font-size:11px;color:#94a3b8;margin-bottom:10px">Reçue le ${new Date(inv.created_at).toLocaleDateString('fr-FR')}</p>
+      <div style="display:flex;gap:6px">
+        <button onclick="accepterInvitationMoe('${inv.id}','${inv.chantier_id}','${escHtml(inv.nom_chantier||'')}')"
+          style="flex:1;background:#4f46e5;color:white;border:none;padding:7px 0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">✅ Accepter</button>
+        <button onclick="refuserInvitationMoe('${inv.id}')"
+          style="flex:1;background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:7px 0;border-radius:8px;font-size:12px;cursor:pointer">Refuser</button>
+      </div>
+    </div>`).join('');
+
+  const pendingCard = tokenCard + invitationCards;
 
   if (!state.chantiers.length && !pendingCard) {
     el.innerHTML = '<p class="text-gray-400 text-sm col-span-3">Aucun chantier assigné.</p>';

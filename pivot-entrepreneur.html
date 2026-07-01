@@ -3369,11 +3369,23 @@ function openMoeModal() {
 
 async function linkMoeFromCarnet(compteMoeId, nom) {
   try {
-    await db.from('chantiers').update({ moe_id: compteMoeId }).eq('id', state.currentChantier.id);
-    state.currentChantier.moe_id = compteMoeId;
-    toast(`MOE ${nom} associé au chantier`);
+    const ch = state.currentChantier;
+    const { error } = await db.from('chantier_invitations').insert({
+      chantier_id: ch.id,
+      moe_invited_id: compteMoeId,
+      nom_chantier: ch.affaire || '',
+      statut: 'pending'
+    });
+    if (error) throw error;
+    await db.from('notifications').insert({
+      user_id: compteMoeId,
+      type: 'invitation_chantier_moe',
+      message: `Vous avez été invité à rejoindre le chantier "${ch.affaire || ''}" en tant que MOE`,
+      chantier_id: ch.id,
+      read: false
+    }).then(r => r, () => {});
+    toast(`Invitation envoyée à ${nom} ✉️`);
     closeModal();
-    fillParametrage();
   } catch (err) { toast(err.message, 'err'); }
 }
 
