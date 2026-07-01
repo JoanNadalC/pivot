@@ -1623,7 +1623,7 @@ function renderNotifList() {
             <p class="text-sm ${isRead ? 'text-gray-400' : ''}">${n.message}</p>
             <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
           </div>
-          <button onclick="event.stopPropagation();deleteNotif('${n.id}')" class="text-gray-300 hover:text-red-400 text-xs shrink-0 mt-0.5" title="Supprimer">🗑</button>
+          <button onclick="event.stopPropagation();deleteNotif('${n.id}')" class="text-gray-300 hover:text-red-400 shrink-0 mt-0.5 leading-none" style="font-size:15px;line-height:1" title="Supprimer">×</button>
         </div>`;
       }).join('')}
     </div>`).join('');
