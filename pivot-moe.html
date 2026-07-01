@@ -242,12 +242,41 @@
       <div id="lot-detail-content"></div>
     </div>
 
-    <!-- TAB: FOURNITURES (lecture seule) -->
+    <!-- TAB: FOURNITURES -->
     <div id="tab-fournitures" class="tab-content hidden">
-      <div class="flex items-center gap-2 mb-4">
-        <span class="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">Lecture seule</span>
+      <!-- Barre d'outils collante -->
+      <div class="sticky top-16 z-30 bg-gray-50 pb-2 -mx-4 px-4 pt-2 border-b border-gray-100 shadow-sm">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <button onclick="openAddFournitureModal()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">+ Ajouter fourniture</button>
+          <button onclick="openFamillesActivesModal()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">🏷️ Gérer familles</button>
+          <button id="undo-btn" onclick="undoLast()" class="border border-gray-300 text-gray-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 opacity-40 cursor-not-allowed" title="Annuler dernière action (Ctrl+Z)">↩ Annuler</button>
+          <div class="relative">
+            <button onclick="document.getElementById('toolbar-suppr-menu').classList.toggle('hidden')"
+              class="border border-orange-300 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 flex items-center gap-1">
+              🗑 Supprimer ▾
+            </button>
+            <div id="toolbar-suppr-menu" class="hidden absolute top-full mt-1 left-0 bg-white border rounded-lg shadow-lg text-sm z-20 whitespace-nowrap">
+              <button onclick="supprimerSelectionnes();document.getElementById('toolbar-suppr-menu').classList.add('hidden')"
+                class="block w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 font-medium">Lignes sélectionnées</button>
+              <button onclick="supprimerToutes();document.getElementById('toolbar-suppr-menu').classList.add('hidden')"
+                class="block w-full text-left px-4 py-2 hover:bg-red-50 text-red-700 font-bold">Tout supprimer</button>
+            </div>
+          </div>
+        </div>
+        <div id="familles-actives-chips" class="flex flex-wrap gap-2 min-h-5"></div>
+        <div id="affectation-bar" class="hidden bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 mt-2 flex items-center gap-3 flex-wrap">
+          <span id="sel-count-label" class="text-sm font-medium text-blue-700">0 sélectionnée(s)</span>
+          <span class="text-blue-300">→</span>
+          <span class="text-sm text-blue-700">Affecter à :</span>
+          <select id="sel-famille-assign" class="border rounded px-2 py-1 text-sm">
+            <option value="">— Choisir famille —</option>
+          </select>
+          <button onclick="affecterFamille()" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700">Affecter</button>
+          <button onclick="supprimerSelectionnes()" class="bg-red-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-red-600">🗑 Supprimer</button>
+          <button onclick="deselectionnerTout()" class="text-blue-500 text-sm hover:underline ml-auto">✕ Désélectionner</button>
+        </div>
       </div>
-      <div id="fournitures-by-famille"></div>
+      <div id="fournitures-container" class="mt-1"></div>
     </div>
 
     <!-- TAB: DAF / VISA -->
@@ -340,6 +369,7 @@ const state = {
   daf: [],
   fournitures: [],
   familles: [],
+  activeFamilles: [],
   lots: [],
   filterDaf: 'soumise',
   notifications: [],
@@ -1083,8 +1113,11 @@ async function loadFournituresForChantier() {
     const { data } = await db.from('fournitures')
       .select('*, famille:familles_fournitures(nom, icone, couleur)')
       .eq('chantier_id', state.currentChantier.id)
-      .order('ordre');
+      .order('ordre')
+      .order('created_at');
     state.fournitures = data || [];
+    const usedIds = [...new Set(state.fournitures.map(f => f.famille_id).filter(Boolean))];
+    state.activeFamilles = [...new Set([...(state.activeFamilles || []), ...usedIds])];
   } catch (err) {
     console.error('loadFournitures', err);
   }
@@ -1156,58 +1189,1114 @@ function renderDashboard() {
 }
 
 // ============================================================
-// FOURNITURES (lecture seule)
+// FOURNITURES
 // ============================================================
-function renderFournitures() {
-  const container = document.getElementById('fournitures-by-famille');
-  const fournitures = state.fournitures.filter(f => !f.is_variante);
-  const famFiltered = [];
-  state.familles.forEach(fam => {
-    const items = fournitures.filter(f => f.famille_id === fam.id);
-    if (items.length) famFiltered.push({ fam, items });
+function sortFournitures() {
+  state.fournitures.sort((a, b) => {
+    const pa = a.numero_poste || '';
+    const pb = b.numero_poste || '';
+    return pa.localeCompare(pb, undefined, { numeric: true, sensitivity: 'base' });
   });
-  const unknownItems = fournitures.filter(f => !f.famille_id);
-  if (unknownItems.length) famFiltered.push({ fam: { nom: 'Sans famille', icone: '📦', couleur: '#9ca3af' }, items: unknownItems });
+}
 
-  if (!famFiltered.length) {
-    container.innerHTML = '<p class="text-gray-400 text-sm italic">Aucune fourniture pour ce chantier.</p>';
+// ── Familles actives ──
+function openFamillesActivesModal() {
+  const activeFams = new Set(state.activeFamilles || []);
+  state.fournitures.forEach(f => { if (f.famille_id) activeFams.add(f.famille_id); });
+  const familles = state.familles.filter(f => f.actif !== false).sort((a,b) => (a.nom||'').localeCompare(b.nom||''));
+  showModal(`
+    <h2 class="text-lg font-bold mb-1">Familles du chantier</h2>
+    <p class="text-xs text-gray-400 mb-4">Cochez les familles présentes. Elles apparaîtront dans la barre d'affectation.</p>
+    <div class="grid grid-cols-2 gap-1 max-h-80 overflow-y-auto mb-4 border rounded p-2">
+      ${familles.map(f => `
+        <label class="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+          <input type="checkbox" class="fam-cb" value="${f.id}" ${activeFams.has(f.id) ? 'checked' : ''}>
+          <span>${f.icone}</span>
+          <span class="text-sm">${f.nom}</span>
+        </label>
+      `).join('')}
+    </div>
+    <div class="flex gap-3">
+      <button onclick="saveFamillesActives()" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Valider</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Fermer</button>
+    </div>
+  `);
+}
+
+function saveFamillesActives() {
+  state.activeFamilles = [...document.querySelectorAll('.fam-cb:checked')].map(cb => cb.value);
+  closeModal();
+  updateFamillesChips();
+  populateSelFamilleAssign();
+  toast('Familles actives mises à jour !');
+}
+
+function updateFamillesChips() {
+  const el = document.getElementById('familles-actives-chips');
+  if (!el) return;
+  const actifIds = new Set(state.familles.filter(f => f.actif !== false).map(f => f.id));
+  const ids = new Set([...(state.activeFamilles || []),
+    ...state.fournitures.map(f => f.famille_id).filter(Boolean)].filter(id => actifIds.has(id)));
+  if (!ids.size) {
+    el.innerHTML = '<span class="text-xs text-gray-400">Cliquez "Gérer familles" pour activer des familles.</span>';
+    return;
+  }
+  el.innerHTML = [...ids].map(id => {
+    const fam = state.familles.find(f => f.id === id);
+    if (!fam) return '';
+    return `<span onclick="scrollToFamille('${id}')" class="text-xs px-2 py-1 rounded-full font-medium cursor-pointer hover:opacity-70 transition-opacity" style="background:${fam.couleur}20;color:${fam.couleur};border:1px solid ${fam.couleur}50">${fam.icone} ${fam.nom}</span>`;
+  }).join('');
+}
+
+function populateSelFamilleAssign() {
+  const sel = document.getElementById('sel-famille-assign');
+  if (!sel) return;
+  const ids = (state.activeFamilles || []).filter(id => {
+    const f = state.familles.find(x => x.id === id);
+    return f && f.actif !== false;
+  });
+  if (!ids.length) {
+    sel.innerHTML = '<option value="">— Gérer familles d\'abord —</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">— Choisir famille —</option>' +
+    ids.map(id => {
+      const fam = state.familles.find(f => f.id === id);
+      return fam ? `<option value="${fam.id}">${fam.icone} ${fam.nom}</option>` : '';
+    }).join('');
+}
+
+// ── Sélection + affectation ──
+let _lastCheckedIdx = -1;
+
+document.addEventListener('click', e => {
+  const cb = e.target.closest('.fourniture-cb');
+  if (!cb) return;
+  const allCbs = [...document.querySelectorAll('.fourniture-cb')];
+  const idx = allCbs.indexOf(cb);
+  if (e.shiftKey && _lastCheckedIdx >= 0 && idx !== _lastCheckedIdx) {
+    const from = Math.min(_lastCheckedIdx, idx);
+    const to   = Math.max(_lastCheckedIdx, idx);
+    const st = allCbs[_lastCheckedIdx].checked;
+    allCbs.slice(from, to + 1).forEach(c => { c.checked = st; });
+  }
+  _lastCheckedIdx = idx;
+  updateAffectationBar();
+});
+
+function onCheckFourniture() { /* géré par le listener délégué */ }
+
+function updateAffectationBar() {
+  const checked = [...document.querySelectorAll('.fourniture-cb:checked')];
+  const total   = document.querySelectorAll('.fourniture-cb').length;
+  const bar     = document.getElementById('affectation-bar');
+  const label   = document.getElementById('sel-count-label');
+  const allCb   = document.getElementById('select-all-cb');
+  if (bar)   bar.classList.toggle('hidden', checked.length === 0);
+  if (label) label.textContent = `${checked.length} ligne(s) sélectionnée(s)`;
+  if (allCb) {
+    allCb.indeterminate = checked.length > 0 && checked.length < total;
+    allCb.checked = total > 0 && checked.length === total;
+  }
+}
+
+function deselectionnerTout() {
+  document.querySelectorAll('.fourniture-cb').forEach(cb => { cb.checked = false; });
+  const allCb = document.getElementById('select-all-cb');
+  if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
+  updateAffectationBar();
+}
+
+async function affecterFamille() {
+  const famId = document.getElementById('sel-famille-assign')?.value;
+  if (!famId) return toast('Choisissez une famille', 'err');
+  const ids = [...document.querySelectorAll('.fourniture-cb:checked')].map(cb => cb.value);
+  if (!ids.length) return;
+  try {
+    const avant = ids.map(id => {
+      const f = state.fournitures.find(x => x.id === id);
+      return { id, famille_id: f?.famille_id || null };
+    });
+    pushUndo('affecter', avant);
+    const { error } = await db.from('fournitures').update({ famille_id: famId }).in('id', ids);
+    if (error) throw error;
+    const fam = state.familles.find(f => f.id === famId);
+    ids.forEach(id => {
+      const f = state.fournitures.find(x => x.id === id);
+      if (f) { f.famille_id = famId; f.famille = fam; }
+    });
+    deselectionnerTout();
+    updateFamillesChips();
+    renderFournitures();
+    toast(`${ids.length} fourniture(s) → ${fam?.nom || ''}`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function scrollToFamille(famId) {
+  const el = document.getElementById(`fam-section-${famId}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.style.transition = 'box-shadow 0.2s';
+  el.style.boxShadow = '0 0 0 2px #15803d';
+  setTimeout(() => { el.style.boxShadow = ''; }, 1200);
+}
+
+// ── Undo stack ──
+const undoStack = [];
+
+function pushUndo(action, data) {
+  undoStack.push({ action, data });
+  if (undoStack.length > 20) undoStack.shift();
+  document.getElementById('undo-btn')?.classList.remove('opacity-40', 'cursor-not-allowed');
+}
+
+async function undoLast() {
+  const entry = undoStack.pop();
+  if (!entry) return toast('Rien à annuler', 'err');
+  if (!undoStack.length) {
+    document.getElementById('undo-btn')?.classList.add('opacity-40', 'cursor-not-allowed');
+  }
+  try {
+    if (entry.action === 'delete') {
+      const COLS = ['id','chantier_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
+      const rows = entry.data.map(f => Object.fromEntries(COLS.filter(k => k in f).map(k => [k, f[k]])));
+      const { error } = await db.from('fournitures').insert(rows);
+      if (error) throw error;
+      entry.data.forEach(f => state.fournitures.push(f));
+      sortFournitures();
+      renderFournitures();
+      toast(`${entry.data.length} fourniture(s) restaurée(s)`);
+    } else if (entry.action === 'affecter') {
+      for (const { id, famille_id } of entry.data) {
+        await db.from('fournitures').update({ famille_id }).eq('id', id);
+        const f = state.fournitures.find(x => x.id === id);
+        if (f) f.famille_id = famille_id;
+      }
+      renderFournitures();
+      toast('Affectation annulée');
+    }
+  } catch (err) { toast('Erreur annulation : ' + err.message, 'err'); }
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoLast(); }
+});
+
+// ── Suppression ──
+async function supprimerToutes() {
+  const n = state.fournitures.length;
+  if (!n) return toast('Aucune fourniture à supprimer');
+  const ok = await new Promise(resolve => {
+    showModal(`
+      <h2 class="text-lg font-bold mb-3">⚠️ Tout supprimer</h2>
+      <p class="text-sm text-gray-600 mb-4">Supprimer les <strong>${n} fourniture${n>1?'s':''}</strong> du chantier <strong>${escHtml(state.currentChantier?.nom||'')}</strong> ?</p>
+      <p class="text-xs text-red-500 mb-4">Cette action est irréversible.</p>
+      <div class="flex gap-2">
+        <button onclick="document.dispatchEvent(new CustomEvent('confirm-del-all',{detail:true}))"
+          class="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700">Tout supprimer</button>
+        <button onclick="document.dispatchEvent(new CustomEvent('confirm-del-all',{detail:false}))"
+          class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+      </div>
+    `);
+    const h = e => { document.removeEventListener('confirm-del-all', h); resolve(e.detail); };
+    document.addEventListener('confirm-del-all', h);
+  });
+  closeModal();
+  if (!ok) return;
+  const ids = state.fournitures.map(f => f.id);
+  const { error } = await db.from('fournitures').delete().in('id', ids);
+  if (error) return toast('Erreur : ' + error.message, 'err');
+  state.fournitures = [];
+  renderFournitures();
+  toast(`🗑 ${n} fourniture${n>1?'s':''} supprimée${n>1?'s':''}`);
+}
+
+async function supprimerSelectionnes() {
+  const ids = [...document.querySelectorAll('.fourniture-cb:checked')].map(cb => cb.value);
+  if (!ids.length) return;
+  if (!confirm(`Supprimer ${ids.length} fourniture(s) sélectionnée(s) ?`)) return;
+  try {
+    const toDelete = state.fournitures.filter(f => ids.includes(f.id));
+    const { error } = await db.from('fournitures').delete().in('id', ids);
+    if (error) throw error;
+    pushUndo('delete', toDelete);
+    state.fournitures = state.fournitures.filter(f => !ids.includes(f.id));
+    deselectionnerTout();
+    renderFournitures();
+    toast(`${ids.length} fourniture(s) supprimée(s) — Ctrl+Z pour annuler`);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function deleteFourniture(id) {
+  if (!confirm('Supprimer cette fourniture ?')) return;
+  try {
+    await db.from('fournitures').delete().in('id', [id]);
+    state.fournitures = state.fournitures.filter(f => f.id !== id);
+    renderFournitures();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// ── Colonnes par famille ──
+const FCOLUMNS = {
+  vegetaux: [
+    { key: 'designation', label: 'Essence / Espèce',  cls: 'text-left' },
+    { key: 'type_veg',    label: 'Type',               cls: 'text-left w-28' },
+    { key: 'taille',      label: 'Taille / Calibre',   cls: 'text-left w-32', dl: 'dl-taille' },
+    { key: 'contenant',   label: 'Conditionnement',    cls: 'text-left w-28', dl: 'dl-conditionnement' },
+    { key: 'qte',         label: 'Qté',                cls: 'text-right w-16', num: true },
+    { key: 'unite',       label: 'U.',                 cls: 'text-left w-12' },
+    { key: 'prix_etude_ht', label: 'Prix étude HT',   cls: 'text-right w-28', fmt: true },
+  ],
+  default: [
+    { key: 'designation', label: 'Désignation',        cls: 'text-left' },
+    { key: 'qte',         label: 'Qté',                cls: 'text-right w-16', num: true },
+    { key: 'unite',       label: 'Unité',              cls: 'text-left w-16' },
+    { key: 'prix_etude_ht', label: 'Prix étude HT',   cls: 'text-right w-28', fmt: true },
+  ]
+};
+
+function famColType(nom = '') {
+  return /végét|arbre|arbust|vivace|plante|gazon|prairie|haie|grimpa|gramin/i.test(nom)
+    ? 'vegetaux' : 'default';
+}
+
+function fColVal(f, key) {
+  if (key === 'taille')    return f.taille    || _getCaract(f, ['taille','calibre','hauteur','circonf']) || '';
+  if (key === 'contenant') return f.contenant || _getCaract(f, ['conditionnement','contenant','pot','godet','motte','racine']) || '';
+  if (key === 'type_veg')  return _getCaract(f, ['type','Type']) || '';
+  if (key === 'prix_etude_ht') return fmt(f.prix_etude_ht);
+  if (key === 'qte')       return f.qte != null ? f.qte : '';
+  return f[key] != null ? f[key] : '';
+}
+
+function _getCaract(f, keys) {
+  let caract = [];
+  if (Array.isArray(f.caracteristiques)) caract = f.caracteristiques;
+  else if (f.caracteristiques && typeof f.caracteristiques === 'object')
+    caract = Object.entries(f.caracteristiques).map(([k,v]) => ({ cle: k, valeur: String(v) }));
+  for (const k of keys) {
+    const found = caract.find(c => c.cle?.toLowerCase().includes(k));
+    if (found?.valeur) return found.valeur;
+  }
+  return null;
+}
+
+// ── Rendu tableau ──
+function renderFournitures() {
+  sortFournitures();
+  updateFamillesChips();
+  populateSelFamilleAssign();
+  const container = document.getElementById('fournitures-container');
+  if (!container) return;
+
+  const items = state.fournitures.filter(f => !f.is_variante);
+  if (!items.length) {
+    container.innerHTML = '<p class="text-gray-400 text-sm italic py-8 text-center">Aucune fourniture. Ajoutez-en une via le bouton ci-dessus.</p>';
     return;
   }
 
-  container.innerHTML = famFiltered.map(({ fam, items }) => `
-    <div class="famille-card bg-white rounded-xl shadow-sm mb-4 overflow-hidden" style="--famille-color: ${fam.couleur || '#9ca3af'}">
-      <div class="flex items-center gap-2 px-5 py-3 font-semibold text-sm" style="background: ${fam.couleur || '#9ca3af'}15">
-        <span>${fam.icone || '📦'}</span><span>${fam.nom}</span>
-        <span class="text-xs font-normal text-gray-500">(${items.length} ligne${items.length > 1 ? 's' : ''})</span>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-500 text-xs">
-            <tr>
-              <th class="px-3 py-2 text-left">N°Poste</th>
-              <th class="px-3 py-2 text-left">Désignation</th>
-              <th class="px-3 py-2 text-left">Description</th>
-              <th class="px-3 py-2 text-right">Qté</th>
-              <th class="px-3 py-2 text-left">U</th>
-              <th class="px-3 py-2 text-right"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${items.map(f => `
-              <tr class="hover:bg-gray-50 border-b">
-                <td class="px-3 py-2 text-gray-400 text-xs">${f.numero_poste || ''}</td>
-                <td class="px-3 py-2 font-medium">${f.designation}</td>
-                <td class="px-3 py-2 text-gray-500 text-xs max-w-xs truncate">${f.description || ''}</td>
-                <td class="px-3 py-2 text-right">${f.qte != null ? f.qte : ''}</td>
-                <td class="px-3 py-2">${f.unite || 'U'}</td>
-                <td class="px-3 py-2 text-right"></td>
+  const famMap = {};
+  for (const f of items) {
+    const fid = f.famille_id || '_autres';
+    if (!famMap[fid]) famMap[fid] = [];
+    famMap[fid].push(f);
+  }
+
+  let html = '';
+  for (const [famId, famItems] of Object.entries(famMap)) {
+    const fam = state.familles.find(f => f.id === famId) || { nom: 'Autres', icone: '📦', couleur: '#6b7280' };
+    const cols = FCOLUMNS[famColType(fam.nom)];
+    const colCount = cols.length + 3;
+    const hdrCells = cols.map(c => `<th class="px-3 py-2 ${c.cls}">${c.label}</th>`).join('');
+    const bodyRows = famItems.map(f => renderFournitureGroup(f, cols, colCount, famId)).join('');
+    html += `
+      <div class="mb-5" id="fam-section-${famId}">
+        <div class="flex items-center gap-2 px-3 py-2 rounded-t font-semibold text-sm" style="background:${fam.couleur}20">
+          ${fam.icone} ${fam.nom}
+          <span class="ml-1 text-xs font-normal text-gray-500">${famItems.length} fourniture${famItems.length > 1 ? 's' : ''}</span>
+        </div>
+        <div class="overflow-x-auto bg-white shadow-sm rounded-b">
+          <table class="w-full text-sm" id="fam-table-${famId}">
+            <thead class="bg-gray-50 text-xs text-gray-500 border-b">
+              <tr>
+                <th class="px-3 py-2 w-24 text-left">
+                  <label class="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" class="fam-select-all rounded" data-fam="${famId}" onchange="famSelectAll('${famId}',this.checked)"> tout
+                  </label>
+                </th>
+                ${hdrCells}
+                <th class="px-3 py-2 text-center w-16">BPU</th>
+                <th class="px-3 py-2 text-left w-40">Caract. +</th>
+                <th class="px-3 py-2 text-center w-28">Actions</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function famSelectAll(famId, checked) {
+  document.querySelectorAll(`#fam-table-${famId} .fourniture-cb`).forEach(cb => { cb.checked = checked; });
+  updateAffectationBar();
+}
+
+function renderFournitureGroup(f, cols, colCount, famId) {
+  const variants = state.fournitures.filter(v => v.parent_id === f.id && v.is_variante);
+  const varRows = variants.map(v => renderVarianteRow(v, cols)).join('');
+  const mainCells = cols.map(c => {
+    const rawVal = c.key === 'prix_etude_ht' ? (f.prix_etude_ht ?? '') : fColVal(f, c.key);
+    const inputType = c.num || c.fmt ? 'number' : 'text';
+    const align = c.cls.includes('text-right') ? 'text-right' : '';
+    const dlAttr = c.dl ? `list="${c.dl}"` : '';
+    return `<td class="px-3 py-2">
+      <input type="${inputType}" ${dlAttr} value="${escHtml(String(rawVal))}" step="0.01"
+        class="w-full border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-sm ${align} px-0 focus:outline-none${c.key === 'designation' ? ' font-medium' : ''}"
+        onblur="saveFournitureField('${f.id}','${c.key}',this.value)">
+    </td>`;
+  }).join('');
+  return `
+    <tr class="hover:bg-gray-50 border-b" id="frow-${f.id}">
+      <td class="px-3 py-2 text-xs text-gray-400">
+        <div class="flex items-center gap-1">
+          <input type="checkbox" class="fourniture-cb" value="${f.id}" onchange="onCheckFourniture()">
+          <input type="text" value="${escHtml(f.numero_poste || '')}"
+            class="w-12 border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-xs px-0 focus:outline-none"
+            onblur="saveFournitureField('${f.id}','numero_poste',this.value)">
+        </div>
+      </td>
+      ${mainCells}
+      ${renderBpuCell(f)}
+      ${renderCaractCell(f)}
+      <td class="px-3 py-2">
+        <div class="flex gap-1 justify-center items-center">
+          <button onclick="toggleDetailRow('${f.id}')" class="text-gray-400 hover:text-green-600 text-sm" title="Détail">⚙️</button>
+          <button onclick="addVarianteInline('${f.id}')" class="text-orange-500 hover:text-orange-700 font-bold text-base leading-none" title="Ajouter variante">＋</button>
+          <button onclick="deleteFourniture('${f.id}')" class="text-red-300 hover:text-red-500 text-sm" title="Supprimer">🗑</button>
+        </div>
+      </td>
+    </tr>
+    <tr id="detail-${f.id}" class="hidden bg-slate-50">
+      <td colspan="${colCount}" class="px-6 py-4 border-b">${renderDetailRow(f)}</td>
+    </tr>
+    ${varRows}`;
+}
+
+function renderVarianteRow(v, cols) {
+  const cells = cols.map(c => {
+    const rawVal = c.key === 'prix_etude_ht' ? (v.prix_etude_ht ?? '') : fColVal(v, c.key);
+    const inputType = c.num || c.fmt ? 'number' : 'text';
+    const align = c.cls.includes('text-right') ? 'text-right' : '';
+    const dlAttr = c.dl ? `list="${c.dl}"` : '';
+    const italic = c.key === 'designation' ? ' italic text-orange-700' : '';
+    return `<td class="px-3 py-1">
+      <input type="${inputType}" ${dlAttr} value="${escHtml(String(rawVal))}" step="0.01"
+        class="w-full border-0 border-b border-transparent hover:border-gray-300 focus:border-orange-400 bg-transparent text-sm ${align} px-0 focus:outline-none${italic}"
+        onblur="saveFournitureField('${v.id}','${c.key}',this.value)">
+    </td>`;
+  }).join('');
+  return `
+    <tr class="bg-orange-50 border-b border-orange-100" id="frow-${v.id}">
+      <td class="px-3 py-1 text-gray-400 text-xs pl-5">
+        <div class="flex items-center gap-1"><span class="text-orange-400">⮑</span>
+          <input type="text" value="${escHtml(v.numero_poste || '')}"
+            class="w-10 border-0 border-b border-transparent hover:border-gray-300 focus:border-orange-400 bg-transparent text-xs px-0 focus:outline-none"
+            onblur="saveFournitureField('${v.id}','numero_poste',this.value)">
+        </div>
+      </td>
+      ${cells}
+      ${renderBpuCell(v)}
+      ${renderCaractCell(v)}
+      <td class="px-3 py-1 text-center">
+        <button onclick="deleteFourniture('${v.id}')" class="text-red-300 hover:text-red-500 text-sm">🗑</button>
+      </td>
+    </tr>`;
+}
+
+function _bpuPairs(f) {
+  if (!f.caracteristiques) return [];
+  if (Array.isArray(f.caracteristiques)) return f.caracteristiques.filter(c => c.cle);
+  if (typeof f.caracteristiques === 'object')
+    return Object.entries(f.caracteristiques).map(([k, v]) => ({ cle: k, valeur: String(v) }));
+  return [];
+}
+
+function renderBpuCell(f) {
+  const pairs = _bpuPairs(f);
+  if (!pairs.length) {
+    return `<td class="px-3 py-2 text-center">
+      <button onclick="editCaracteristiques('${f.id}')" class="text-gray-200 hover:text-blue-400 text-sm transition-colors" title="Ajouter des caractéristiques">✏️</button>
+    </td>`;
+  }
+  const tooltipLines = pairs.map(p => `<div><span class="text-gray-400">${escHtml(p.cle)}</span> : <span class="font-medium">${escHtml(String(p.valeur))}</span></div>`).join('');
+  return `<td class="px-3 py-2 text-center">
+    <div class="relative inline-flex items-center gap-1 group">
+      <span class="text-blue-500 cursor-default text-base leading-none">📐</span>
+      <div class="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-64 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-2 text-left text-xs text-gray-700 space-y-0.5 pointer-events-none">
+        <div class="text-gray-400 font-semibold mb-1 text-xs uppercase tracking-wide">BPU — ${pairs.length} spec${pairs.length > 1 ? 's' : ''}</div>
+        ${tooltipLines}
+      </div>
+      <button onclick="editCaracteristiques('${f.id}')" class="text-gray-300 hover:text-blue-500 text-sm transition-colors opacity-0 group-hover:opacity-100" title="Modifier">✏️</button>
+    </div>
+  </td>`;
+}
+
+function renderCaractCell(f) {
+  const pairs = _bpuPairs(f);
+  const textVal = pairs.map(p => `${p.cle}: ${p.valeur}`).join('\n');
+  return `<td class="px-2 py-1 align-top">
+    <textarea rows="1"
+      class="w-full min-w-[130px] border-0 border-b border-transparent hover:border-blue-200 focus:border-blue-400 bg-transparent text-xs focus:outline-none resize-none leading-snug"
+      placeholder="Prop: val"
+      title="Une propriété par ligne : Nom: Valeur"
+      onfocus="this.rows=Math.max(3,this.value.split('\\n').length)"
+      onblur="this.rows=1;saveCaractInline('${f.id}',this.value)"
+    >${escHtml(textVal)}</textarea>
+  </td>`;
+}
+
+async function saveCaractInline(fournitureId, raw) {
+  const pairs = raw.split('\n').map(line => {
+    const t = line.trim();
+    if (!t) return null;
+    const sep = t.indexOf(':');
+    if (sep < 1) return { cle: t, valeur: '' };
+    return { cle: t.slice(0, sep).trim(), valeur: t.slice(sep + 1).trim() };
+  }).filter(Boolean);
+  const toSave = pairs.length ? pairs : null;
+  try {
+    const { data, error } = await db.from('fournitures')
+      .update({ caracteristiques: toSave })
+      .eq('id', fournitureId).select('id,caracteristiques').single();
+    if (error) throw error;
+    const f = state.fournitures.find(x => x.id === fournitureId);
+    if (f) f.caracteristiques = data?.caracteristiques ?? toSave;
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function saveFournitureField(id, key, value) {
+  const f = state.fournitures.find(x => x.id === id);
+  if (!f) return;
+  if (key === 'type_veg') {
+    const caract = Array.isArray(f.caracteristiques) ? [...f.caracteristiques] : [];
+    const idx = caract.findIndex(c => c.cle === 'Type');
+    const val = value.trim();
+    if (val) { if (idx >= 0) caract[idx].valeur = val; else caract.unshift({ cle: 'Type', valeur: val }); }
+    else if (idx >= 0) { caract.splice(idx, 1); }
+    try {
+      await db.from('fournitures').update({ caracteristiques: caract }).eq('id', id);
+      f.caracteristiques = caract;
+    } catch(err) { toast(err.message, 'err'); }
+    return;
+  }
+  const numKeys = ['qte', 'prix_etude_ht', 'surface', 'longueur', 'largeur'];
+  const parsed = numKeys.includes(key) ? (parseFloat(value) || null) : (value.trim() || null);
+  if (String(f[key] ?? '') === String(parsed ?? '')) return;
+  try {
+    await db.from('fournitures').update({ [key]: parsed }).eq('id', id);
+    f[key] = parsed;
+  } catch(err) { toast(err.message, 'err'); }
+}
+
+function toggleDetailRow(id) {
+  const row = document.getElementById(`detail-${id}`);
+  if (row) row.classList.toggle('hidden');
+}
+
+function renderDetailRow(f) {
+  let caract = [];
+  if (Array.isArray(f.caracteristiques)) {
+    caract = f.caracteristiques;
+  } else if (f.caracteristiques && typeof f.caracteristiques === 'object') {
+    caract = Object.entries(f.caracteristiques)
+      .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+      .map(([k, v]) => ({ cle: k, valeur: String(v) }));
+  }
+  const fiches = Array.isArray(f.fiches_techniques) ? f.fiches_techniques : [];
+  const isBpuCaract = caract.some(c => /^(spec_\d+|description_bpu|designation_bpu|unite_bpu)$/.test(c.cle));
+  const bpuBanner = isBpuCaract
+    ? `<div class="mb-2 text-xs bg-amber-50 border border-amber-200 rounded px-2 py-1 text-amber-700 flex items-center gap-1">
+        <span>📐</span><span>Caractéristiques importées depuis un BPU</span>
+       </div>` : '';
+  const caractRows = caract.map((c, i) => `
+    <div class="flex gap-2 mb-1 items-center">
+      <input type="text" class="border rounded px-2 py-1 text-xs w-36" value="${escHtml(c.cle || '')}"
+        placeholder="Nom (ex: Calibre)" onchange="updateCaractField('${f.id}', ${i}, 'cle', this.value)">
+      <span class="text-gray-400 text-xs">:</span>
+      <input type="text" class="border rounded px-2 py-1 text-xs flex-1" value="${escHtml(c.valeur || '')}"
+        placeholder="Valeur" onchange="updateCaractField('${f.id}', ${i}, 'valeur', this.value)">
+      <button onclick="removeCaract('${f.id}', ${i})" class="text-red-300 hover:text-red-500 text-xs">✕</button>
+    </div>
+  `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucune caractéristique.</p>';
+  const fichesRows = fiches.map((url, i) => `
+    <div class="flex gap-2 mb-1 items-center">
+      <input type="url" class="border rounded px-2 py-1 text-xs flex-1" value="${escHtml(url)}"
+        placeholder="https://..." onchange="updateFicheField('${f.id}', ${i}, this.value)">
+      ${url ? `<a href="${escHtml(url)}" target="_blank" class="text-blue-400 hover:text-blue-600 text-xs">📄</a>` : ''}
+      <button onclick="removeFiche('${f.id}', ${i})" class="text-red-300 hover:text-red-500 text-xs">✕</button>
+    </div>
+  `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucune fiche technique.</p>';
+  return `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Caractéristiques techniques</h4>
+          <button onclick="addCaract('${f.id}')" class="text-xs text-green-600 hover:underline">+ Ajouter</button>
+        </div>
+        ${bpuBanner}
+        <div id="caract-${f.id}">${caractRows}</div>
+        <button onclick="saveCaract('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fiches techniques</h4>
+          <button onclick="addFiche('${f.id}')" class="text-xs text-green-600 hover:underline">+ Ajouter</button>
+        </div>
+        <div id="fiches-${f.id}">${fichesRows}</div>
+        <button onclick="saveFiches('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
       </div>
     </div>
-  `).join('');
+  `;
+}
+
+function normalizeCaract(f) {
+  if (Array.isArray(f.caracteristiques)) return;
+  if (f.caracteristiques && typeof f.caracteristiques === 'object') {
+    f.caracteristiques = Object.entries(f.caracteristiques)
+      .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+      .map(([k, v]) => ({ cle: k, valeur: String(v) }));
+  } else {
+    f.caracteristiques = [];
+  }
+}
+
+function addCaract(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  normalizeCaract(f);
+  f.caracteristiques.push({ cle: '', valeur: '' });
+  refreshDetailRow(fournitureId);
+}
+
+function removeCaract(fournitureId, idx) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  normalizeCaract(f);
+  f.caracteristiques.splice(idx, 1);
+  refreshDetailRow(fournitureId);
+}
+
+function updateCaractField(fournitureId, idx, field, value) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  normalizeCaract(f);
+  if (f.caracteristiques[idx]) f.caracteristiques[idx][field] = value;
+}
+
+async function saveCaract(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  try {
+    const { error } = await db.from('fournitures').update({ caracteristiques: f.caracteristiques || [] }).eq('id', fournitureId);
+    if (error) throw error;
+    toast('Caractéristiques enregistrées !');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function addFiche(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  if (!Array.isArray(f.fiches_techniques)) f.fiches_techniques = [];
+  f.fiches_techniques.push('');
+  refreshDetailRow(fournitureId);
+}
+
+function removeFiche(fournitureId, idx) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f || !Array.isArray(f.fiches_techniques)) return;
+  f.fiches_techniques.splice(idx, 1);
+  refreshDetailRow(fournitureId);
+}
+
+function updateFicheField(fournitureId, idx, value) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f || f.fiches_techniques[idx] === undefined) return;
+  f.fiches_techniques[idx] = value;
+}
+
+async function saveFiches(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  try {
+    const { error } = await db.from('fournitures').update({ fiches_techniques: f.fiches_techniques || [] }).eq('id', fournitureId);
+    if (error) throw error;
+    toast('Fiches techniques enregistrées !');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function refreshDetailRow(fournitureId) {
+  const td = document.querySelector(`#detail-${fournitureId} td`);
+  const f  = state.fournitures.find(x => x.id === fournitureId);
+  if (td && f) td.innerHTML = renderDetailRow(f);
+}
+
+function editCaracteristiques(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  const pairs = _bpuPairs(f);
+  const textVal = pairs.map(p => `${p.cle} : ${p.valeur}`).join('\n');
+  showModal(`
+    <h2 class="text-lg font-bold mb-1">Caractéristiques BPU</h2>
+    <p class="text-sm text-gray-400 mb-3">${escHtml(f.designation)}</p>
+    <p class="text-xs text-gray-400 mb-2">Une caractéristique par ligne, format <span class="font-mono bg-gray-100 px-1 rounded">Propriété : Valeur</span></p>
+    <textarea id="caract-textarea" rows="8" class="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-green-500 mb-4" placeholder="Couleur : RAL 9010\nÉpaisseur : 2mm">${escHtml(textVal)}</textarea>
+    <div class="flex gap-3">
+      <button onclick="saveCaracteristiquesText('${fournitureId}')" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('caract-textarea')?.focus(), 50);
+}
+
+async function saveCaracteristiquesText(fournitureId) {
+  const raw = document.getElementById('caract-textarea')?.value || '';
+  const pairs = raw.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    const sep = trimmed.indexOf(':');
+    if (sep < 1) return { cle: trimmed, valeur: '' };
+    return { cle: trimmed.slice(0, sep).trim(), valeur: trimmed.slice(sep + 1).trim() };
+  }).filter(Boolean);
+  const toSave = pairs.length ? pairs : null;
+  try {
+    const { data, error } = await db.from('fournitures')
+      .update({ caracteristiques: toSave }).eq('id', fournitureId)
+      .select('id, caracteristiques').single();
+    if (error) throw error;
+    const f = state.fournitures.find(x => x.id === fournitureId);
+    if (f) f.caracteristiques = data?.caracteristiques ?? toSave;
+    closeModal();
+    renderFournitures();
+    toast('Caractéristiques mises à jour');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+function openFichesModal(fournitureId) {
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  if (!f) return;
+  const fiches = Array.isArray(f.fiches_techniques) ? [...f.fiches_techniques] : [];
+  const renderRows = () => {
+    const container = document.getElementById('fiches-modal-list');
+    if (!container) return;
+    if (!fiches.length) { container.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune fiche.</p>'; return; }
+    container.innerHTML = fiches.map((url, i) => `
+      <div class="flex gap-2 items-center mb-1">
+        <input type="url" value="${escHtml(url)}" placeholder="https://..."
+          class="flex-1 border rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+          onchange="window._fichesTemp[${i}]=this.value">
+        ${url ? `<a href="${escHtml(url)}" target="_blank" class="text-blue-400 hover:text-blue-600">📄</a>` : ''}
+        <button onclick="window._fichesTemp.splice(${i},1);openFichesModal('${fournitureId}')" class="text-red-300 hover:text-red-500 text-xs">✕</button>
+      </div>`).join('');
+  };
+  window._fichesTemp = [...fiches];
+  showModal(`
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold">📄 Fiches techniques</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">${escHtml(f.designation)}</p>
+    <div id="fiches-modal-list" class="mb-3"></div>
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button onclick="window._fichesTemp.push('');openFichesModal('${fournitureId}')" class="text-xs text-blue-600 hover:underline">+ URL</button>
+      <span class="text-gray-300 text-xs">|</span>
+      <label class="text-xs text-blue-600 hover:underline cursor-pointer">+ PDF
+        <input type="file" accept=".pdf" class="hidden" onchange="uploadFichePdf('${fournitureId}', this)">
+      </label>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="saveFichesInline('${fournitureId}')" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">💾 Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+    </div>`);
+  renderRows();
+}
+
+async function uploadFichePdf(fournitureId, input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  toast('Upload en cours…');
+  try {
+    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: 'application/pdf' });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
+    const f = state.fournitures.find(x => x.id === fournitureId);
+    const existantes = Array.isArray(f?.fiches_techniques) ? f.fiches_techniques : [];
+    const nouvelles = [...existantes, urlData.publicUrl];
+    const { error } = await db.from('fournitures').update({ fiches_techniques: nouvelles }).eq('id', fournitureId);
+    if (error) throw error;
+    if (f) f.fiches_techniques = nouvelles;
+    window._fichesTemp = [...nouvelles];
+    closeModal();
+    renderFournitures();
+    toast('Fiche technique ajoutée');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function saveFichesInline(fournitureId) {
+  const fiches = (window._fichesTemp || []).map(u => (u || '').trim()).filter(Boolean);
+  try {
+    const { data, error } = await db.from('fournitures')
+      .update({ fiches_techniques: fiches.length ? fiches : null })
+      .eq('id', fournitureId).select('id,fiches_techniques').single();
+    if (error) throw error;
+    const f = state.fournitures.find(x => x.id === fournitureId);
+    if (f) f.fiches_techniques = data?.fiches_techniques ?? (fiches.length ? fiches : null);
+    closeModal();
+    renderFournitures();
+    toast('Fiches mises à jour');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// ── Variante inline ──
+window._inlineVarParent = null;
+
+function addVarianteInline(parentId) {
+  document.getElementById('inline-var-row')?.remove();
+  const parent = state.fournitures.find(f => f.id === parentId);
+  if (!parent) return;
+  const fam = state.familles.find(f => f.id === parent.famille_id);
+  const cols = FCOLUMNS[famColType(fam?.nom || '')];
+  window._inlineVarParent = parentId;
+  const inputs = cols.map(c => {
+    const rawVal = c.key === 'prix_etude_ht' ? (parent.prix_etude_ht ?? '') : fColVal(parent, c.key);
+    const type = (c.num || c.key === 'prix_etude_ht') ? 'number' : 'text';
+    const align = c.cls.includes('text-right') ? 'text-right' : '';
+    const dlAttr = c.dl ? `list="${c.dl}"` : '';
+    if (c.key === 'designation') {
+      return `<td class="px-2 py-1 pl-7">
+        <input id="inv-designation" type="text" value="${escHtml(String(parent.designation || ''))}" placeholder="Désignation *"
+          class="w-full border rounded px-2 py-1 text-xs border-orange-300 focus:border-orange-500 focus:outline-none">
+      </td>`;
+    }
+    return `<td class="px-2 py-1">
+      <input id="inv-${c.key}" type="${type}" ${dlAttr} value="${escHtml(String(rawVal))}" step="0.01"
+        class="w-full border rounded px-2 py-1 text-xs ${align} border-orange-300 focus:border-orange-500 focus:outline-none">
+    </td>`;
+  }).join('');
+  const tr = document.createElement('tr');
+  tr.id = 'inline-var-row';
+  tr.className = 'bg-orange-50 border-b border-orange-200';
+  tr.innerHTML = `
+    <td class="px-2 py-1 text-orange-400 text-xs pl-5">⮑ var</td>
+    ${inputs}
+    <td class="px-2 py-1" colspan="3">
+      <div class="flex gap-1 justify-center">
+        <button onclick="saveInlineVariante('${parentId}')" class="bg-green-600 text-white rounded px-2 py-0.5 text-xs hover:bg-green-700">✓</button>
+        <button onclick="cancelInlineVariante()" class="border rounded px-2 py-0.5 text-xs hover:bg-gray-50">✕</button>
+      </div>
+    </td>`;
+  const detailRow = document.getElementById(`detail-${parentId}`);
+  const insertAfter = detailRow || document.getElementById(`frow-${parentId}`);
+  insertAfter?.insertAdjacentElement('afterend', tr);
+  tr.querySelector('#inv-designation')?.focus();
+}
+
+function cancelInlineVariante() {
+  document.getElementById('inline-var-row')?.remove();
+  window._inlineVarParent = null;
+}
+
+async function saveInlineVariante(parentId) {
+  const parent = state.fournitures.find(f => f.id === parentId);
+  if (!parent) return;
+  const g = id => document.getElementById(id)?.value?.trim() || '';
+  const designation = g('inv-designation');
+  if (!designation) return toast('Désignation obligatoire', 'err');
+  const payload = {
+    chantier_id: state.currentChantier.id,
+    parent_id: parentId, is_variante: true,
+    famille_id: parent.famille_id || null,
+    numero_poste: parent.numero_poste || null,
+    designation,
+    qte: parseFloat(g('inv-qte')) || null,
+    unite: g('inv-unite') || parent.unite || 'U',
+    prix_etude_ht: parseFloat(g('inv-prix_etude_ht')) || null,
+    caracteristiques: parent.caracteristiques || null
+  };
+  try {
+    const { data, error } = await db.from('fournitures').insert(payload).select('*').single();
+    if (error) throw error;
+    state.fournitures.push(data);
+    cancelInlineVariante();
+    renderFournitures();
+    toast('Variante ajoutée !');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// ── Champs famille ──
+const FAMILLE_CHAMPS = [
+  { test:/végét|arbre|arbust|vivace|plante|haie|grimpa|gramin/i,
+    champs:[{cle:'Type',ph:'ex : Tige, Cépée, Baliveau, Touffu, Vivace…'},{cle:'Taille / Calibre',ph:'ex : 12/14, 80/100, 150/175, P9…'},{cle:'Conditionnement',ph:'ex : CT, MG, MA, RN, HB, BA, C35…'}],
+    certifications:['Végétal local','Plante Bleue niv.1','Plante Bleue niv.2','Plante Bleue niv.3','Label Rouge','Fleurs de France','IGP','Passeport Phytosanitaire','CAC','Certifié INFEL®'] },
+  { test:/substrat/i,
+    champs:[{cle:'Type',ph:'ex : Terreau, Terre végétale, Compost…'},{cle:'Granulométrie',ph:'ex : 0-10mm, 10-20mm…'},{cle:'Conditionnement',ph:'ex : Sac 50L, Vrac, Big-bag…'}],
+    certifications:['NF Supports de culture','RHP','Horticert','CE'] },
+  { test:/semis|gazon/i,
+    champs:[{cle:'Type',ph:'ex : Semis, Placage, Gazon synthétique…'},{cle:'Composition',ph:'ex : Ray-grass, Fétuque, Poa…'},{cle:'Conditionnement',ph:'ex : Rouleau, Plaque, Sac 5kg…'}],
+    certifications:['Label Rouge Gazon','SOC certifié SEMAE','CE'] },
+  { test:/accessoire.*plant|plantation.*access/i,
+    champs:[{cle:'Type',ph:'ex : Tuteur, Hauban, Filet, Attache…'},{cle:'Dimensions',ph:'ex : 2m, 180cm…'},{cle:'Matériau',ph:'ex : Bois, Acier, Polypropylène…'}],
+    certifications:['CE','NF'] },
+  { test:/arrosage|irrigat/i,
+    champs:[{cle:'Type',ph:'ex : Goutte-à-goutte, Asperseur, Micro-jet…'},{cle:'Débit (l/h)',ph:'ex : 2, 4, 8…'},{cle:'Diamètre (mm)',ph:'ex : 16, 25, 32…'}],
+    certifications:['CE','NF EN'] },
+  { test:/mobilier.*urbain|urbain.*mobilier/i,
+    champs:[{cle:'Matériau',ph:'ex : Acier, Bois, Béton, Alu…'},{cle:'Coloris / RAL',ph:'ex : RAL 7016, Gris anthracite…'},{cle:'Dimensions',ph:'ex : L120×l40×H75 cm'}],
+    certifications:['NF Mobilier urbain','CE'] },
+  { test:/bordure|délinit|délimit/i,
+    champs:[{cle:'Matériau',ph:'ex : Béton, Acier, Bois, Pierre…'},{cle:'Hauteur (cm)',ph:'ex : 10, 20, 25…'},{cle:'Longueur (m)',ph:'ex : 1.00, 1.50, 2.00…'}],
+    certifications:['CE','NF','NF Bois','PEFC','FSC'] },
+  { test:/clôture|portail/i,
+    champs:[{cle:'Matériau',ph:'ex : Acier galvanisé, Alu, Bois, PVC…'},{cle:'Hauteur (m)',ph:'ex : 1.00, 1.50, 2.00…'},{cle:'Coloris / RAL',ph:'ex : RAL 7016, RAL 6005…'}],
+    certifications:['NF 563 (CSTB)','CE'] },
+  { test:/minéral|décorat/i,
+    champs:[{cle:'Type',ph:'ex : Gravier, Galets, Ardoise, Porphyre…'},{cle:'Granulométrie',ph:'ex : 10-20mm, 20-40mm…'},{cle:'Coloris',ph:'ex : Blanc, Gris, Brun…'},{cle:'Conditionnement',ph:'ex : Sac, Vrac, Big-bag…'}],
+    certifications:['CE'] },
+  { test:/revêtement.*sol|sol.*revêtement/i,
+    champs:[{cle:'Matériau',ph:'ex : Granit, Béton, Bois, Résine…'},{cle:'Épaisseur (mm)',ph:'ex : 30, 40, 50…'},{cle:'Format / Dimensions',ph:'ex : 60×60, 40×20 cm…'}],
+    certifications:['CE','NF','NF Bois','PEFC','FSC'] },
+  { test:/réseau.*enterr|enterr.*réseau/i,
+    champs:[{cle:'Type',ph:'ex : EU, EP, AEP, Électricité, Télécom…'},{cle:'Diamètre (mm)',ph:'ex : 100, 160, 200…'},{cle:'Matériau',ph:'ex : PVC, PE, Béton, Fonte…'}],
+    certifications:['CE','NF (canalisations CSTB)'] },
+  { test:/éclairage.*ext|eclairage.*ext/i,
+    champs:[{cle:'Puissance (W)',ph:'ex : 9, 12, 24, 50…'},{cle:'Température (K)',ph:'ex : 2700, 3000, 4000…'},{cle:'Indice IP',ph:'ex : IP65, IP67, IP68…'}],
+    certifications:['CE (obligatoire)','NF C 71000 / EN 60598'] },
+  { test:/réseau.*élec|élec.*réseau/i,
+    champs:[{cle:'Section (mm²)',ph:'ex : 1.5, 2.5, 4, 6…'},{cle:'Tension (V)',ph:'ex : 230V, 400V…'},{cle:'Type',ph:'ex : U1000R2V, H07RN-F…'}],
+    certifications:['CE','NF C 15-100'] },
+  { test:/bassin|fontain/i,
+    champs:[{cle:'Type',ph:'ex : Bassin naturel, Fontaine, Noue…'},{cle:'Dimensions',ph:'ex : 5×3m, Ø120cm…'},{cle:'Matériau',ph:'ex : Béton, EPDM, Liner, Granite…'}],
+    certifications:['CE','NF EN 1717'] },
+  { test:/maçonn/i,
+    champs:[{cle:'Matériau',ph:'ex : Béton, Pierre, Granit, Brique…'},{cle:'Dimensions',ph:'ex : 40×20×20 cm'},{cle:'Finition',ph:'ex : Brut, Brossé, Poli, Taillé…'}],
+    certifications:['CE','NF DTU','CSTB'] },
+  { test:/charpente|ossature/i,
+    champs:[{cle:'Matériau',ph:'ex : Bois, Acier, Alu…'},{cle:'Section',ph:'ex : 45×95, HEA 100…'},{cle:'Traitement',ph:'ex : Classe 2, Autoclave, Lasure…'}],
+    certifications:['CE','NF DTU 31.1','NF Bois','PEFC','FSC'] },
+  { test:/couverture|étanchéité/i,
+    champs:[{cle:'Type',ph:'ex : Tuile, Ardoise, EPDM, Bac acier…'},{cle:'Matériau',ph:'ex : Terre cuite, Fibrociment, Zinc…'},{cle:'Épaisseur (mm)',ph:'ex : 1.2, 1.5, 4…'}],
+    certifications:['CE','NF DTU 40','CSTB'] },
+  { test:/menuiserie.*ext|porte.*ext|fenêtre/i,
+    champs:[{cle:'Matériau',ph:'ex : Bois, PVC, Alu, Mixte…'},{cle:'Dimensions (l×H)',ph:'ex : 900×2050 mm'},{cle:'Coloris / RAL',ph:'ex : RAL 7016, Blanc…'}],
+    certifications:['CE','NF Menuiseries','Acotherm','CEKAL'] },
+  { test:/menuiserie.*int|porte.*int/i,
+    champs:[{cle:'Matériau',ph:'ex : Bois, MDF, Alu…'},{cle:'Dimensions (l×H)',ph:'ex : 730×2040 mm'},{cle:'Finition',ph:'ex : Brut, Peint, Laqué…'}],
+    certifications:['CE','NF','Qualibat'] },
+  { test:/plomberie|chauffage/i,
+    champs:[{cle:'Type',ph:'ex : Tuyau, Robinetterie, Chaudière…'},{cle:'Diamètre (mm)',ph:'ex : 20, 25, 32, 40…'},{cle:'Matériau',ph:'ex : Cuivre, PER, PVC, Acier…'}],
+    certifications:['CE',"NF EN 1717","Quali'Eau"] },
+  { test:/électricité.*int|electricite.*int/i,
+    champs:[{cle:'Section (mm²)',ph:'ex : 1.5, 2.5, 4…'},{cle:'Type',ph:'ex : H07VU, H07VR, R2V…'},{cle:'Référence',ph:'ex : Legrand, Schneider…'}],
+    certifications:['CE','NF C 15-100','Qualifelec'] },
+  { test:/peinture|revêtement.*int/i,
+    champs:[{cle:'Type',ph:'ex : Peinture, Enduit, Carrelage…'},{cle:'Finition',ph:'ex : Mat, Satiné, Brillant…'},{cle:'Coloris',ph:'ex : Blanc pur, RAL 9010…'}],
+    certifications:['CE','NF'] },
+  { test:/ventil|climati/i,
+    champs:[{cle:'Type',ph:'ex : VMC, Split, CTA, Gainable…'},{cle:'Débit (m³/h)',ph:'ex : 100, 200, 500…'},{cle:'Puissance (W)',ph:'ex : 500, 1500, 3000…'}],
+    certifications:['CE','NF','Qualibat'] },
+  { test:/ferraill|coffrage/i,
+    champs:[{cle:'Type',ph:'ex : HA, Treillis, Coffrage perdu…'},{cle:'Diamètre (mm)',ph:'ex : 6, 8, 10, 12, 16…'},{cle:'Longueur (m)',ph:'ex : 6, 12…'}],
+    certifications:['CE','NF'] },
+  { test:/parking|stationnement/i,
+    champs:[{cle:'Type',ph:'ex : Plot, Borne, Barrière, Marquage…'},{cle:'Matériau',ph:'ex : Fonte, Acier, Béton…'},{cle:'Dimensions',ph:'ex : H80cm, Ø10cm…'}],
+    certifications:['CE','NF'] },
+  { test:/pmr|accessibilité/i,
+    champs:[{cle:'Type',ph:'ex : Rampe, Bande podotactile, Main courante…'},{cle:'Matériau',ph:'ex : Alu, Inox, Béton…'},{cle:'Dimensions',ph:'ex : L200cm, l90cm…'}],
+    certifications:['CE','NF'] },
+  { test:/jeux|loisir/i,
+    champs:[{cle:'Type',ph:'ex : Toboggan, Balançoire, Portique…'},{cle:'Matériau',ph:'ex : Bois, PEHD, Acier galva…'},{cle:"Tranche d'âge",ph:'ex : 2-5 ans, 5-12 ans…'}],
+    certifications:['CE (obligatoire)','NF EN 1176','NF EN 1177'] },
+  { test:/sécurité|contrôle.*accès|controle.*acces/i,
+    champs:[{cle:'Type',ph:'ex : Interphone, Lecteur badge, Caméra…'},{cle:'Alimentation',ph:'ex : 12VDC, 230VAC, PoE…'},{cle:'Référence',ph:'ex : Aiphone, Came, Hikvision…'}],
+    certifications:['CE','NF'] },
+  { test:/courant.*faible|faible.*courant|télécom|telecom/i,
+    champs:[{cle:'Type',ph:'ex : RJ45, Fibre, Coaxial, Haut-parleur…'},{cle:'Catégorie',ph:'ex : Cat6, Cat6A, Monomode…'},{cle:'Section',ph:'ex : 4 paires, 2×0.5mm²…'}],
+    certifications:['CE'] },
+];
+
+function getFamilleConfig(nomFamille) {
+  if (!nomFamille) return null;
+  return FAMILLE_CHAMPS.find(f => f.test.test(nomFamille)) || null;
+}
+
+// ── Modal ajouter fourniture ──
+function openAddFournitureModal(parentId, parent) {
+  const isVariante = !!parentId;
+  let inheritedCaract = [];
+  if (parent?.caracteristiques) {
+    if (Array.isArray(parent.caracteristiques)) {
+      inheritedCaract = parent.caracteristiques.map(c => ({ cle: c.cle, valeur: c.valeur }));
+    } else if (typeof parent.caracteristiques === 'object') {
+      inheritedCaract = Object.entries(parent.caracteristiques).filter(([, v]) => v).map(([k, v]) => ({ cle: k, valeur: String(v) }));
+    }
+  }
+  window._nfCaract = JSON.parse(JSON.stringify(inheritedCaract));
+
+  window.nfCaractRows = () => (window._nfCaract.length
+    ? window._nfCaract.map((c, i) => `
+      <div class="flex gap-2 mb-1 items-center">
+        <input type="text" class="border rounded px-2 py-1 text-xs w-36" value="${escHtml(c.cle)}"
+          placeholder="Nom" oninput="window._nfCaract[${i}].cle=this.value">
+        <span class="text-gray-400 text-xs">:</span>
+        <input type="text" class="border rounded px-2 py-1 text-xs flex-1" value="${escHtml(c.valeur)}"
+          placeholder="Valeur" oninput="window._nfCaract[${i}].valeur=this.value">
+        <button type="button" onclick="window._nfCaract.splice(${i},1);document.getElementById('nf-caract-body').innerHTML=nfCaractRows()" class="text-red-300 hover:text-red-500 text-xs">✕</button>
+      </div>`).join('')
+    : '<p class="text-xs text-gray-400 italic">Aucune caractéristique.</p>');
+
+  const famSelect = state.familles.filter(f => f.actif !== false).map(f =>
+    `<option value="${f.id}" ${parent?.famille_id === f.id ? 'selected' : ''}>${f.icone} ${f.nom}</option>`
+  ).join('');
+
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">${isVariante ? '+ Variante' : '+ Fourniture'}</h2>
+    ${isVariante && parent ? `<div class="mb-3 text-xs bg-blue-50 border border-blue-200 rounded px-3 py-1.5 text-blue-700">Variante de : <strong>${escHtml(parent.designation)}</strong></div>` : ''}
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">N° Poste</label>
+        <input id="nf-poste" type="text" class="w-full border rounded px-3 py-2 text-sm" value="${escHtml(parent?.numero_poste || '')}" placeholder="ex: 2.3.1">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Famille</label>
+        <select id="nf-famille" class="w-full border rounded px-3 py-2 text-sm" onchange="nfUpdateChampsFamille(this.value)">
+          <option value="">— Famille —</option>
+          ${famSelect}
+        </select>
+      </div>
+    </div>
+    <label class="block text-xs text-gray-500 mb-1">Désignation *</label>
+    <input id="nf-designation" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${escHtml(isVariante ? (parent?.designation || '') : '')}">
+    <div id="nf-champs-famille" class="mb-3"></div>
+    <label class="block text-xs text-gray-500 mb-1">Description</label>
+    <textarea id="nf-description" rows="2" class="w-full border rounded px-3 py-2 text-sm mb-3">${escHtml(parent?.description || '')}</textarea>
+    <div class="grid grid-cols-3 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Quantité</label>
+        <input id="nf-qte" type="number" step="0.01" class="w-full border rounded px-3 py-2 text-sm" value="${parent?.qte ?? ''}">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Unité</label>
+        <input id="nf-unite" type="text" class="w-full border rounded px-3 py-2 text-sm" value="${escHtml(parent?.unite || 'U')}">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Prix étude HT</label>
+        <input id="nf-prix" type="number" step="0.01" class="w-full border rounded px-3 py-2 text-sm" value="${parent?.prix_etude_ht ?? ''}">
+      </div>
+    </div>
+    <div class="mb-4">
+      <div class="flex items-center justify-between mb-1">
+        <label class="text-xs text-gray-500">Caractéristiques techniques</label>
+        <button type="button" onclick="window._nfCaract.push({cle:'',valeur:''});document.getElementById('nf-caract-body').innerHTML=nfCaractRows()" class="text-xs text-green-600 hover:underline">+ Ajouter</button>
+      </div>
+      <div id="nf-caract-body" class="border rounded p-2 bg-gray-50">${nfCaractRows()}</div>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="saveFourniture(${parentId ? "'" + parentId + "'" : 'null'})" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+  window._nfParent = parent || null;
+  nfUpdateChampsFamille(parent?.famille_id || '');
+}
+
+function nfUpdateChampsFamille(famId) {
+  const el = document.getElementById('nf-champs-famille');
+  if (!el) return;
+  const fam = state.familles.find(f => f.id === famId);
+  const cfg = getFamilleConfig(fam?.nom);
+  const parent = window._nfParent;
+  const caract = Array.isArray(parent?.caracteristiques) ? parent.caracteristiques : [];
+  const certifs = Array.isArray(parent?.certifications) ? parent.certifications : [];
+  const getValue = (nom) => {
+    const c = caract.find(x => x.cle?.toLowerCase() === nom.toLowerCase());
+    if (c) return c.valeur || '';
+    if (/taille|calibre/i.test(nom)) return parent?.taille || '';
+    if (/condit|contenant/i.test(nom)) return parent?.contenant || '';
+    return '';
+  };
+  if (!cfg) {
+    el.innerHTML = `<div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Taille / Calibre</label>
+        <input id="nf-taille" type="text" list="dl-taille" class="w-full border rounded px-3 py-2 text-sm nf-champ-input" data-champ="Taille"
+          value="${escHtml(parent?.taille || '')}" placeholder="ex: 12/14, Tige, Cépée…">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Conditionnement</label>
+        <input id="nf-contenant" type="text" list="dl-conditionnement" class="w-full border rounded px-3 py-2 text-sm nf-champ-input" data-champ="Conditionnement"
+          value="${escHtml(parent?.contenant || '')}" placeholder="ex: CT, MG, C35, Airpot…">
+      </div>
+    </div>`;
+    return;
+  }
+  const champsHtml = `<div class="grid grid-cols-2 gap-3 mb-3">
+    ${cfg.champs.map(c => `<div>
+      <label class="block text-xs text-gray-500 mb-1">${escHtml(c.cle)}</label>
+      <input type="text" class="w-full border rounded px-3 py-2 text-sm nf-champ-input" data-champ="${escHtml(c.cle)}"
+        value="${escHtml(getValue(c.cle))}" placeholder="${escHtml(c.ph)}">
+    </div>`).join('')}
+  </div>`;
+  const certifsHtml = cfg.certifications.length ? `
+    <div class="mb-1">
+      <label class="block text-xs text-gray-500 mb-2">Certification(s) requise(s)</label>
+      <div class="flex flex-wrap gap-2">
+        ${cfg.certifications.map(cert => `<label class="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" class="nf-certif-check accent-green-700" data-certif="${escHtml(cert)}" ${certifs.includes(cert)?'checked':''}>
+          <span>${escHtml(cert)}</span>
+        </label>`).join('')}
+      </div>
+    </div>` : '';
+  el.innerHTML = champsHtml + certifsHtml;
+}
+
+async function saveFourniture(parentId) {
+  const designation = document.getElementById('nf-designation').value.trim();
+  if (!designation) return toast('Désignation obligatoire', 'err');
+  const manualCaract = (window._nfCaract || []).filter(c => c.cle.trim() || c.valeur.trim());
+  const champsInputs = [...document.querySelectorAll('.nf-champ-input')];
+  const champCaract = champsInputs.map(inp => ({ cle: inp.dataset.champ, valeur: inp.value.trim() })).filter(c => c.valeur);
+  const caract = [...champCaract, ...manualCaract.filter(c => !champCaract.find(x => x.cle?.toLowerCase() === c.cle?.toLowerCase()))];
+  const certifications = [...document.querySelectorAll('.nf-certif-check:checked')].map(cb => cb.dataset.certif);
+  const tailleVal = champsInputs.find(i => /taille|calibre/i.test(i.dataset.champ))?.value.trim()
+    || document.getElementById('nf-taille')?.value.trim() || null;
+  const contenantVal = champsInputs.find(i => /condit|contenant/i.test(i.dataset.champ))?.value.trim()
+    || document.getElementById('nf-contenant')?.value.trim() || null;
+  try {
+    const { data, error } = await db.from('fournitures').insert({
+      chantier_id: state.currentChantier.id,
+      famille_id: document.getElementById('nf-famille').value || null,
+      numero_poste: document.getElementById('nf-poste').value.trim(),
+      designation,
+      taille: tailleVal,
+      contenant: contenantVal,
+      description: document.getElementById('nf-description').value.trim(),
+      qte: document.getElementById('nf-qte').value || null,
+      unite: document.getElementById('nf-unite').value || 'U',
+      prix_etude_ht: document.getElementById('nf-prix').value || null,
+      is_variante: !!parentId,
+      parent_id: parentId || null,
+      caracteristiques: caract.length ? caract : null,
+      certifications: certifications.length ? certifications : null
+    }).select('*').single();
+    if (error) throw error;
+    state.fournitures.push(data);
+    closeModal();
+    renderFournitures();
+    toast(parentId ? 'Variante ajoutée !' : 'Fourniture ajoutée !');
+  } catch (err) { toast(err.message, 'err'); }
 }
 
 // ============================================================
@@ -2305,5 +3394,46 @@ function copierLienLot(token, btn) {
   }).catch(() => toast('Impossible de copier', 'err'));
 }
 </script>
+<datalist id="dl-taille">
+  <option value="Tige">
+  <option value="Cépée">
+  <option value="8/10">
+  <option value="10/12">
+  <option value="12/14">
+  <option value="14/16">
+  <option value="16/18">
+  <option value="18/20">
+  <option value="20/25">
+  <option value="25/30">
+  <option value="30/35">
+  <option value="40/60">
+  <option value="60/80">
+  <option value="80/100">
+  <option value="100/125">
+  <option value="125/150">
+  <option value="150/175">
+  <option value="175/200">
+  <option value="200/250">
+  <option value="250/300">
+  <option value="300/350">
+</datalist>
+<datalist id="dl-conditionnement">
+  <option value="Airpot">
+  <option value="CT">
+  <option value="MG">
+  <option value="B&B">
+  <option value="C1">
+  <option value="C2">
+  <option value="C3">
+  <option value="C5">
+  <option value="C7">
+  <option value="C10">
+  <option value="C15">
+  <option value="C20">
+  <option value="C25">
+  <option value="C35">
+  <option value="C45">
+  <option value="C65">
+</datalist>
 </body>
 </html>
