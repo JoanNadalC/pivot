@@ -1302,16 +1302,21 @@ async function handleStripeWebhook(request, env) {
 const PORTAIL_TABLE = { entrepreneur: 'compte_entrepreneur', fournisseur: 'compte_fournisseur', moe: 'compte_moe' };
 const PORTAIL_URL   = { entrepreneur: 'pivot-entrepreneur.html', fournisseur: 'pivot-fournisseur.html', moe: 'pivot-moe.html' };
 
+function escHtml(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function notifEmailHtml({ title, message, link, portail }) {
+  const safeLink = link && /^https?:\/\//.test(link) ? link : null;
   return `
     <div style="font-family:'Inter',Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1C3A2A;">
       <div style="background:#1C3A2A;padding:32px 40px 24px;">
         <span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#F5F0E8;">Pivot</span><span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#B87333;">.</span><span style="font-family:Georgia,serif;font-size:16px;font-style:italic;color:rgba(245,240,232,0.55);margin-left:6px;">la racine</span>
       </div>
       <div style="padding:40px;background:#F5F0E8;">
-        <p style="font-size:15px;margin:0 0 16px;font-weight:600;">${title}</p>
+        <p style="font-size:15px;margin:0 0 16px;font-weight:600;">${escHtml(title)}</p>
         <p style="font-size:14px;color:#374151;margin:0 0 24px;line-height:1.6;">${message}</p>
-        ${link ? `<a href="${link}" style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:500;">Voir sur Pivot →</a>` : ''}
+        ${safeLink ? `<a href="${escHtml(safeLink)}" style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:500;">Voir sur Pivot →</a>` : ''}
         <p style="font-size:12px;color:#9CA3AF;margin:32px 0 0;">Vous recevez cet email car vos préférences de notification sont réglées sur "Immédiat". Vous pouvez les modifier dans votre espace Pivot, section "Mon compte".</p>
       </div>
     </div>`;
@@ -1345,7 +1350,7 @@ async function handleNotifyEvent(request, env) {
   await sendResendEmail(env, {
     to: compte.email,
     subject: title || 'Nouvelle notification Pivot',
-    html: notifEmailHtml({ title: title || 'Nouvelle notification', message, link: `${env.SITE_URL || 'https://pivotlaracine.com'}/${PORTAIL_URL[portail]}` }),
+    html: notifEmailHtml({ title: title || 'Nouvelle notification', message: escHtml(message), link: `${env.SITE_URL || 'https://pivotlaracine.com'}/${PORTAIL_URL[portail]}` }),
   });
 
   return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
@@ -1504,7 +1509,7 @@ async function handleScheduled(env) {
       const shouldSend = pref === 'daily' || (pref === 'weekly' && isMonday);
       if (!shouldSend) continue;
 
-      const itemsHtml = notifs.map(n => `<li style="margin-bottom:8px;">${n.message}</li>`).join('');
+      const itemsHtml = notifs.map(n => `<li style="margin-bottom:8px;">${escHtml(n.message)}</li>`).join('');
       await sendResendEmail(env, {
         to: compte.email,
         subject: pref === 'daily' ? 'Votre récap quotidien Pivot' : 'Votre récap hebdomadaire Pivot',

@@ -2184,7 +2184,6 @@ window.addEventListener('popstate', async e => {
 });
 
 async function loadDashboard() {
-  console.log('[loadDashboard] called');
   history.replaceState({ view: 'dashboard' }, '');
   showDashboard(true);
   await Promise.all([loadChantiers(), loadFournisseursCarnet(), loadCarnetMoe(), loadNotifications(), loadPendingInvitations(), loadCatalogue()]);
@@ -2332,13 +2331,11 @@ async function refuserLotInvite(lotEntrepriseId) {
 }
 
 async function loadFournisseursCarnet() {
-  console.log('[loadFournisseursCarnet] start, user:', state.user?.id);
   try {
     const { data, error } = await db.from('fournisseurs')
       .select('*')
       .eq('entrepreneur_id', state.user.id)
       .order('nom');
-    console.log('[loadFournisseursCarnet] data:', data?.length, 'error:', error);
     state.fournisseurs = (data || []).map(f => ({
       ...f,
       familles_fournitures: state.familles.find(fam => fam.id === f.famille_id) || null
@@ -2459,7 +2456,6 @@ async function searchMoePortailAutocomplete(query) {
       .select('id, nom, societe, siret, tel, adresse, email')
       .or(`nom.ilike.%${query}%,societe.ilike.%${query}%`)
       .limit(8);
-    console.log('MOE search:', query, 'data:', data, 'error:', error);
     const results = data || [];
     if (!results.length) { box.classList.add('hidden'); return; }
     box.innerHTML = results.map(r => {
@@ -3727,7 +3723,6 @@ async function searchFournisseurs(q) {
         .select('id, nom, nom_entreprise, email, siret, telephone')
         .or(`nom.ilike.%${q}%,nom_entreprise.ilike.%${q}%,email.ilike.%${q}%`)
         .limit(10);
-      console.log('[search portail] data:', portail, 'error:', error);
       if (!error && portail) {
         portailFiltered = portail.filter(p =>
           !state.fournisseurs.some(f =>

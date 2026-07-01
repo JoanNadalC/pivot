@@ -8,3 +8,16 @@ id = "8904c7f043cc4b3289c9560eac90166a"
 
 [vars]
 ALLOWED_ORIGIN = "https://pivotlaracine.com"
+STRIPE_PRICE_ID = "price_1TkreUEO2tSDiHGAuW9WyUb6"
+SUPABASE_URL = "https://djegdtlcvyjtrayrodxj.supabase.co"
+RESEND_FROM = "Pivot La Racine <noreply@pivotlaracine.com>"
+SITE_URL = "https://pivotlaracine.com"
+
+[triggers]
+crons = ["0 8 * * *"]
+
+# Secrets à définir via wrangler secret put :
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET
+# SUPABASE_SERVICE_ROLE_KEY
+# RESEND_API_KEY
