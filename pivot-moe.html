@@ -4,12 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pivot — Maître d'Œuvre</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-moe.svg">
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    .tab-active { border-bottom: 3px solid #7c3aed; color: #7c3aed; font-weight: 600; }
+    :root {
+      --vert:    #1C3A2A;
+      --vert-md: #2D5940;
+      --vert-lt: #3E7A58;
+      --ecru:    #F5F0E8;
+      --cuivre:  #B87333;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+    }
+    body { background: var(--ecru) !important; font-family: 'Inter', sans-serif; }
+    h1, h2, h3 { font-family: 'Playfair Display', serif; }
+    .bg-white   { background: var(--blanc) !important; }
+    .bg-gray-50 { background: var(--ecru)  !important; }
+    .bg-green-600, .bg-green-700 { background: var(--vert) !important; }
+    .hover\:bg-green-700:hover { background: var(--vert-md) !important; }
+    .text-green-600, .text-green-700 { color: var(--vert) !important; }
+    .border-green-600 { border-color: var(--vert) !important; }
+    .tab-active { border-bottom: 3px solid var(--cuivre); color: var(--vert); font-weight: 600; }
     .famille-card { border-left: 4px solid var(--famille-color); }
     .badge-statut { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; }
     .daf-card { border-left: 4px solid #e5e7eb; }
@@ -20,10 +40,21 @@
     .toast { position: fixed; bottom: 1rem; right: 1rem; z-index: 9999; }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
+<body class="min-h-screen">
+
+<!-- LOADING -->
+<div id="loading-view" class="min-h-screen flex items-center justify-center bg-gray-50">
+  <div class="flex flex-col items-center gap-3">
+    <svg class="animate-spin w-8 h-8 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    <span class="text-sm text-gray-400">Chargement…</span>
+  </div>
+</div>
 
 <!-- AUTH -->
-<div id="auth-view" class="min-h-screen flex items-center justify-center">
+<div id="auth-view" class="hidden min-h-screen flex items-center justify-center">
   <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
     <div class="text-center mb-6">
       <svg width="120" height="109" viewBox="0 0 320 290" xmlns="http://www.w3.org/2000/svg" class="mx-auto mb-1">
@@ -79,58 +110,60 @@
 <!-- APP -->
 <div id="app-view" class="hidden">
   <!-- TOPBAR -->
-  <header class="bg-white shadow-sm sticky top-0 z-40">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <button id="btn-back-chantiers" onclick="showChantiersList()" class="hidden text-gray-500 hover:text-gray-800 text-sm">← Chantiers</button>
-        <svg width="52" height="20" viewBox="0 0 320 290" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="cg-mt" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#16a34a" stop-opacity="0.45"/><stop offset="100%" stop-color="#15803d" stop-opacity="0.18"/></linearGradient>
-            <linearGradient id="rg-mt" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.75"/><stop offset="100%" stop-color="#16a34a" stop-opacity="0.45"/></linearGradient>
-          </defs>
-          <g transform="translate(-31,6)"><g transform="rotate(-10,160,160)">
-            <polygon points="158,245 80,95 240,95" fill="url(#cg-mt)" stroke="#16a34a" stroke-width="0.6" stroke-opacity="0.25"/>
-            <line x1="80" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.3"/>
-            <line x1="240" y1="95" x2="158" y2="245" stroke="#16a34a" stroke-width="0.8" opacity="0.2"/>
-            <ellipse cx="160" cy="95" rx="80" ry="19" fill="url(#rg-mt)" stroke="#22c55e" stroke-width="0.6" stroke-opacity="0.3"/>
-            <ellipse cx="148" cy="91" rx="32" ry="8" fill="#fff" opacity="0.18"/>
-          </g></g>
-          <text x="162" y="278" text-anchor="middle" font-family="'Helvetica Neue',Arial,sans-serif" font-size="44" font-weight="800" letter-spacing="-2" fill="#15803d">pivot</text>
-        </svg>
-        <span id="chantier-header" class="text-gray-500 text-sm hidden"></span>
-        <span class="text-xs text-gray-400 border rounded px-2 py-0.5">Maître d'Œuvre</span>
+  <header style="background:var(--vert);border-bottom:1px solid rgba(245,240,232,0.08)" class="fixed top-0 left-0 right-0 z-40">
+    <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(245,240,232,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(245,240,232,0.03) 1px,transparent 1px);background-size:32px 32px;pointer-events:none"></div>
+    <div class="max-w-7xl mx-auto px-5 flex items-center justify-between relative" style="height:56px">
+      <div class="flex items-center gap-4">
+        <div class="flex items-baseline gap-1.5 shrink-0">
+          <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:var(--ecru);letter-spacing:-0.02em">Pivot<span style="color:var(--cuivre)">.</span></span>
+          <span style="font-family:'Playfair Display',serif;font-size:12px;font-style:italic;color:rgba(245,240,232,0.3)">la racine</span>
+        </div>
+        <div style="width:1px;height:18px;background:rgba(245,240,232,0.12)"></div>
+        <span style="font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--cuivre);background:rgba(184,115,51,0.1);border:0.5px solid rgba(184,115,51,0.25);padding:3px 10px;border-radius:20px">Portail MOE</span>
+        <button id="btn-back-chantiers" onclick="showChantiersList()" class="hidden items-center gap-1.5" style="color:rgba(245,240,232,0.55);font-size:12px;font-weight:500;background:rgba(245,240,232,0.06);border:0.5px solid rgba(245,240,232,0.12);padding:4px 12px;border-radius:6px;cursor:pointer"
+          onmouseover="this.style.background='rgba(245,240,232,0.12)';this.style.color='var(--ecru)'"
+          onmouseout="this.style.background='rgba(245,240,232,0.06)';this.style.color='rgba(245,240,232,0.55)'">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Chantiers
+        </button>
+        <span id="chantier-header" class="hidden" style="font-size:13px;color:rgba(245,240,232,0.5)"></span>
       </div>
       <div class="flex items-center gap-3">
-        <button onclick="toggleNotifs()" class="relative text-gray-600 hover:text-purple-700">
-          🔔<span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">0</span>
+        <button onclick="toggleNotifs()" class="relative" style="color:rgba(245,240,232,0.5);transition:color 0.15s" onmouseover="this.style.color='var(--ecru)'" onmouseout="this.style.color='rgba(245,240,232,0.5)'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white rounded-full flex items-center justify-center" style="width:16px;height:16px;font-size:9px">0</span>
         </button>
-        <span id="user-name" class="text-sm text-gray-600"></span>
-        <button onclick="openCompteModal()" class="text-sm text-gray-600 hover:text-blue-700 border border-gray-200 rounded-lg px-2 py-1">👤 Mon compte</button>
-        <button id="btn-mon-equipe" onclick="openEquipeModal()" class="hidden text-sm text-gray-600 hover:text-blue-700 border border-gray-200 rounded-lg px-2 py-1">👥 Mon équipe</button>
-        <button id="btn-logout" onclick="doLogout()" class="hidden text-sm text-gray-400 hover:text-red-500">Déconnexion</button>
+        <div style="width:1px;height:20px;background:rgba(245,240,232,0.1)"></div>
+        <span id="user-name" style="font-size:12px;color:rgba(245,240,232,0.45)"></span>
+        <button onclick="openCompteModal()" style="font-size:12px;color:rgba(245,240,232,0.6);border:0.5px solid rgba(245,240,232,0.15);padding:4px 10px;border-radius:6px;background:rgba(245,240,232,0.04)" onmouseover="this.style.background='rgba(245,240,232,0.1)'" onmouseout="this.style.background='rgba(245,240,232,0.04)'">Mon compte</button>
+        <button id="btn-mon-equipe" onclick="openEquipeModal()" class="hidden" style="font-size:12px;color:rgba(245,240,232,0.6);border:0.5px solid rgba(245,240,232,0.15);padding:4px 10px;border-radius:6px;background:rgba(245,240,232,0.04)">Mon équipe</button>
+        <button id="btn-logout" onclick="doLogout()" class="hidden" style="font-size:12px;color:rgba(245,240,232,0.3);transition:color 0.15s" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='rgba(245,240,232,0.3)'">Déconnexion</button>
       </div>
     </div>
-    <!-- Notifs dropdown -->
-    <div id="notif-panel" class="hidden absolute right-4 top-14 bg-white border rounded-xl shadow-lg w-80 z-50 max-h-96 overflow-y-auto">
-      <div class="p-3 border-b flex justify-between items-center">
-        <span class="font-semibold text-sm">Notifications</span>
-        <button onclick="markAllNotifsRead()" class="text-xs text-purple-600">Tout marquer lu</button>
+    <div id="notif-panel" class="hidden absolute right-4 top-14 rounded-xl shadow-2xl w-80 z-50 max-h-96 overflow-y-auto" style="background:var(--blanc);border:1px solid var(--gris-lt)">
+      <div class="p-3 flex justify-between items-center" style="border-bottom:1px solid var(--gris-lt)">
+        <span style="font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--vert)">Notifications</span>
+        <div class="flex gap-3">
+          <button onclick="markAllNotifsRead()" style="font-size:11px;color:var(--gris)">Tout marquer lu</button>
+          <button onclick="deleteReadNotifs()" style="font-size:11px;color:var(--cuivre)">Effacer lues</button>
+        </div>
       </div>
-      <div id="notif-list"></div>
+      <div id="notif-list" class="divide-y"></div>
     </div>
   </header>
 
   <!-- TABS -->
-  <div class="bg-white border-b sticky top-14 z-30">
-    <div class="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
+  <div class="bg-white border-b sticky z-30" style="top:56px">
+    <div class="max-w-7xl mx-auto px-5 flex gap-1 overflow-x-auto">
       <button onclick="setTab('dashboard')" id="ot-dashboard" class="tab-btn px-4 py-3 text-sm whitespace-nowrap tab-active">🏠 Tableau de bord</button>
       <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📦 Fournitures</button>
       <button onclick="setTab('daf')" id="ot-daf" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📋 DAF / VISA</button>
       <button onclick="setTab('suivi')" id="ot-suivi" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📈 Suivi</button>
+      <button onclick="setTab('lots')" id="ot-lots" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500 hidden">📦 Lots</button>
     </div>
   </div>
 
-  <div class="max-w-6xl mx-auto px-4 py-6">
+  <div class="max-w-6xl mx-auto px-4 py-6" style="padding-top:1.5rem;margin-top:98px">
 
     <!-- TAB: DASHBOARD -->
     <div id="tab-dashboard" class="tab-content">
@@ -138,6 +171,21 @@
       <div id="chantiers-select-panel" class="mb-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-bold text-gray-800">Mes chantiers</h2>
+          <button onclick="ouvrirCreerChantier()" class="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-purple-700">+ Créer un chantier</button>
+        </div>
+        <!-- Invitation MOE en attente d'acceptation -->
+        <div id="pending-moe-invite" class="hidden mb-4 bg-purple-50 border border-purple-200 rounded-xl p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-semibold text-purple-800 text-sm">🏗 Invitation à devenir Maître d'Œuvre</p>
+              <p id="pending-invite-nom" class="text-sm text-purple-600 mt-0.5"></p>
+              <p class="text-xs text-purple-500 mt-1">Un entrepreneur vous invite sur ce chantier. Acceptez pour y avoir accès et donner vos VISA.</p>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button onclick="accepterInviteMoe()" class="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-purple-700">Accepter</button>
+              <button onclick="refuserInviteMoe()" class="border border-purple-300 text-purple-600 px-3 py-1.5 rounded-lg text-xs hover:bg-purple-100">Refuser</button>
+            </div>
+          </div>
         </div>
         <div id="chantiers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
@@ -162,17 +210,36 @@
           <div id="daf-pending-list" class="space-y-2"></div>
         </div>
 
-        <!-- Entreprises invitées -->
+        <!-- Entreprise invitée -->
         <div class="bg-white rounded-xl p-5 shadow-sm mt-4">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold">🏗 Entreprises invitées</h3>
+            <h3 class="font-semibold">🏗 Entreprise invitée</h3>
             <button onclick="openInviteModal()" class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">+ Inviter une entreprise</button>
           </div>
           <div id="invitations-list" class="space-y-2">
             <p class="text-sm text-gray-400">Aucune invitation envoyée.</p>
           </div>
         </div>
+
+        <!-- Lots -->
+        <div class="bg-white rounded-xl p-5 shadow-sm mt-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold">📦 Lots du chantier</h3>
+            <button onclick="ouvrirCreerLot()" class="bg-indigo-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-700">+ Créer un lot</button>
+          </div>
+          <div id="lots-list" class="space-y-2">
+            <p class="text-sm text-gray-400">Aucun lot créé.</p>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <!-- TAB: LOTS (vue détaillée d'un lot) -->
+    <div id="tab-lots" class="tab-content hidden">
+      <div class="flex items-center gap-2 mb-4">
+        <button onclick="setTab('dashboard')" class="text-gray-500 hover:text-gray-800 text-sm">← Retour au tableau de bord</button>
+      </div>
+      <div id="lot-detail-content"></div>
     </div>
 
     <!-- TAB: FOURNITURES (lecture seule) -->
@@ -273,8 +340,11 @@ const state = {
   daf: [],
   fournitures: [],
   familles: [],
+  lots: [],
   filterDaf: 'soumise',
-  notifications: []
+  notifications: [],
+  pendingMoeToken: null,
+  pendingMoeChantier: null
 };
 
 // ============================================================
@@ -466,9 +536,7 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
-document.getElementById('modal-overlay').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
-});
+// Fermeture uniquement via la croix — pas au clic sur le fond
 
 function fmt(n) {
   if (n == null || n === '') return '—';
@@ -538,7 +606,7 @@ async function doRegister() {
     const { data, error } = await db.auth.signUp({ email, password });
     if (error) throw error;
     if (data.user) {
-      await db.from('compte_moe').insert({ id: data.user.id, nom, societe, siret, tel, adresse, email });
+      await db.from('compte_moe').upsert({ id: data.user.id, nom, societe, siret, tel, adresse, email }, { onConflict: 'id' });
     }
     toast('Compte créé ! Vérifiez votre email.');
     showAuthTab('login');
@@ -555,7 +623,78 @@ function showAuthError(msg) {
 
 async function doLogout() {
   await db.auth.signOut();
-  location.reload();
+  window.location.href = 'pivot-login-moe.html';
+}
+
+function _showBrowserNotif(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/favicon.ico' });
+  }
+}
+
+function _requestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function _initNotifRealtime() {
+  if (!state.user) return;
+  db.channel('moe-notifs-' + state.user.id)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'notifications',
+      filter: `user_id=eq.${state.user.id}`
+    }, payload => {
+      const n = payload.new;
+      const labels = {
+        invitation_acceptee: '🏗 Invitation acceptée',
+        reponse_daf: '📋 Réponse DAF reçue',
+        daf_soumise: '📄 Nouvelle DAF soumise',
+      };
+      const label = labels[n.type] || '🔔 Notification';
+      toast(label + (n.message ? ' — ' + n.message : ''));
+      _showBrowserNotif(label, n.message || '');
+      loadNotifications();
+    })
+    .subscribe();
+
+  // Chantiers assignés à ce MOE en temps réel (entrepreneur lie un MOE)
+  db.channel('moe-chantiers-' + state.user.id)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'chantiers',
+      filter: `moe_id=eq.${state.user.id}`
+    }, async () => {
+      await loadChantiers();
+    })
+    .subscribe();
+}
+
+function _hideLoading() {
+  document.getElementById('loading-view')?.classList.add('hidden');
+}
+
+async function _lancerApp(user) {
+  if (state.user) return;
+  const { data: profil } = await db.from('profiles').select('role').eq('id', user.id).maybeSingle();
+  if (!profil || !['moe', 'admin'].includes(profil.role)) {
+    await db.auth.signOut();
+    window.location.href = 'pivot-login-moe.html';
+    return;
+  }
+  state.user = user;
+  _requestNotifPermission();
+  await loadProfile();
+  await _loadCompteInfo();
+  showApp();
+  history.replaceState({ view: 'list' }, '');
+  await loadChantiers();
+  loadNotifications();
+  _initNotifRealtime();
+  if (state.pendingTeamToken) await processTeamInvite();
+  // Afficher l'invitation MOE en attente dans le tableau de bord
+  if (state.pendingMoeToken && state.pendingMoeChantier) {
+    _showPendingMoeInvite(state.pendingMoeChantier);
+  }
 }
 
 // ============================================================
@@ -569,35 +708,40 @@ async function init() {
   if (teamToken) state.pendingTeamToken = teamToken;
 
   if (token) {
+    // Récupérer les infos du chantier pour le banner d'invitation
     history.replaceState({}, '', location.pathname);
-    await initGuestMode(token);
-    return;
+    const { data: ch } = await db.from('chantiers')
+      .select('id, affaire, moe_id').eq('moe_invite_token', token).maybeSingle();
+    if (ch) {
+      state.pendingMoeToken = token;
+      state.pendingMoeChantier = ch;
+      // Afficher le banner d'invitation sur l'écran de connexion
+      const banner = document.getElementById('auth-token-banner');
+      banner.classList.remove('hidden');
+      document.getElementById('token-chantier-nom').textContent =
+        `Invitation pour le chantier : ${ch.affaire}`;
+    } else {
+      _hideLoading();
+      document.getElementById('auth-token-banner').innerHTML =
+        '<p class="text-red-600 text-sm font-medium">Lien d\'invitation invalide ou expiré.</p>';
+      document.getElementById('auth-token-banner').classList.remove('hidden');
+    }
   }
 
+  _hideLoading();
   const { data: { session } } = await db.auth.getSession();
   if (session) {
-    state.user = session.user;
-    await loadProfile();
-    await _loadCompteInfo();
-    showApp();
-    await loadChantiers();
-    loadNotifications();
-    if (state.pendingTeamToken) await processTeamInvite();
+    await _lancerApp(session.user);
+  } else {
+    window.location.href = 'pivot-login-moe.html';
   }
 
   db.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && !state.user) {
-      state.user = session.user;
-      await loadProfile();
-      await _loadCompteInfo();
-      showApp();
-      await loadChantiers();
-      loadNotifications();
-      if (state.pendingTeamToken) await processTeamInvite();
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      await _lancerApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       state.user = null;
-      document.getElementById('auth-view').classList.remove('hidden');
-      document.getElementById('app-view').classList.add('hidden');
+      window.location.href = 'pivot-login-moe.html';
     }
   });
 }
@@ -706,10 +850,39 @@ function openCompteModal() {
         <input id="cpt-logo-file" type="file" accept="image/*" class="text-xs text-gray-600" onchange="previewCompteLogo(this)" />
         <img id="cpt-logo-preview" class="h-16 object-contain mt-1 rounded border hidden" />
       </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Préférences notifications email</label>
+        <select id="cpt-notif" class="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="each" ${p.notif_preference==='each'||!p.notif_preference?'selected':''}>Immédiat (à chaque événement)</option>
+          <option value="daily" ${p.notif_preference==='daily'?'selected':''}>Quotidien (récap 8h)</option>
+          <option value="weekly" ${p.notif_preference==='weekly'?'selected':''}>Hebdomadaire (lundi 8h)</option>
+          <option value="none" ${p.notif_preference==='none'?'selected':''}>Aucun email</option>
+        </select>
+      </div>
     </div>
     <div class="flex gap-3 mt-5">
       <button onclick="saveCompte()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Enregistrer</button>
       <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    </div>
+
+    <div class="mt-5 pt-5 border-t border-gray-200">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Changer d'adresse email</h3>
+      <div class="space-y-2">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Adresse email actuelle</label>
+          <div class="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">${escHtml(state.user?.email || '')}</div>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nouvel email *</label>
+          <input id="cpt-new-email" type="email" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="nouveau@email.com" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Mot de passe actuel (confirmation) *</label>
+          <input id="cpt-email-pwd" type="password" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="••••••••" />
+        </div>
+        <div id="cpt-email-msg" class="text-xs hidden"></div>
+        <button onclick="changeEmail()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Envoyer le lien de confirmation</button>
+      </div>
     </div>
   `);
 }
@@ -722,11 +895,29 @@ function previewCompteLogo(input) {
   prev.classList.remove('hidden');
 }
 
+async function changeEmail() {
+  const newEmail = document.getElementById('cpt-new-email')?.value.trim();
+  const pwd = document.getElementById('cpt-email-pwd')?.value;
+  const msg = document.getElementById('cpt-email-msg');
+  msg.className = 'text-xs hidden';
+  if (!newEmail || !pwd) { msg.textContent = 'Remplissez le nouvel email et votre mot de passe.'; msg.className = 'text-xs text-red-500'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) { msg.textContent = 'Adresse email invalide.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error: signErr } = await db.auth.signInWithPassword({ email: state.user.email, password: pwd });
+  if (signErr) { msg.textContent = 'Mot de passe incorrect.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error } = await db.auth.updateUser({ email: newEmail });
+  if (error) { msg.textContent = 'Erreur : ' + error.message; msg.className = 'text-xs text-red-500'; return; }
+  msg.textContent = 'Un email de confirmation a été envoyé à ' + newEmail + '. Cliquez le lien pour valider le changement.';
+  msg.className = 'text-xs text-green-600';
+  document.getElementById('cpt-new-email').value = '';
+  document.getElementById('cpt-email-pwd').value = '';
+}
+
 async function saveCompte() {
   const nom = document.getElementById('cpt-nom')?.value.trim() || '';
   const telephone = document.getElementById('cpt-tel')?.value.trim() || '';
   const adresse = document.getElementById('cpt-adr')?.value.trim() || '';
   const siret = document.getElementById('cpt-siret')?.value.trim() || '';
+  const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
   const file = document.getElementById('cpt-logo-file')?.files?.[0];
   try {
     let logo_url = state.profile?.logo_url || null;
@@ -741,8 +932,8 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    if (nom) await db.from('compte_moe').update({ nom }).eq('id', state.user.id);
-    state.profile = { ...state.profile, nom, telephone, adresse, siret, logo_url };
+    await db.from('compte_moe').update({ nom: nom || undefined, notif_preference }).eq('id', state.user.id);
+    state.profile = { ...state.profile, nom, telephone, adresse, siret, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
     closeModal();
@@ -782,6 +973,24 @@ async function loadChantiers() {
   }
 }
 
+function _showPendingMoeInvite(ch) {
+  const panel = document.getElementById('pending-moe-invite');
+  const nom = document.getElementById('pending-invite-nom');
+  if (!panel || !nom) return;
+  // Vérifier que le MOE n'est pas déjà lié à ce chantier
+  if (ch.moe_id && ch.moe_id === state.user?.id) {
+    state.pendingMoeToken = null;
+    return;
+  }
+  if (ch.moe_id && ch.moe_id !== state.user?.id) {
+    nom.textContent = `Ce chantier a déjà un Maître d'Œuvre assigné.`;
+    panel.querySelector('.flex.gap-2').innerHTML = '';
+  } else {
+    nom.textContent = ch.affaire;
+  }
+  panel.classList.remove('hidden');
+}
+
 function renderChantiersList() {
   const el = document.getElementById('chantiers-list');
   if (!state.chantiers.length) {
@@ -803,7 +1012,7 @@ function renderChantiersList() {
   }).join('');
 }
 
-async function openChantier(id) {
+async function openChantier(id, _noHistory) {
   state.currentChantier = state.chantiers.find(c => c.id === id);
   document.getElementById('chantiers-select-panel').classList.add('hidden');
   document.getElementById('dashboard-chantier').classList.remove('hidden');
@@ -814,7 +1023,8 @@ async function openChantier(id) {
   await loadFournituresForChantier();
   renderDashboard();
   renderDafVisa();
-  if (!state.isGuest) loadInvitations();
+  if (!state.isGuest) { loadInvitations(); loadLots(); }
+  if (!_noHistory) history.pushState({ view: 'chantier', chantierId: id }, '');
 
   // Realtime : nouvelles DAF soumises par l'entrepreneur
   if (window._dafChannel) db.removeChannel(window._dafChannel);
@@ -835,13 +1045,14 @@ async function openChantier(id) {
     .subscribe();
 }
 
-function showChantiersList() {
+function showChantiersList(_noHistory) {
   state.currentChantier = null;
   document.getElementById('chantiers-select-panel').classList.remove('hidden');
   document.getElementById('dashboard-chantier').classList.add('hidden');
   document.getElementById('btn-back-chantiers').classList.add('hidden');
   document.getElementById('chantier-header').classList.add('hidden');
-  setTab('dashboard');
+  setTab('dashboard', true);
+  if (!_noHistory) history.pushState({ view: 'list' }, '');
 }
 
 async function loadDafForChantier() {
@@ -882,7 +1093,7 @@ async function loadFournituresForChantier() {
 // ============================================================
 // NAVIGATION PAR ONGLETS
 // ============================================================
-function setTab(tab) {
+function setTab(tab, _noHistory) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.remove('tab-active');
     btn.classList.add('text-gray-500');
@@ -899,7 +1110,22 @@ function setTab(tab) {
   if (tab === 'fournitures') renderFournitures();
   if (tab === 'daf') { renderDafVisa(); if (state.currentChantier) _markChantierNotifsRead(state.currentChantier.id, 'daf_soumise'); }
   if (tab === 'suivi') renderSuivi();
+  if (tab === 'lots') loadLots();
+  if (!_noHistory) history.pushState({ view: 'tab', tab }, '');
 }
+
+window.addEventListener('popstate', async e => {
+  const s = e.state;
+  if (!state.user) return;
+  if (!s || s.view === 'list') {
+    showChantiersList(true);
+  } else if (s.view === 'chantier' && s.chantierId) {
+    if (state.currentChantier?.id !== s.chantierId) await openChantier(s.chantierId, true);
+    setTab('dashboard', true);
+  } else if (s.view === 'tab' && s.tab) {
+    setTab(s.tab, true);
+  }
+});
 
 // ============================================================
 // DASHBOARD
@@ -1297,18 +1523,25 @@ async function donnerVisa(dafId, type) {
 
     // Notification entrepreneur
     if (d?.entrepreneur_id) {
+      const chVisa = d.chantier_id ? state.chantiers?.find(c => c.id === d.chantier_id) : null;
+      const chVisaNom = chVisa?.affaire ? ` — ${chVisa.affaire}` : '';
       const msg = type === 'sans_remarque'
-        ? `VISA accordé sans observation pour la DAF ${d.numero || ''}`
+        ? `VISA accordé sans observation pour la DAF ${d.numero || ''}${chVisaNom}`
         : type === 'avec_remarques'
-          ? `VISA avec observations pour la DAF ${d.numero || ''}`
-          : `Refus de la DAF ${d.numero || ''} — ${remarques}`;
+          ? `VISA avec observations pour la DAF ${d.numero || ''}${chVisaNom}`
+          : `Refus de la DAF ${d.numero || ''}${chVisaNom} — ${remarques}`;
       await db.from('notifications').insert({
         type: 'visa_moe',
         user_id: d.entrepreneur_id,
         message: msg,
         chantier_id: d.chantier_id,
-        daf_id: dafId
+        daf_id: dafId,
+        read: false
       });
+      fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: d.entrepreneur_id, portail: 'entrepreneur', title: 'DAF visée', message: msg })
+      }).catch(() => {});
     }
 
     // Mettre à jour l'état local
@@ -1340,8 +1573,8 @@ async function loadNotifications() {
   if (!state.user || state.isGuest) return;
   try {
     const { data } = await db.from('notifications')
-      .select('*').eq('user_id', state.user.id).eq('read', false)
-      .order('created_at', { ascending: false }).limit(20);
+      .select('*').eq('user_id', state.user.id)
+      .order('created_at', { ascending: false }).limit(40);
     state.notifications = data || [];
     _updateNotifBadge();
   } catch (err) { console.error('loadNotifications', err); }
@@ -1363,14 +1596,13 @@ function toggleNotifs() {
 
 function renderNotifList() {
   const el = document.getElementById('notif-list');
-  const unread = state.notifications.filter(n => !n.read);
-  if (!unread.length) {
-    el.innerHTML = '<p class="text-sm text-gray-400 p-3">Aucune nouvelle notification</p>';
+  if (!state.notifications.length) {
+    el.innerHTML = '<p class="text-sm text-gray-400 p-3">Aucune notification</p>';
     return;
   }
   // Grouper par chantier
   const groups = {};
-  for (const n of unread) {
+  for (const n of state.notifications) {
     const key = n.chantier_id || '_none';
     if (!groups[key]) {
       const ch = state.chantiers.find(c => c.id === n.chantier_id);
@@ -1384,13 +1616,32 @@ function renderNotifList() {
       <div class="px-3 py-1.5 bg-gray-100 text-xs font-semibold text-gray-600 border-b">🏗️ ${g.nom}</div>
       ${g.notifs.map(n => {
         const tab = n.type === 'daf_soumise' ? 'daf' : 'dashboard';
-        return `<div class="p-3 bg-purple-50 border-b cursor-pointer hover:bg-purple-100"
-            onclick="notifNavigate('${n.id}','${n.chantier_id||''}','${tab}')">
-          <p class="text-sm">${n.message}</p>
-          <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleDateString('fr-FR')}</p>
+        const isRead = !!n.read;
+        return `<div class="p-3 border-b flex items-start gap-2 ${isRead ? 'bg-white opacity-50' : 'bg-purple-50 hover:bg-purple-100 cursor-pointer'}"
+            ${!isRead ? `onclick="notifNavigate('${n.id}','${n.chantier_id||''}','${tab}')"` : ''}>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm ${isRead ? 'text-gray-400' : ''}">${n.message}</p>
+            <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
+          </div>
+          <button onclick="event.stopPropagation();deleteNotif('${n.id}')" class="text-gray-300 hover:text-red-400 text-xs shrink-0 mt-0.5" title="Supprimer">🗑</button>
         </div>`;
       }).join('')}
     </div>`).join('');
+}
+
+async function deleteNotif(id) {
+  await db.from('notifications').delete().eq('id', id);
+  state.notifications = state.notifications.filter(n => n.id !== id);
+  _updateNotifBadge();
+  renderNotifList();
+}
+
+async function deleteReadNotifs() {
+  const readIds = state.notifications.filter(n => n.read).map(n => n.id);
+  if (!readIds.length) return;
+  await db.from('notifications').delete().in('id', readIds);
+  state.notifications = state.notifications.filter(n => !n.read);
+  renderNotifList();
 }
 
 async function notifNavigate(notifId, chantierId, tab) {
@@ -1405,7 +1656,7 @@ async function notifNavigate(notifId, chantierId, tab) {
 
 async function _markNotifRead(notifId) {
   await db.from('notifications').update({ read: true }).eq('id', notifId);
-  state.notifications = state.notifications.filter(n => n.id !== notifId);
+  state.notifications = state.notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
   _updateNotifBadge();
   renderNotifList();
 }
@@ -1415,14 +1666,14 @@ async function _markChantierNotifsRead(chantierId, type) {
   const ids = state.notifications.filter(n => n.chantier_id === chantierId && (!type || n.type === type)).map(n => n.id);
   if (!ids.length) return;
   await db.from('notifications').update({ read: true }).in('id', ids);
-  state.notifications = state.notifications.filter(n => !ids.includes(n.id));
+  state.notifications = state.notifications.map(n => ids.includes(n.id) ? { ...n, read: true } : n);
   _updateNotifBadge();
 }
 
 async function markAllNotifsRead() {
   if (!state.user) return;
   await db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false);
-  state.notifications = [];
+  state.notifications = state.notifications.map(n => ({ ...n, read: true }));
   _updateNotifBadge();
   renderNotifList();
 }
@@ -1523,25 +1774,89 @@ function openInviteModal() {
   const ch = state.currentChantier;
   if (!ch) return;
   showModal(`
-    <h2 class="text-lg font-semibold text-gray-800 mb-1">🏗 Inviter une entreprise</h2>
-    <p class="text-sm text-gray-500 mb-4">Chantier : <strong>${escHtml(ch.affaire)}</strong></p>
-    <div class="space-y-3">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Email de l'entreprise</label>
-        <input id="inv-email" type="email" placeholder="contact@entreprise.fr"
-          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-          onkeydown="if(event.key==='Enter') sendInvitation()" />
-      </div>
-      <div class="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-        Un lien d'invitation sera généré. Vous pourrez le copier et le transmettre par email, SMS ou tout autre moyen.
-      </div>
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-lg font-semibold text-gray-800">🏗 Inviter une entreprise</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
     </div>
-    <div class="flex gap-3 mt-5">
-      <button onclick="sendInvitation()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Générer l'invitation</button>
-      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    <p class="text-sm text-gray-500 mb-4">Chantier : <strong>${escHtml(ch.affaire)}</strong></p>
+    <div class="relative mb-2">
+      <input id="inv-search" type="text" placeholder="Rechercher par nom ou email…"
+        class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 pr-8"
+        oninput="rechercherEntrepriseInvite(this.value)" />
+      <span class="absolute right-2 top-2.5 text-gray-300 text-sm">🔍</span>
+    </div>
+    <div id="inv-search-results" class="mb-3 space-y-1 max-h-40 overflow-y-auto"></div>
+    <div class="flex gap-2 items-center">
+      <input id="inv-email" type="email" placeholder="ou saisir un email (sans compte)"
+        class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+        onkeydown="if(event.key==='Enter') sendInvitation()" />
+      <button onclick="sendInvitation()" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 whitespace-nowrap">Inviter</button>
+    </div>
+    <p class="text-xs text-gray-400 mt-1.5">Si l'entreprise n'a pas encore de compte, elle recevra un lien d'invitation.</p>
+  `);
+  setTimeout(() => document.getElementById('inv-search')?.focus(), 50);
+}
+
+let _invSearchTimer = null;
+async function rechercherEntrepriseInvite(q) {
+  const el = document.getElementById('inv-search-results');
+  if (!el) return;
+  clearTimeout(_invSearchTimer);
+  if (!q || q.length < 2) { el.innerHTML = ''; return; }
+  _invSearchTimer = setTimeout(async () => {
+    const { data } = await db.from('compte_entrepreneur')
+      .select('id, nom, email, societe')
+      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%`)
+      .limit(6);
+    if (!data?.length) {
+      el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
+      return;
+    }
+    el.innerHTML = data.map(e => `
+      <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(e.nom||'')}','${escHtml(e.email||'')}')"
+        class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition flex items-center gap-3">
+        <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+          ${(e.nom||'?')[0].toUpperCase()}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(e.nom||'')}${e.societe ? ' · ' + escHtml(e.societe) : ''}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(e.email||'')}</p>
+        </div>
+        <span class="text-xs text-blue-500 shrink-0">Inviter →</span>
+      </button>
+    `).join('');
+  }, 280);
+}
+
+async function selectionnerEntrepriseInvite(entrepriseId, nom, email) {
+  const ch = state.currentChantier;
+  const { data: existing } = await db.from('chantier_invitations')
+    .select('id, statut').eq('chantier_id', ch.id).eq('email_invite', email).maybeSingle();
+  if (existing?.statut === 'pending') return toast('Une invitation est déjà en attente pour cette entreprise', 'err');
+  const { data: inv, error } = await db.from('chantier_invitations').insert({
+    chantier_id: ch.id, moe_id: state.user.id,
+    email_invite: email, nom_chantier: ch.affaire, statut: 'pending'
+  }).select().single();
+  if (error) return toast(error.message, 'err');
+  const link = `${location.origin}${location.pathname.replace('pivot-moe.html','pivot-entrepreneur.html')}?invitation=${inv.token}`;
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">✅ Invitation créée</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-sm text-gray-500 mb-4">Pour : <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+    <div class="bg-gray-50 rounded-lg p-3 mb-3">
+      <p class="text-xs text-gray-500 mb-1">Lien à transmettre :</p>
+      <p class="text-xs text-blue-700 break-all font-mono">${link}</p>
+    </div>
+    <div class="flex flex-col gap-2">
+      <button onclick="copyInviteLink('${link}', this)" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">📋 Copier le lien</button>
+      <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Invitation chantier ' + (ch?.affaire||''))}&body=${encodeURIComponent('Bonjour,\n\nVous êtes invité à rejoindre le chantier "' + (ch?.affaire||'') + '" sur Pivot.\n\nLien :\n' + link)}"
+        class="w-full text-center border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 block">✉️ Envoyer par email</a>
+      <button onclick="closeModal()" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Fermer</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('inv-email')?.focus(), 50);
+  loadInvitations();
 }
 
 async function sendInvitation() {
@@ -1605,6 +1920,389 @@ function copyInviteLink(link, btn) {
       btn.classList.remove('bg-green-50', 'text-green-700', 'border-green-300');
     }, 2000);
   }).catch(() => toast('Impossible de copier — copiez manuellement', 'err'));
+}
+
+// ============================================================
+// INVITATION MOE PAR TOKEN
+// ============================================================
+async function accepterInviteMoe() {
+  const token = state.pendingMoeToken;
+  const ch = state.pendingMoeChantier;
+  if (!token || !ch || !state.user) return;
+  try {
+    const { error } = await db.from('chantiers')
+      .update({ moe_id: state.user.id })
+      .eq('moe_invite_token', token);
+    if (error) throw error;
+    state.pendingMoeToken = null;
+    state.pendingMoeChantier = null;
+    document.getElementById('pending-moe-invite').classList.add('hidden');
+    toast(`Vous êtes maintenant le Maître d'Œuvre du chantier "${ch.affaire}" !`);
+    await loadChantiers();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function refuserInviteMoe() {
+  state.pendingMoeToken = null;
+  state.pendingMoeChantier = null;
+  document.getElementById('pending-moe-invite').classList.add('hidden');
+  toast('Invitation refusée');
+}
+
+// ============================================================
+// CRÉATION DE CHANTIER (par le MOE)
+// ============================================================
+function ouvrirCreerChantier() {
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">🏗 Nouveau chantier</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Nom / Affaire *</label>
+        <input id="nc-affaire" type="text" placeholder="Ex. : Résidence Les Pins — Lot végétaux"
+          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Ville</label>
+        <input id="nc-ville" type="text" placeholder="Lyon"
+          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Maître d'ouvrage (MOA)</label>
+        <input id="nc-moa" type="text" placeholder="Nom ou raison sociale"
+          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Date de début</label>
+          <input id="nc-debut" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Date de fin prévue</label>
+          <input id="nc-fin" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" />
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-5">
+      <button onclick="creerChantier()" class="flex-1 bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700">Créer le chantier</button>
+      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('nc-affaire')?.focus(), 50);
+}
+
+async function creerChantier() {
+  const affaire = document.getElementById('nc-affaire')?.value.trim();
+  if (!affaire) return toast('Le nom du chantier est obligatoire', 'err');
+  const ville = document.getElementById('nc-ville')?.value.trim() || null;
+  const moa = document.getElementById('nc-moa')?.value.trim() || null;
+  const debut = document.getElementById('nc-debut')?.value || null;
+  const fin = document.getElementById('nc-fin')?.value || null;
+  try {
+    const payload = { affaire, moe_id: state.user.id };
+    if (ville) payload.ville = ville;
+    if (debut) payload.date_debut = debut;
+    if (fin) payload.date_fin_prevue = fin;
+    const { data, error } = await db.from('chantiers').insert(payload).select().single();
+    if (error) throw error;
+    closeModal();
+    toast(`Chantier "${affaire}" créé !`);
+    await loadChantiers();
+    openChantier(data.id);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+// ============================================================
+// LOTS
+// ============================================================
+async function loadLots() {
+  const ch = state.currentChantier;
+  if (!ch) return;
+  try {
+    const { data } = await db.from('lots').select('*').eq('chantier_id', ch.id).order('ordre');
+    state.lots = data || [];
+    renderLots();
+  } catch (err) {
+    console.error('loadLots', err);
+  }
+}
+
+function renderLots() {
+  const el = document.getElementById('lots-list');
+  if (!el) return;
+  if (!state.lots?.length) {
+    el.innerHTML = `
+      <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+        <p class="text-sm text-indigo-800 font-medium mb-1">Les lots sont facultatifs</p>
+        <p class="text-xs text-indigo-600 mb-3">Créez des lots si le chantier est divisé entre plusieurs entreprises (ex. Lot 1 - Végétaux, Lot 2 - Menuiseries). Sinon, invitez directement une entreprise depuis la section "Entreprises invitées" ci-dessus.</p>
+        <button onclick="ouvrirCreerLot()" class="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Créer un premier lot</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = state.lots.map((lot, i) => `
+    <div class="flex items-center justify-between p-3 border rounded-xl hover:bg-gray-50 gap-3">
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full shrink-0">Lot ${i + 1}</span>
+        <span class="text-sm font-medium text-gray-800 truncate">${escHtml(lot.nom)}</span>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button onclick="ouvrirLot('${lot.id}')" class="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50">Gérer</button>
+        <button onclick="supprimerLot('${lot.id}')" class="text-xs text-red-400 border border-red-200 px-2 py-1 rounded hover:bg-red-50">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function ouvrirCreerLot() {
+  showModal(`
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">📦 Nouveau lot</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-sm text-gray-500 mb-4">Ex. : Lot 1 - Végétaux, Lot 2 - Menuiseries</p>
+    <input id="nl-nom" type="text" placeholder="Lot 1 - Végétaux"
+      class="w-full border rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      onkeydown="if(event.key==='Enter') creerLot()" />
+    <div class="flex gap-3">
+      <button onclick="creerLot()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Créer le lot</button>
+      <button onclick="closeModal()" class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('nl-nom')?.focus(), 50);
+}
+
+async function creerLot() {
+  const nom = document.getElementById('nl-nom')?.value.trim();
+  if (!nom) return toast('Nom du lot requis', 'err');
+  const ch = state.currentChantier;
+  if (!ch) return;
+  try {
+    const ordre = (state.lots?.length || 0);
+    const { error } = await db.from('lots').insert({
+      chantier_id: ch.id,
+      created_by: state.user.id,
+      nom,
+      ordre
+    });
+    if (error) throw error;
+    closeModal();
+    toast(`Lot "${nom}" créé`);
+    await loadLots();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+async function supprimerLot(lotId) {
+  if (!confirm('Supprimer ce lot ? Les invitations associées seront perdues.')) return;
+  const { error } = await db.from('lots').delete().eq('id', lotId);
+  if (error) return toast(error.message, 'err');
+  toast('Lot supprimé');
+  await loadLots();
+}
+
+async function ouvrirLot(lotId) {
+  const lot = state.lots?.find(l => l.id === lotId);
+  if (!lot) return;
+  const { data: membres } = await db.from('lot_entreprises')
+    .select('*').eq('lot_id', lotId).order('created_at');
+  const mem = membres || [];
+  const statutStyle = {
+    invited:  'bg-amber-100 text-amber-700',
+    accepted: 'bg-green-100 text-green-700',
+    refused:  'bg-red-100 text-red-700'
+  };
+  const statutLabel = { invited: 'En attente', accepted: 'Acceptée', refused: 'Refusée' };
+  const membresHtml = mem.length ? mem.map(m => `
+    <div class="flex items-center justify-between py-2 border-b last:border-0 gap-2 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-gray-800 truncate">${escHtml(m.nom_entreprise || m.email_invite || '—')}</p>
+        ${m.nom_entreprise && m.email_invite ? `<p class="text-xs text-gray-400">${escHtml(m.email_invite)}</p>` : ''}
+        <p class="text-xs text-gray-300">Invitée le ${new Date(m.created_at).toLocaleDateString('fr-FR')}</p>
+      </div>
+      <span class="text-xs px-2 py-0.5 rounded-full font-medium ${statutStyle[m.statut]||'bg-gray-100 text-gray-600'}">
+        ${statutLabel[m.statut] || m.statut}
+      </span>
+      ${m.statut === 'invited' ? `
+        <button onclick="copierLienLot('${m.token}', this)" class="text-xs px-2 py-1 border border-blue-200 rounded hover:bg-blue-50 text-blue-600">📋 Lien</button>
+      ` : ''}
+      <button onclick="retirerEntrepriseLot('${m.id}','${lotId}')" class="text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50 text-red-400">✕</button>
+    </div>
+  `).join('') : '<p class="text-sm text-gray-400 py-2">Aucune entreprise invitée dans ce lot.</p>';
+
+  showModal(`
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-lg font-semibold text-gray-800">📦 ${escHtml(lot.nom)}</h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">Chantier : ${escHtml(state.currentChantier?.affaire || '')}</p>
+    <div class="flex gap-2 mb-4">
+      <input id="lot-rename-input" type="text" value="${escHtml(lot.nom)}"
+        class="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+      <button onclick="renommerLot('${lotId}')" class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-100">Renommer</button>
+    </div>
+
+    <div class="mb-4">${membresHtml}</div>
+
+    <div class="border-t pt-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Inviter une entreprise</p>
+      <div class="relative mb-2">
+        <input id="lot-search-input" type="text" placeholder="Rechercher par nom ou email…"
+          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-8"
+          oninput="rechercherEntrepriseLot(this.value, '${lotId}')" />
+        <span class="absolute right-2 top-2.5 text-gray-300 text-sm">🔍</span>
+      </div>
+      <div id="lot-search-results" class="mb-3 space-y-1 max-h-40 overflow-y-auto"></div>
+      <div class="flex gap-2 items-center">
+        <input id="lot-invite-email" type="email" placeholder="ou saisir un email (sans compte)"
+          class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          onkeydown="if(event.key==='Enter') inviterEntrepriseLot('${lotId}')" />
+        <button onclick="inviterEntrepriseLot('${lotId}')" class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 whitespace-nowrap">Inviter</button>
+      </div>
+      <p class="text-xs text-gray-400 mt-1.5">Si l'entreprise n'a pas encore de compte, elle recevra un lien d'invitation.</p>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('lot-search-input')?.focus(), 50);
+}
+
+let _lotSearchTimer = null;
+async function rechercherEntrepriseLot(q, lotId) {
+  const el = document.getElementById('lot-search-results');
+  if (!el) return;
+  clearTimeout(_lotSearchTimer);
+  if (!q || q.length < 2) { el.innerHTML = ''; return; }
+  _lotSearchTimer = setTimeout(async () => {
+    const { data } = await db.from('compte_entrepreneur')
+      .select('id, nom, email, societe')
+      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%`)
+      .limit(6);
+    if (!data?.length) {
+      el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
+      return;
+    }
+    el.innerHTML = data.map(e => `
+      <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(e.nom||'')}','${escHtml(e.email||'')}','${lotId}')"
+        class="w-full text-left px-3 py-2 rounded-lg border hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center gap-3">
+        <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
+          ${(e.nom||'?')[0].toUpperCase()}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(e.nom || '')}${e.societe ? ' · ' + escHtml(e.societe) : ''}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(e.email || '')}</p>
+        </div>
+        <span class="text-xs text-indigo-500 shrink-0">Inviter →</span>
+      </button>
+    `).join('');
+  }, 280);
+}
+
+async function selectionnerEntrepriseLot(entrepriseId, nom, email, lotId) {
+  // Pré-remplir l'email et lancer l'invitation directement
+  try {
+    const ch = state.currentChantier;
+    const lot = state.lots?.find(l => l.id === lotId);
+    const { data: inv, error } = await db.from('lot_entreprises').insert({
+      lot_id: lotId,
+      entreprise_id: entrepriseId,
+      email_invite: email,
+      nom_entreprise: nom,
+      nom_chantier: ch?.affaire || null,
+      ville_chantier: ch?.ville || null,
+      statut: 'invited'
+    }).select().single();
+    if (error) throw error;
+    const link = `${location.origin}${location.pathname.replace('pivot-moe.html', 'pivot-entrepreneur.html')}?lot_invite=${inv.token}`;
+    showModal(`
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-800">✅ Invitation envoyée</h2>
+        <button onclick="ouvrirLot('${lotId}')" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+      </div>
+      <p class="text-sm text-gray-600 mb-4">Pour : <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+      <div class="bg-gray-50 rounded-lg p-3 mb-3">
+        <p class="text-xs text-gray-500 mb-1">Lien d'invitation :</p>
+        <p class="text-xs text-blue-700 break-all font-mono">${link}</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button onclick="copierLienLot('${inv.token}', this)" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">📋 Copier le lien</button>
+        <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Invitation chantier ' + (ch?.affaire||''))}&body=${encodeURIComponent('Bonjour,\n\nVous êtes invité à rejoindre le lot "' + (lot?.nom||'') + '" du chantier "' + (ch?.affaire||'') + '" sur Pivot.\n\nLien :\n' + link)}"
+          class="w-full text-center border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 block">✉️ Envoyer par email</a>
+        <button onclick="ouvrirLot('${lotId}')" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Retour au lot</button>
+      </div>
+    `);
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function renommerLot(lotId) {
+  const nom = document.getElementById('lot-rename-input')?.value.trim();
+  if (!nom) return toast('Nom requis', 'err');
+  const { error } = await db.from('lots').update({ nom }).eq('id', lotId);
+  if (error) return toast(error.message, 'err');
+  const lot = state.lots?.find(l => l.id === lotId);
+  if (lot) lot.nom = nom;
+  renderLots();
+  toast('Lot renommé');
+  ouvrirLot(lotId);
+}
+
+async function retirerEntrepriseLot(memId, lotId) {
+  if (!confirm('Retirer cette entreprise du lot ?')) return;
+  const { error } = await db.from('lot_entreprises').delete().eq('id', memId);
+  if (error) return toast(error.message, 'err');
+  toast('Entreprise retirée');
+  ouvrirLot(lotId);
+}
+
+async function inviterEntrepriseLot(lotId) {
+  const email = document.getElementById('lot-invite-email')?.value.trim();
+  if (!email) return toast('Email requis', 'err');
+  try {
+    const ch = state.currentChantier;
+    const { data: inv, error } = await db.from('lot_entreprises').insert({
+      lot_id: lotId,
+      email_invite: email,
+      nom_chantier: ch?.affaire || null,
+      ville_chantier: ch?.ville || null,
+      statut: 'invited'
+    }).select().single();
+    if (error) throw error;
+    const link = `${location.origin}${location.pathname.replace('pivot-moe.html', 'pivot-entrepreneur.html')}?lot_invite=${inv.token}`;
+    // Afficher le lien + option mailto
+    showModal(`
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-800">✅ Invitation créée</h2>
+        <button onclick="ouvrirLot('${lotId}')" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">Pour : <strong>${escHtml(email)}</strong></p>
+      <div class="bg-gray-50 rounded-lg p-3 mb-3">
+        <p class="text-xs text-gray-500 mb-1">Lien d'invitation :</p>
+        <p class="text-xs text-blue-700 break-all font-mono">${link}</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button onclick="copierLienLot('${inv.token}', this)" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">📋 Copier le lien</button>
+        <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Invitation chantier ' + (ch?.affaire || ''))}&body=${encodeURIComponent('Bonjour,\n\nVous êtes invité à rejoindre le chantier "' + (ch?.affaire || '') + '" sur la plateforme Pivot.\n\nLien d\'accès :\n' + link + '\n\nCordialement')}"
+          class="w-full text-center border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 block">✉️ Envoyer par email</a>
+        <button onclick="ouvrirLot('${lotId}')" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Retour au lot</button>
+      </div>
+    `);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+function copierLienLot(token, btn) {
+  const link = `${location.origin}${location.pathname.replace('pivot-moe.html', 'pivot-entrepreneur.html')}?lot_invite=${token}`;
+  navigator.clipboard.writeText(link).then(() => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = '✅ Copié !';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  }).catch(() => toast('Impossible de copier', 'err'));
 }
 </script>
 </body>

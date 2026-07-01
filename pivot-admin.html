@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pivot — Administration</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-admin.svg">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -25,8 +26,19 @@
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
 
+<!-- LOADING -->
+<div id="loading-view" class="min-h-screen flex items-center justify-center bg-gray-50">
+  <div class="flex flex-col items-center gap-3">
+    <svg class="animate-spin w-8 h-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    <span class="text-sm text-gray-400">Chargement…</span>
+  </div>
+</div>
+
 <!-- AUTH VIEW -->
-<div id="auth-view" class="min-h-screen flex items-center justify-center">
+<div id="auth-view" class="hidden min-h-screen flex items-center justify-center">
   <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
     <div class="flex items-center gap-2 mb-6">
       <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -93,13 +105,38 @@
         <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Backoffice</span>
       </div>
       <div class="flex items-center gap-3">
+        <div class="relative">
+          <button onclick="toggleAdminNotifs()" class="relative text-gray-500 hover:text-indigo-600 text-lg">
+            🔔<span id="admin-notif-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold"></span>
+          </button>
+          <div id="admin-notif-panel" class="hidden absolute right-0 top-10 bg-white border rounded-xl shadow-xl w-96 z-50 max-h-[480px] overflow-y-auto">
+            <div class="px-4 py-3 border-b flex justify-between items-center">
+              <span class="font-semibold text-sm">Notifications admin</span>
+              <button onclick="markAllAdminNotifsRead()" class="text-xs text-indigo-600 hover:underline">Tout marquer lu</button>
+            </div>
+            <div id="admin-notif-list"><p class="text-sm text-gray-400 p-4">Aucune notification</p></div>
+          </div>
+        </div>
         <span id="admin-name" class="text-sm text-gray-500"></span>
         <button onclick="doLogout()" class="text-sm text-gray-400 hover:text-red-500">Déconnexion</button>
       </div>
     </div>
   </header>
 
+  <!-- Onglets principaux -->
+  <div class="bg-white border-b">
+    <div class="max-w-7xl mx-auto px-4 flex gap-0">
+      <button id="admin-tab-users" onclick="switchAdminTab('users')"
+        class="px-6 py-3 text-sm font-medium border-b-2 border-indigo-600 text-indigo-600">👥 Utilisateurs</button>
+      <button id="admin-tab-tela" onclick="switchAdminTab('tela')"
+        class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🌿 Bibliothèque Tela Botanica</button>
+    </div>
+  </div>
+
   <div class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- VUE UTILISATEURS -->
+  <div id="admin-view-users">
 
     <!-- STATS -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -130,9 +167,9 @@
       <div class="flex items-center justify-between px-4 pt-2 border-b flex-wrap gap-2">
         <div class="flex gap-0">
           <button onclick="setFilter('tous')" id="tab-tous" class="tab-btn tab-active px-4 py-3 text-sm">Tous</button>
-          <button onclick="setFilter('entrepreneur')" id="tab-entrepreneur" class="tab-btn px-4 py-3 text-sm text-gray-500">🏗 Entrepreneurs</button>
-          <button onclick="setFilter('fournisseur')"  id="tab-fournisseur"  class="tab-btn px-4 py-3 text-sm text-gray-500">🏭 Fournisseurs</button>
-          <button onclick="setFilter('moe')"          id="tab-moe"          class="tab-btn px-4 py-3 text-sm text-gray-500">📐 MOE</button>
+          <button onclick="setFilter('entrepreneur')" id="tab-entrepreneur" class="tab-btn px-4 py-3 text-sm text-gray-500">🏗 Sociétés</button>
+          <button onclick="setFilter('fournisseur')"  id="tab-fournisseur"  class="tab-btn px-4 py-3 text-sm text-gray-500">🏭 Établissements</button>
+          <button onclick="setFilter('moe')"          id="tab-moe"          class="tab-btn px-4 py-3 text-sm text-gray-500">📐 Agences</button>
         </div>
         <div class="flex items-center gap-2 pb-1">
           <select id="filter-statut" onchange="renderTable()" class="border rounded-lg px-2 py-1.5 text-xs text-gray-600 focus:outline-none">
@@ -144,37 +181,84 @@
           </select>
           <input id="search-input" type="text" placeholder="Rechercher…" oninput="renderTable()"
             class="border rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-          <button onclick="openCreateModal()" class="bg-indigo-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-700">+ Nouvelle structure</button>
+          <button onclick="openCreateModal()" class="bg-indigo-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-700">+ Nouvelle société / agence</button>
           <button onclick="loadAll()" class="text-gray-400 hover:text-indigo-600 text-lg" title="Rafraîchir">↻</button>
         </div>
       </div>
 
-      <div class="overflow-x-auto">
+      <div id="tbody" class="divide-y divide-gray-100 min-h-[120px]">
+        <div class="px-4 py-8 text-center text-gray-400">Chargement…</div>
+      </div>
+    </div>
+
+  </div><!-- /admin-view-users -->
+
+  <!-- VUE BIBLIOTHÈQUE TELA BOTANICA -->
+  <div id="admin-view-tela" class="hidden space-y-5">
+
+    <!-- Import -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <div class="flex items-center gap-3 mb-1">
+        <h2 class="font-semibold text-gray-800">Import BDTFX</h2>
+        <span id="tela-count-badge" class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full hidden"></span>
+      </div>
+      <p class="text-sm text-gray-400 mb-4">Base BDTFX v10 — export tela-botanica.org du 23/01/2024. Traité par lots de 500 lignes.</p>
+      <div class="flex flex-wrap gap-3 items-center">
+        <label class="cursor-pointer flex items-center gap-2 bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-800">
+          📂 Choisir le fichier BDTFX (.csv)
+          <input type="file" accept=".csv,.txt" class="hidden" onchange="_telaStartImport(event)">
+        </label>
+        <button onclick="_telaClear()" class="border border-red-200 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-50">🗑 Vider</button>
+        <span id="tela-status" class="text-sm text-gray-500"></span>
+      </div>
+      <div id="tela-progress-wrap" class="hidden mt-4">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span id="tela-progress-label">Import en cours…</span>
+          <span id="tela-progress-pct">0%</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+          <div id="tela-progress-bar" class="bg-green-600 h-2 rounded-full transition-all" style="width:0%"></div>
+        </div>
+      </div>
+      <div id="tela-preview" class="hidden text-xs text-gray-400 space-y-0.5 max-h-28 overflow-y-auto border rounded-lg px-3 py-2 bg-gray-50 mt-3"></div>
+    </div>
+
+    <!-- Recherche -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h2 class="font-semibold text-gray-800 mb-3">🔍 Rechercher dans la bibliothèque</h2>
+      <div class="flex gap-2 mb-4">
+        <input id="tela-search-admin" type="text" placeholder="ex : Quercus robur, Acer…"
+          oninput="_telaAdminSearch(this.value)"
+          class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-600">
+        <span id="tela-search-count" class="text-xs text-gray-400 self-center"></span>
+      </div>
+      <div class="overflow-x-auto border rounded-xl">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 text-gray-500 text-xs border-b">
             <tr>
-              <th class="px-4 py-3 text-left">Structure</th>
-              <th class="px-4 py-3 text-left">Référent</th>
-              <th class="px-4 py-3 text-left">Rôle portail</th>
-              <th class="px-4 py-3 text-left">Type</th>
-              <th class="px-4 py-3 text-left">Plan</th>
-              <th class="px-4 py-3 text-left">Licences</th>
-              <th class="px-4 py-3 text-left">Paiement</th>
-              <th class="px-4 py-3 text-left">Statut</th>
-              <th class="px-4 py-3 text-left">Échéance</th>
-              <th class="px-4 py-3 text-left min-w-[180px]">Notes</th>
-              <th class="px-4 py-3 text-left">Actions</th>
+              <th class="px-3 py-2 text-left w-16">#</th>
+              <th class="px-3 py-2 text-left">Nom scientifique</th>
+              <th class="px-3 py-2 text-left">Nom complet</th>
+              <th class="px-3 py-2 text-left">Nom vernaculaire FR</th>
+              <th class="px-3 py-2 text-left">Cultivar</th>
+              <th class="px-3 py-2 text-left">Auteur</th>
+              <th class="px-3 py-2 text-left">Bibliographie</th>
+              <th class="px-3 py-2 text-left">Notes</th>
+              <th class="px-3 py-2 text-left w-12">H?</th>
+              <th class="px-3 py-2 text-left w-10">🔗</th>
             </tr>
           </thead>
-          <tbody id="tbody">
-            <tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Chargement…</td></tr>
+          <tbody id="tela-search-tbody">
+            <tr><td colspan="10" class="px-4 py-6 text-center text-gray-300 text-xs">Tapez au moins 2 caractères pour rechercher</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-  </div>
-</div>
+  </div><!-- /admin-view-tela -->
+
+</div><!-- /max-w-7xl -->
+</div><!-- /app-view -->
 
 <!-- MODAL -->
 <div id="modal-overlay" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
@@ -210,12 +294,47 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const state = { user: null, structures: [], filter: 'tous' };
+const state = { user: null, structures: [], filter: 'tous', adminNotifs: [] };
 
 // ── AUTH ──────────────────────────────────────────────────────
+function _hideLoading() {
+  document.getElementById('loading-view')?.classList.add('hidden');
+}
+
+async function _lancerApp(user) {
+  if (state.user) return;
+  const { data: prof } = await db.from('profiles').select('role, nom').eq('id', user.id).maybeSingle();
+  if (!prof || prof.role !== 'admin') {
+    await db.auth.signOut();
+    window.location.href = 'pivot-login-admin.html';
+    return;
+  }
+  state.user = user;
+  _hideLoading();
+  document.getElementById('auth-view').classList.add('hidden');
+  document.getElementById('app-view').classList.remove('hidden');
+  document.getElementById('admin-name').textContent = prof.nom || user.email;
+  await loadAll();
+  await loadAdminNotifs();
+}
+
 async function init() {
   const { data: { session } } = await db.auth.getSession();
-  if (session?.user) await afterLogin(session.user);
+  if (session?.user) {
+    await _lancerApp(session.user);
+  } else {
+    _hideLoading();
+    document.getElementById('auth-view').classList.remove('hidden');
+  }
+
+  db.auth.onAuthStateChange(async (event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+      await _lancerApp(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      state.user = null;
+      window.location.href = 'pivot-login-admin.html';
+    }
+  });
 }
 
 function showAdminTab(tab) {
@@ -264,7 +383,7 @@ async function doLogin() {
   errEl.classList.add('hidden');
   const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
   if (error) { errEl.textContent = error.message; errEl.classList.remove('hidden'); return; }
-  await afterLogin(data.user);
+  // _lancerApp sera appelé via onAuthStateChange (SIGNED_IN)
 }
 
 async function afterLogin(user) {
@@ -283,7 +402,7 @@ async function afterLogin(user) {
   await loadAll();
 }
 
-async function doLogout() { await db.auth.signOut(); location.reload(); }
+async function doLogout() { await db.auth.signOut(); window.location.href = 'pivot-login-admin.html'; }
 
 // ── CHARGEMENT ────────────────────────────────────────────────
 async function loadAll() {
@@ -292,8 +411,8 @@ async function loadAll() {
 
   // Charger tous les comptes des 3 portails + structures + membres
   const [eRes, fRes, mRes, strRes, memRes] = await Promise.all([
-    db.from('compte_entrepreneur').select('id, email, nom').order('created_at', { ascending: false }),
-    db.from('compte_fournisseur').select('id, email, nom, nom_entreprise').order('created_at', { ascending: false }),
+    db.from('compte_entrepreneur').select('id, email, nom, compte_bloque').order('created_at', { ascending: false }),
+    db.from('compte_fournisseur').select('id, email, nom, nom_entreprise, compte_bloque, plan').order('created_at', { ascending: false }),
     db.from('compte_moe').select('id, email, nom').order('created_at', { ascending: false }),
     db.from('structures').select('*'),
     db.from('structure_membres').select('user_id, structure_id, role')
@@ -309,6 +428,12 @@ async function loadAll() {
   (memRes.data || []).forEach(m => {
     memMap[m.user_id] = m;
     countMap[m.structure_id] = (countMap[m.structure_id] || 0) + 1;
+  });
+  // Index membres par structure_id (pour la vue accordéon)
+  const membersByStructId = {};
+  (memRes.data || []).forEach(m => {
+    if (!membersByStructId[m.structure_id]) membersByStructId[m.structure_id] = {};
+    membersByStructId[m.structure_id][m.user_id] = m;
   });
 
   // Charger les notes admin depuis profiles
@@ -327,9 +452,9 @@ async function loadAll() {
 
   // Construire la liste unifiée des comptes
   const comptes = [
-    ...(eRes.data || []).map(u => ({ ...u, _type: 'entrepreneur', _nom: u.nom || u.email })),
-    ...(fRes.data || []).map(u => ({ ...u, _type: 'fournisseur',  _nom: u.nom_entreprise || u.nom || u.email })),
-    ...(mRes.data || []).map(u => ({ ...u, _type: 'moe',          _nom: u.nom || u.email }))
+    ...(eRes.data || []).map(u => ({ ...u, _type: 'entrepreneur', _nom: u.nom || u.email, _bloque: u.compte_bloque === true })),
+    ...(fRes.data || []).map(u => ({ ...u, _type: 'fournisseur',  _nom: u.nom_entreprise || u.nom || u.email, _bloque: u.compte_bloque === true, _plan_four: u.plan || 'decouverte' })),
+    ...(mRes.data || []).map(u => ({ ...u, _type: 'moe',          _nom: u.nom || u.email, _bloque: false }))
   ].map(u => {
     const mem = memMap[u.id];
     const struct = mem ? structMap[mem.structure_id] : null;
@@ -337,6 +462,7 @@ async function loadAll() {
       ...u,
       _structure: struct || null,
       _role: mem?.role || null,
+      _has_licence: mem?.has_licence !== false,
       _nb_membres: struct ? (countMap[struct.id] || 0) : null,
       _notes: notesMap[u.id] || '',
       _portail_role: rolesMap[u.id] || ''
@@ -350,24 +476,33 @@ async function loadAll() {
 }
 
 function updateStats() {
-  const c = state.comptes || [];
-  document.getElementById('stat-total').textContent    = c.length;
-  document.getElementById('stat-actif').textContent    = c.filter(x => x._structure?.statut_abonnement === 'actif' || x._type === 'moe').length;
-  document.getElementById('stat-essai').textContent    = c.filter(x => x._structure?.statut_abonnement === 'essai').length;
-  document.getElementById('stat-suspendu').textContent = c.filter(x => x._structure?.statut_abonnement === 'suspendu').length;
-  document.getElementById('stat-licences').textContent = c.filter(x => x._structure?.statut_abonnement === 'actif').length;
+  const s = state.structures || [];
+  document.getElementById('stat-total').textContent    = s.length;
+  document.getElementById('stat-actif').textContent    = s.filter(x => x.statut_abonnement === 'actif' || x.type === 'moe').length;
+  document.getElementById('stat-essai').textContent    = s.filter(x => x.statut_abonnement === 'essai').length;
+  document.getElementById('stat-suspendu').textContent = s.filter(x => x.statut_abonnement === 'suspendu').length;
+  document.getElementById('stat-licences').textContent = s.filter(x => x.statut_abonnement === 'actif').length;
 }
 
 // ── TABLE ─────────────────────────────────────────────────────
-function setFilter(f) {
+function setFilter(f, _noHistory) {
   state.filter = f;
   document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('tab-active'); b.classList.add('text-gray-500'); });
   const btn = document.getElementById(`tab-${f}`);
   btn.classList.add('tab-active'); btn.classList.remove('text-gray-500');
+  if (!_noHistory) history.pushState({ filter: f }, '');
   renderTable();
 }
 
-const TYPE_LABEL = { entrepreneur:'🏗 Entrepreneur', fournisseur:'🏭 Fournisseur', moe:'📐 MOE' };
+window.addEventListener('popstate', e => {
+  if (!state.user) return;
+  const f = e.state?.filter || 'tous';
+  setFilter(f, true);
+});
+
+const TYPE_LABEL       = { entrepreneur:'🏗 Société', fournisseur:'🏭 Établissement', moe:'📐 Agence' };
+const TYPE_LABEL_SHORT = { entrepreneur:'Société',   fournisseur:'Établissement',    moe:'Agence'  };
+const TYPE_COLOR       = { entrepreneur:'bg-green-100 text-green-700', fournisseur:'bg-blue-100 text-blue-700', moe:'bg-purple-100 text-purple-700' };
 const PLAN_LABEL = {
   unique: 'Unique', gratuit: 'Gratuit',
   consultation_envoyee: 'Consultations envoyées',
@@ -377,109 +512,308 @@ const PLAN_LABEL = {
 function renderTable() {
   const q       = document.getElementById('search-input').value.toLowerCase();
   const statFil = document.getElementById('filter-statut').value;
-  let list = state.comptes || [];
-  if (state.filter !== 'tous') list = list.filter(c => c._type === state.filter);
-  if (statFil) {
-    list = list.filter(c => {
-      const st = c._type === 'moe' ? 'gratuit' : (c._structure?.statut_abonnement || 'sans_structure');
-      return st === statFil;
-    });
-  }
-  if (q) list = list.filter(c =>
-    (c._nom||'').toLowerCase().includes(q) ||
-    (c.email||'').toLowerCase().includes(q) ||
-    (c._structure?.nom||'').toLowerCase().includes(q)
-  );
+  const typeFil = state.filter;
 
-  if (!list.length) {
-    document.getElementById('tbody').innerHTML =
-      '<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Aucun résultat</td></tr>';
+  // Grouper les comptes par structure
+  const membersByStruct = {};
+  const orphans = [];
+  (state.comptes || []).forEach(c => {
+    if (c._structure) {
+      if (!membersByStruct[c._structure.id]) membersByStruct[c._structure.id] = [];
+      membersByStruct[c._structure.id].push(c);
+    } else {
+      orphans.push(c);
+    }
+  });
+
+  let structures = state.structures || [];
+  if (typeFil !== 'tous') structures = structures.filter(s => s.type === typeFil);
+  if (statFil) structures = structures.filter(s => {
+    const st = s.type === 'moe' ? 'gratuit' : (s.statut_abonnement || 'sans_structure');
+    return st === statFil;
+  });
+  if (q) structures = structures.filter(s => {
+    if ((s.nom||'').toLowerCase().includes(q)) return true;
+    return (membersByStruct[s.id]||[]).some(m =>
+      (m._nom||'').toLowerCase().includes(q) || (m.email||'').toLowerCase().includes(q));
+  });
+
+  const tbody = document.getElementById('tbody');
+  if (!structures.length && !orphans.length) {
+    tbody.innerHTML = '<div class="px-4 py-8 text-center text-gray-400">Aucun résultat</div>';
     return;
   }
 
-  document.getElementById('tbody').innerHTML = list.map(c => {
-    const isMoe    = c._type === 'moe';
-    const struct   = c._structure;
-    const statut   = isMoe ? 'gratuit' : (struct?.statut_abonnement || null);
-    const statutBadge = statut ? `badge-${statut}` : 'badge-sans';
-    const statutLabel = isMoe ? 'Gratuit' : (statut || 'Sans abonnement');
-    const plan     = isMoe ? 'gratuit' : (struct?.plan || '—');
-    const paiement = struct?.mode_paiement || null;
-    const echeance = struct?.date_echeance;
-    const echeanceStr = echeance ? new Date(echeance).toLocaleDateString('fr-FR') : '—';
-    const isExpired   = echeance && new Date(echeance) < new Date();
-    const ecClass     = isExpired ? 'text-red-500 font-medium' : 'text-gray-600';
-    const nbM      = c._nb_membres ?? '—';
-    const nbMax    = struct?.nb_licences_max ?? '—';
+  tbody.innerHTML = structures.map(s => renderStructureCard(s, membersByStruct[s.id]||[]))
+    .join('') + (orphans.length ? renderOrphansSection(orphans) : '');
+}
 
-    return `<tr class="hover:bg-gray-50">
-      <td class="px-4 py-3">
-        <p class="font-medium text-gray-800 text-sm">${escHtml(c._nom)}</p>
-        <p class="text-xs text-gray-400">${escHtml(c.email || '')}</p>
-      </td>
-      <td class="px-4 py-3 text-xs">
-        ${struct
-          ? `<span class="font-medium text-gray-700">${escHtml(struct.nom)}</span>
-             ${c._role === 'referent' ? '<span class="ml-1 text-indigo-500 text-xs">★</span>' : ''}`
-          : '<span class="text-gray-300 italic">Sans structure</span>'}
-      </td>
-      <td class="px-4 py-3">
-        ${c._portail_role ? `
-          <div class="flex items-center gap-1.5">
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${
-              c._portail_role === 'entreprise' ? 'bg-green-100 text-green-700' :
-              c._portail_role === 'fournisseur' ? 'bg-blue-100 text-blue-700' :
-              c._portail_role === 'moe' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
-            }">${c._portail_role}</span>
-            <button onclick="openRoleModal('${c.id}','${c._portail_role}')" class="text-gray-300 hover:text-indigo-500 text-xs" title="Changer le rôle">✏️</button>
-          </div>` :
-          `<button onclick="openRoleModal('${c.id}','')" class="text-xs text-gray-400 hover:text-indigo-600 italic">Assigner →</button>`
-        }
-      </td>
-      <td class="px-4 py-3 text-xs">${TYPE_LABEL[c._type] || c._type}</td>
-      <td class="px-4 py-3 text-xs text-gray-700">${PLAN_LABEL[plan] || plan}</td>
-      <td class="px-4 py-3 text-center text-xs">
-        ${struct ? `<span class="font-medium">${nbM}</span><span class="text-gray-400"> / ${nbMax}</span>` : '—'}
-      </td>
-      <td class="px-4 py-3">
-        ${!isMoe && paiement
-          ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${paiement === 'virement' ? 'badge-virement' : 'badge-stripe'}">
-              ${paiement === 'virement' ? '🏦 Virement' : '💳 Stripe'}
-            </span>`
-          : '<span class="text-gray-300 text-xs">—</span>'}
-      </td>
-      <td class="px-4 py-3">
-        <span class="text-xs px-2 py-0.5 rounded-full font-medium ${statutBadge}">${statutLabel}</span>
-      </td>
-      <td class="px-4 py-3 text-xs ${ecClass}">${echeanceStr}</td>
-      <td class="px-4 py-3">
-        <button onclick="openNotesModal('${c.id}')"
-          class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border transition
-            ${c._notes ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}">
-          📝 ${c._notes ? escHtml(c._notes.substring(0,30)) + (c._notes.length > 30 ? '…' : '') : 'Ajouter une note'}
-        </button>
-      </td>
-      <td class="px-4 py-3">
-        <div class="flex gap-1 flex-wrap">
-          ${struct ? `
-            <button onclick="openEditModal('${struct.id}')" class="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-600" title="Modifier">✏️</button>
-            ${!isMoe && paiement === 'virement' && statut !== 'actif'
-              ? `<button onclick="validateVirement('${struct.id}')" class="text-xs px-2 py-1 border border-blue-300 rounded hover:bg-blue-50 text-blue-700">🏦 Valider</button>`
-              : ''}
-            ${!isMoe
-              ? statut === 'actif'
-                ? `<button onclick="toggleStatut('${struct.id}','actif')" class="text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50 text-red-600" title="Suspendre">⏸</button>`
-                : `<button onclick="toggleStatut('${struct.id}','suspendu')" class="text-xs px-2 py-1 border border-green-300 rounded hover:bg-green-50 text-green-700" title="Activer">▶</button>`
-              : ''}
-            <button onclick="openMembresModal('${struct.id}')" class="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-600" title="Membres">👥</button>
-          ` : `
-            <button onclick="openCreateStructureForUser('${c.id}','${c._type}','${escHtml(c._nom)}','${escHtml(c.email||'')}')"
-              class="text-xs px-2 py-1 border border-indigo-300 rounded hover:bg-indigo-50 text-indigo-600">+ Structure</button>
-          `}
-        </div>
-      </td>
-    </tr>`;
+function renderStructureCard(s, members) {
+  const statut = s.type === 'moe' ? 'gratuit' : (s.statut_abonnement || 'sans_structure');
+  const statutLabel = {gratuit:'Gratuit',actif:'Actif',essai:'Essai',suspendu:'Suspendu'}[statut] || 'Sans abonnement';
+  const echeance = s.date_echeance;
+  const echeanceStr = echeance ? new Date(echeance).toLocaleDateString('fr-FR') : null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const daysLeft = echeance ? Math.ceil((new Date(echeance) - now) / 86400000) : null;
+  const isExpired = daysLeft !== null && daysLeft < 0;
+  const isWarning = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+  const ecClass = isExpired ? 'text-red-600 font-semibold' : isWarning ? 'text-orange-500 font-medium' : 'text-gray-500';
+  const nbLicences = members.filter(m => m._has_licence !== false).length;
+  const nbMax = s.nb_licences_max ?? '—';
+  const typeColor = TYPE_COLOR[s.type] || 'bg-gray-100 text-gray-600';
+
+  const membersHtml = members.map(m => {
+    const isAdmin = m._role === 'admin_compte' || m._role === 'referent';
+    const hasLic  = m._has_licence !== false;
+    return `<div class="flex items-center gap-3 bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
+      <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0">
+        ${escHtml((m._nom||'?')[0].toUpperCase())}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-gray-800 truncate">${escHtml(m._nom)}</p>
+        <p class="text-xs text-gray-400 truncate">${escHtml(m.email||'')}</p>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+        ${isAdmin ? `<span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium">★ Admin compte</span>`
+                  : `<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">Membre</span>`}
+        ${hasLic  ? `<span class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">🔑 Licence</span>`
+                  : `<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full">Sans licence</span>`}
+        ${m._portail_role ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${
+          m._portail_role==='entreprise'?'bg-green-100 text-green-700':
+          m._portail_role==='fournisseur'?'bg-blue-100 text-blue-700':
+          m._portail_role==='moe'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-500'
+        }">${m._portail_role}</span>` : ''}
+        <button onclick="openMemberEditModal('${s.id}','${m.id}')" class="text-gray-300 hover:text-indigo-500" title="Modifier">✏️</button>
+        <button onclick="openNotesModal('${m.id}')" class="text-gray-300 hover:text-amber-500" title="Notes">📝</button>
+        <button onclick="deleteUser('${m.id}','${escHtml(m.email||'')}','${m._type}')" class="text-gray-300 hover:text-red-500" title="Supprimer">🗑️</button>
+      </div>
+    </div>`;
   }).join('');
+
+  return `<div class="bg-white" id="struct-card-${s.id}">
+    <div class="flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors select-none"
+         onclick="toggleStructure('${s.id}')">
+      <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        <span class="font-semibold text-gray-800">${escHtml(s.nom||'—')}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium ${typeColor}">${TYPE_LABEL_SHORT[s.type]||s.type}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-${statut}">${statutLabel}</span>
+        ${echeanceStr ? `<span class="text-xs ${ecClass}">Échéance ${echeanceStr}${isExpired?' ⚠️':isWarning?` (J-${daysLeft})`:''}</span>` : ''}
+      </div>
+      <div class="flex items-center gap-3 shrink-0 text-xs text-gray-500">
+        <span class="font-medium text-gray-700">${nbLicences} / ${nbMax} licence${nbLicences>1?'s':''}</span>
+        <span>${s.plan||'—'}</span>
+        <button onclick="event.stopPropagation();openEditModal('${s.id}')" class="text-gray-300 hover:text-indigo-600" title="Modifier">✏️</button>
+        <button onclick="event.stopPropagation();deleteStructure('${s.id}','${escHtml(s.nom||'')}')" class="text-gray-300 hover:text-red-500" title="Supprimer la structure">🗑️</button>
+        ${s.type !== 'moe' ? `
+          <button onclick="event.stopPropagation();${s.statut_abonnement==='actif'?`toggleStatut('${s.id}','actif')`:`toggleStatut('${s.id}','suspendu')`}"
+            class="text-gray-300 ${s.statut_abonnement==='actif'?'hover:text-red-500':'hover:text-green-600'}"
+            title="${s.statut_abonnement==='actif'?'Suspendre':'Activer'}">${s.statut_abonnement==='actif'?'⏸':'▶'}</button>` : ''}
+        <span id="chevron-${s.id}" class="text-gray-400 transition-transform text-xs">▶</span>
+      </div>
+    </div>
+    <div id="struct-members-${s.id}" class="hidden bg-gray-50 px-5 pb-4 pt-2 space-y-2 border-t border-gray-100">
+      ${membersHtml || '<p class="text-xs text-gray-400 italic py-1">Aucun membre rattaché</p>'}
+      <button onclick="openInviteModal('${s.id}','${escHtml(s.nom||'')}')"
+        class="w-full text-center text-xs text-indigo-600 hover:text-indigo-800 py-1.5 border border-dashed border-indigo-200 rounded-lg hover:border-indigo-400 transition mt-1">
+        + Inviter un membre
+      </button>
+    </div>
+  </div>`;
+}
+
+function renderOrphansSection(orphans) {
+  const rows = orphans.map(c => `<div class="flex items-center gap-3 bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-medium text-gray-800">${escHtml(c._nom)}</p>
+      <p class="text-xs text-gray-400">${escHtml(c.email||'')} · ${TYPE_LABEL[c._type]||c._type}</p>
+    </div>
+    <button onclick="openCreateStructureForUser('${c.id}','${c._type}','${escHtml(c._nom)}','${escHtml(c.email||'')}')"
+      class="text-xs px-2 py-1 border border-indigo-300 rounded hover:bg-indigo-50 text-indigo-600">+ Rattacher</button>
+    <button onclick="deleteUser('${c.id}','${escHtml(c.email||'')}','${c._type}')" class="text-gray-300 hover:text-red-500">🗑️</button>
+  </div>`).join('');
+  return `<div class="bg-white border-t" id="struct-card-__orphans">
+    <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 select-none" onclick="toggleStructure('__orphans')">
+      <span class="font-medium text-gray-400 text-sm">Sans structure (${orphans.length})</span>
+      <span id="chevron-__orphans" class="text-gray-300 ml-auto text-xs transition-transform">▶</span>
+    </div>
+    <div id="struct-members-__orphans" class="hidden bg-gray-50 px-5 pb-4 pt-2 space-y-2 border-t border-gray-100">${rows}</div>
+  </div>`;
+}
+
+function toggleStructure(id) {
+  const panel = document.getElementById(`struct-members-${id}`);
+  const chev  = document.getElementById(`chevron-${id}`);
+  if (!panel) return;
+  const open = panel.classList.toggle('hidden');
+  if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function openMemberEditModal(structId, userId) {
+  const c = (state.comptes||[]).find(x => x.id === userId);
+  if (!c) return;
+  const isAdmin = c._role === 'admin_compte' || c._role === 'referent';
+  const hasLic  = c._has_licence !== false;
+  showModal(`<div class="p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-gray-800">Modifier le membre</h3>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+    </div>
+    <p class="font-medium text-gray-800 text-sm mb-0.5">${escHtml(c._nom)}</p>
+    <p class="text-xs text-gray-400 mb-5">${escHtml(c.email||'')}</p>
+    <div class="space-y-4 mb-5">
+      <div>
+        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rôle dans la structure</div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="mem-role" value="admin_compte" ${isAdmin?'checked':''} class="accent-indigo-600">
+            <span class="text-sm">★ Admin compte</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="mem-role" value="membre" ${!isAdmin?'checked':''} class="accent-indigo-600">
+            <span class="text-sm">Membre</span>
+          </label>
+        </div>
+      </div>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="mem-licence" ${hasLic?'checked':''} class="accent-green-600">
+        <span class="text-sm">Licence portail active <span class="text-xs text-gray-400">(accès aux fonctionnalités)</span></span>
+      </label>
+      <div>
+        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rôle portail</div>
+        <div class="flex flex-wrap gap-3">
+          ${['','entreprise','fournisseur','moe','admin'].map(r => `
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="portail-role" value="${r}" ${c._portail_role===r?'checked':''} class="accent-indigo-600">
+              <span class="text-xs">${r||'Aucun'}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal()" class="border px-3 py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+      <button onclick="saveMemberEdit('${structId}','${userId}')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Enregistrer</button>
+    </div>
+  </div>`);
+}
+
+async function saveMemberEdit(structId, userId) {
+  const role       = document.querySelector('input[name="mem-role"]:checked')?.value || 'membre';
+  const hasLicence = document.getElementById('mem-licence')?.checked ?? true;
+  const portailRole = document.querySelector('input[name="portail-role"]:checked')?.value || '';
+  const [r1, r2] = await Promise.all([
+    db.from('structure_membres').update({ role, has_licence: hasLicence }).eq('structure_id', structId).eq('user_id', userId),
+    db.from('profiles').upsert({ id: userId, role: portailRole || null }, { onConflict: 'id' })
+  ]);
+  if (r1.error) { toast('Erreur : ' + r1.error.message, 'err'); return; }
+  closeModal();
+  toast('Membre mis à jour ✓');
+  await loadAll();
+}
+
+function openInviteModal(structId, structNom) {
+  showModal(`<div class="p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-gray-800">Inviter un membre</h3>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+    </div>
+    <p class="text-sm text-gray-500 mb-4">L'invité recevra un lien pour rejoindre <strong>${escHtml(structNom)}</strong>.</p>
+    <div class="space-y-4 mb-5">
+      <div>
+        <label class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Email</label>
+        <input type="email" id="inv-email" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" placeholder="email@exemple.fr">
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rôle</div>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="inv-role" value="membre" checked class="accent-indigo-600">
+            <span class="text-sm">Membre</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="inv-role" value="admin_compte" class="accent-indigo-600">
+            <span class="text-sm">★ Admin compte</span>
+          </label>
+        </div>
+      </div>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="inv-licence" checked class="accent-green-600">
+        <span class="text-sm">Attribuer une licence portail</span>
+      </label>
+    </div>
+    <div id="inv-result" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800 break-all"></div>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal()" class="border px-3 py-2 rounded-lg text-sm text-gray-600">Annuler</button>
+      <button onclick="sendInvitation('${structId}')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Créer le lien d'invitation</button>
+    </div>
+  </div>`);
+}
+
+async function sendInvitation(structId) {
+  const email = document.getElementById('inv-email')?.value.trim();
+  const role  = document.querySelector('input[name="inv-role"]:checked')?.value || 'membre';
+  const hasLicence = document.getElementById('inv-licence')?.checked ?? true;
+  if (!email) { toast('Saisissez un email', 'err'); return; }
+  const { data, error } = await db.from('structure_invitations')
+    .insert({ structure_id: structId, email, role, has_licence: hasLicence, invited_by: state.user.id })
+    .select().single();
+  if (error) { toast('Erreur : ' + error.message, 'err'); return; }
+  const link = `${location.origin}/pivot-invitation.html?token=${data.token}`;
+  const res = document.getElementById('inv-result');
+  if (res) {
+    res.innerHTML = `✅ Invitation créée. Lien à transmettre :<br>
+      <span class="font-mono">${escHtml(link)}</span>
+      <button onclick="navigator.clipboard.writeText('${link}').then(()=>toast('Lien copié ✓'))"
+        class="ml-2 underline text-indigo-600 whitespace-nowrap">Copier</button>`;
+    res.classList.remove('hidden');
+  }
+}
+
+// Stub conservé pour compatibilité — remplacé par openMemberEditModal
+function openRoleModal(userId, currentRole) {
+  const c = (state.comptes||[]).find(x => x.id === userId);
+  const struct = c?._structure;
+  if (struct) openMemberEditModal(struct.id, userId);
+}
+
+
+async function deleteUser(userId, email, type) {
+  if (!confirm(`Supprimer définitivement le compte ${email} ?\nCette action est irréversible.`)) return;
+  const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch(`${WORKER_URL}/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ userId, type }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    toast(`Compte ${email} supprimé.`);
+    await loadAll();
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  }
+}
+
+async function deleteStructure(structId, structNom) {
+  const members = (state.comptes || []).filter(c => c._structure?.id === structId);
+  const msg = members.length
+    ? `Supprimer la structure "${structNom}" ?\n\nAttention : ${members.length} membre${members.length > 1 ? 's seront détachés' : ' sera détaché'} (leurs comptes individuels ne sont pas supprimés).\n\nCette action est irréversible.`
+    : `Supprimer la structure "${structNom}" ?\n\nCette action est irréversible.`;
+  if (!confirm(msg)) return;
+  try {
+    // Détacher les profils qui référencent cette structure
+    const { error: e0 } = await db.from('profiles').update({ structure_id: null }).eq('structure_id', structId);
+    if (e0) throw new Error('Profils : ' + e0.message);
+    const { error: e1 } = await db.from('structure_membres').delete().eq('structure_id', structId);
+    if (e1) throw new Error('Membres : ' + e1.message);
+    const { error: e2 } = await db.from('structures').delete().eq('id', structId).select('id');
+    if (e2) throw new Error('Structure : ' + e2.message);
+    toast(`Structure "${structNom}" supprimée.`);
+    await loadAll();
+  } catch (e) {
+    alert('Erreur suppression : ' + e.message);
+  }
 }
 
 // ── NOTES INLINE ──────────────────────────────────────────────
@@ -562,6 +896,253 @@ async function saveNote(structureId, value) {
 }
 
 // ── ACTIONS RAPIDES ───────────────────────────────────────────
+function openEditCompte(userId, type) {
+  const c = state.comptes.find(x => x.id === userId);
+  if (!c) return;
+  const isFour = type === 'fournisseur';
+  showModal(`
+    <div>
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-semibold text-gray-800">${escHtml(c._nom)}</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+      </div>
+      <p class="text-xs text-gray-400 mb-4">${escHtml(c.email||'')} · ${TYPE_LABEL[type]||type}</p>
+
+      ${isFour ? `
+      <label class="block text-xs text-gray-500 mb-1">Plan</label>
+      <select id="ec-plan" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
+        <option value="decouverte" ${c._plan_four==='decouverte'?'selected':''}>Découverte (gratuit)</option>
+        <option value="essentiel"  ${c._plan_four==='essentiel'?'selected':''}>Essentiel (10 €/mois)</option>
+        <option value="studio"     ${c._plan_four==='studio'?'selected':''}>Studio (30 €/mois)</option>
+        <option value="marche"     ${c._plan_four==='marche'?'selected':''}>Marché (50 €/mois)</option>
+      </select>` : ''}
+
+      <label class="block text-xs text-gray-500 mb-1">Statut</label>
+      <select id="ec-statut" onchange="toggleEcheanceField(this.value)"
+        class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
+        <option value="essai"    >Essai</option>
+        <option value="actif"    >Actif</option>
+        <option value="suspendu" >Suspendu</option>
+      </select>
+
+      <div id="ec-echeance-wrap">
+        <label class="block text-xs text-gray-500 mb-1">Date de fin</label>
+        <input id="ec-echeance" type="date" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none"
+          value="${(() => { const d = new Date(); d.setDate(d.getDate()+14); return d.toISOString().slice(0,10); })()}">
+      </div>
+
+      <div class="flex gap-3 mt-2">
+        <button onclick="saveEditCompte('${userId}','${type}')"
+          class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Enregistrer</button>
+        <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+      </div>
+    </div>`);
+}
+
+function toggleEcheanceField(statut) {
+  const wrap = document.getElementById('ec-echeance-wrap');
+  if (!wrap) return;
+  if (statut === 'essai' || statut === 'actif') {
+    wrap.classList.remove('hidden');
+    if (statut === 'essai' && !document.getElementById('ec-echeance').value) {
+      const d = new Date(); d.setDate(d.getDate() + 14);
+      document.getElementById('ec-echeance').value = d.toISOString().slice(0,10);
+    }
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
+async function saveEditCompte(userId, type) {
+  const statut   = document.getElementById('ec-statut').value;
+  const echeance = document.getElementById('ec-echeance')?.value || null;
+  const plan     = document.getElementById('ec-plan')?.value || null;
+
+  if ((statut === 'essai') && !echeance) {
+    return toast('Une date de fin est requise pour un essai', 'err');
+  }
+
+  // Créer une structure minimale si nécessaire pour stocker statut/échéance
+  const c = state.comptes.find(x => x.id === userId);
+  const { data: struct, error } = await db.from('structures').insert({
+    nom: c._nom, type,
+    statut_abonnement: statut,
+    date_echeance: echeance || null,
+    referent_id: userId
+  }).select().single();
+
+  if (error) return toast(error.message, 'err');
+
+  await db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' });
+
+  if (plan && type === 'fournisseur') {
+    await db.from('compte_fournisseur').update({ plan }).eq('id', userId);
+    if (c) c._plan_four = plan;
+  }
+
+  closeModal();
+  toast('Compte mis à jour');
+  await loadAll();
+}
+
+async function quickChangePlan(userId, plan) {
+  await db.from('compte_fournisseur').update({ plan }).eq('id', userId);
+  const c = state.comptes.find(x => x.id === userId);
+  if (c) { c._plan_four = plan; if (c._structure) c._structure.plan = plan; }
+  toast(`Plan → ${plan}`);
+}
+
+async function quickChangeStatut(structureId, statut) {
+  if (!structureId) return;
+  if (statut === 'essai') {
+    // Demander une date de fin d'essai
+    const s = state.structures.find(x => x.id === structureId);
+    const defaut = new Date(); defaut.setDate(defaut.getDate() + 14);
+    const defautStr = defaut.toISOString().slice(0,10);
+    showModal(`
+      <div>
+        <h3 class="font-semibold text-gray-800 mb-1">Période d'essai</h3>
+        <p class="text-xs text-gray-500 mb-4">${escHtml(s?.nom || '')}</p>
+        <label class="block text-xs text-gray-500 mb-1">Date de fin d'essai</label>
+        <input id="essai-date" type="date" value="${defautStr}"
+          class="w-full border rounded-lg px-3 py-2 text-sm mb-5 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        <div class="flex gap-3">
+          <button onclick="confirmerEssai('${structureId}')"
+            class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Confirmer</button>
+          <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+        </div>
+      </div>`);
+    return;
+  }
+  await db.from('structures').update({ statut_abonnement: statut }).eq('id', structureId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) s.statut_abonnement = statut;
+  state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = statut; });
+  updateStats(); renderTable();
+  toast(`Statut → ${statut}`);
+}
+
+async function confirmerEssai(structureId) {
+  const date = document.getElementById('essai-date').value;
+  if (!date) return toast('Date requise', 'err');
+  await db.from('structures').update({
+    statut_abonnement: 'essai',
+    date_echeance: date,
+    relance_envoyee: false
+  }).eq('id', structureId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) { s.statut_abonnement = 'essai'; s.date_echeance = date; s.relance_envoyee = false; }
+  state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = 'essai'; });
+  updateStats(); renderTable(); closeModal();
+  toast('Essai configuré jusqu\'au ' + new Date(date).toLocaleDateString('fr-FR'));
+}
+
+async function toggleBloque(userId, type, current) {
+  const newVal = !current;
+  const table = type === 'entrepreneur' ? 'compte_entrepreneur' : 'compte_fournisseur';
+  const { error } = await db.from(table).update({ compte_bloque: newVal }).eq('id', userId);
+  if (error) { toast(error.message, 'err'); return; }
+  const c = state.comptes.find(x => x.id === userId);
+  if (c) c._bloque = newVal;
+  renderTable();
+  toast(newVal ? '🔒 Compte bloqué' : '🔓 Compte débloqué');
+}
+
+// ── NOTIFICATIONS ADMIN ───────────────────────────────────────
+async function loadAdminNotifs() {
+  const { data } = await db.from('notifications_admin')
+    .select('*').eq('read', false).order('created_at', { ascending: false }).limit(20);
+  state.adminNotifs = data || [];
+  _updateAdminNotifBadge();
+  renderAdminNotifList();
+}
+
+function _updateAdminNotifBadge() {
+  const badge = document.getElementById('admin-notif-badge');
+  const count = state.adminNotifs?.length || 0;
+  if (count > 0) { badge.textContent = count; badge.classList.remove('hidden'); }
+  else { badge.classList.add('hidden'); }
+}
+
+function toggleAdminNotifs() {
+  const panel = document.getElementById('admin-notif-panel');
+  panel.classList.toggle('hidden');
+}
+
+document.addEventListener('click', e => {
+  const panel = document.getElementById('admin-notif-panel');
+  if (panel && !panel.classList.contains('hidden') &&
+      !panel.contains(e.target) && !e.target.closest('button[onclick="toggleAdminNotifs()"]')) {
+    panel.classList.add('hidden');
+  }
+});
+
+function renderAdminNotifList() {
+  const el = document.getElementById('admin-notif-list');
+  if (!state.adminNotifs?.length) {
+    el.innerHTML = '<p class="text-sm text-gray-400 p-4">Aucune notification en attente</p>';
+    return;
+  }
+  el.innerHTML = state.adminNotifs.map(n => {
+    const struct = state.structures?.find(s => s.id === n.structure_id);
+    return `<div class="p-4 border-b bg-red-50 hover:bg-red-100 transition">
+      <p class="text-sm text-gray-800 font-medium mb-1">⚠️ Échéance dépassée</p>
+      <p class="text-xs text-gray-600 mb-3">${escHtml(n.message)}</p>
+      <div class="flex gap-2">
+        ${struct ? `
+          <button onclick="adminProlonger('${n.id}','${struct.id}')"
+            class="flex-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">
+            ✅ Prolonger 1 mois
+          </button>
+          <button onclick="adminBloquer('${n.id}','${struct.id}')"
+            class="flex-1 text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700">
+            🔒 Suspendre
+          </button>
+        ` : ''}
+        <button onclick="dismissAdminNotif('${n.id}')"
+          class="text-xs text-gray-400 hover:text-gray-600 px-2">Ignorer</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function adminProlonger(notifId, structureId) {
+  const struct = state.structures.find(x => x.id === structureId);
+  const base = struct?.date_echeance ? new Date(struct.date_echeance) : new Date();
+  base.setMonth(base.getMonth() + 1);
+  const echeance = base.toISOString().slice(0, 10);
+  await db.from('structures').update({ date_echeance: echeance, relance_envoyee: false }).eq('id', structureId);
+  await dismissAdminNotif(notifId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) { s.date_echeance = echeance; s.relance_envoyee = false; }
+  renderTable();
+  toast('✅ Abonnement prolongé d\'un mois');
+}
+
+async function adminBloquer(notifId, structureId) {
+  await db.from('structures').update({ statut_abonnement: 'suspendu' }).eq('id', structureId);
+  await dismissAdminNotif(notifId);
+  const s = state.structures.find(x => x.id === structureId);
+  if (s) s.statut_abonnement = 'suspendu';
+  state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = 'suspendu'; });
+  updateStats(); renderTable();
+  toast('🔒 Structure suspendue');
+}
+
+async function dismissAdminNotif(notifId) {
+  await db.from('notifications_admin').update({ read: true }).eq('id', notifId);
+  state.adminNotifs = (state.adminNotifs || []).filter(n => n.id !== notifId);
+  _updateAdminNotifBadge();
+  renderAdminNotifList();
+}
+
+async function markAllAdminNotifsRead() {
+  await db.from('notifications_admin').update({ read: true }).eq('read', false);
+  state.adminNotifs = [];
+  _updateAdminNotifBadge();
+  renderAdminNotifList();
+}
+
 async function toggleStatut(structureId, current) {
   const newStatut = current === 'actif' ? 'suspendu' : 'actif';
   await db.from('structures').update({ statut_abonnement: newStatut }).eq('id', structureId);
@@ -573,28 +1154,95 @@ async function toggleStatut(structureId, current) {
 }
 
 async function openCreateStructureForUser(userId, type, nom, email) {
+  const existing = (state.structures || []).filter(s => s.type === type);
+  const typeLabel = { entrepreneur: 'Société', fournisseur: 'Établissement', moe: 'Agence' }[type] || 'Structure';
+
+  const existingOpts = existing.length
+    ? existing.map(s => `<option value="${s.id}">${escHtml(s.nom)}</option>`).join('')
+    : `<option value="" disabled>Aucune ${typeLabel} disponible</option>`;
+
   showModal(`
-    <h2 class="text-lg font-semibold text-gray-800 mb-1">+ Créer une structure</h2>
-    <p class="text-sm text-gray-500 mb-4">Pour <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
-    <label class="block text-xs text-gray-500 mb-1">Nom de la structure *</label>
-    <input id="cs-nom" type="text" value="${escHtml(nom)}" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-    <label class="block text-xs text-gray-500 mb-1">Plan</label>
-    <select id="cs-plan" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
-      ${type === 'moe' ? '<option value="gratuit">Gratuit</option>' : type === 'fournisseur'
-        ? '<option value="consultation_envoyee">Consultations envoyées</option><option value="consultation_ouverte">Consultations ouvertes</option>'
-        : '<option value="unique">Unique</option>'}
-    </select>
-    <label class="block text-xs text-gray-500 mb-1">Nb licences max</label>
-    <input id="cs-licences" type="number" value="1" min="1" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none">
-    <label class="block text-xs text-gray-500 mb-1">Mode de paiement</label>
-    <select id="cs-paiement" class="w-full border rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none">
-      <option value="stripe">💳 Stripe</option>
-      <option value="virement">🏦 Virement bancaire</option>
-    </select>
-    <div class="flex gap-3">
-      <button onclick="createStructureForUser('${userId}','${type}')" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Créer</button>
-      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
-    </div>`);
+    <h2 class="text-lg font-semibold text-gray-800 mb-1">Rattacher un membre</h2>
+    <p class="text-sm text-gray-500 mb-5">Pour <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+
+    <!-- Option 1 : rattacher à une structure existante -->
+    <div class="border rounded-xl p-4 mb-3 ${existing.length ? '' : 'opacity-50'}">
+      <div class="text-sm font-semibold text-gray-700 mb-2">Rattacher à une ${typeLabel} existante</div>
+      <select id="cs-existing" class="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none" ${existing.length ? '' : 'disabled'}>
+        <option value="">— Choisir —</option>
+        ${existingOpts}
+      </select>
+      <div class="mb-2">
+        <label class="block text-xs text-gray-500 mb-1">Rôle</label>
+        <select id="cs-existing-role" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none">
+          <option value="membre">Membre</option>
+          <option value="admin_compte">★ Admin compte</option>
+        </select>
+      </div>
+      <label class="flex items-center gap-2 text-sm cursor-pointer mb-3">
+        <input type="checkbox" id="cs-existing-licence" checked class="accent-green-600">
+        Attribuer une licence portail
+      </label>
+      <button onclick="rattacherUserStructure('${userId}')" ${existing.length ? '' : 'disabled'}
+        class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-40">
+        Rattacher →
+      </button>
+    </div>
+
+    <!-- Option 2 : créer une nouvelle structure -->
+    <details class="border rounded-xl">
+      <summary class="px-4 py-3 text-sm font-semibold text-gray-700 cursor-pointer select-none">+ Créer une nouvelle ${typeLabel}</summary>
+      <div class="px-4 pb-4 pt-2 space-y-2">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nom *</label>
+          <input id="cs-nom" type="text" value="${escHtml(nom)}" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Plan</label>
+          <select id="cs-plan" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none">
+            ${type === 'moe' ? '<option value="gratuit">Gratuit</option>' : type === 'fournisseur'
+              ? '<option value="consultation_envoyee">Consultations envoyées</option><option value="consultation_ouverte">Consultations ouvertes</option>'
+              : '<option value="unique">Unique</option>'}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nb licences max</label>
+          <input id="cs-licences" type="number" value="1" min="1" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Mode de paiement</label>
+          <select id="cs-paiement" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none">
+            <option value="stripe">💳 Stripe</option>
+            <option value="virement">🏦 Virement bancaire</option>
+          </select>
+        </div>
+        <button onclick="createStructureForUser('${userId}','${type}')" class="w-full bg-green-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-800 mt-1">Créer et rattacher →</button>
+      </div>
+    </details>
+
+    <button onclick="closeModal()" class="w-full mt-3 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+  `);
+}
+
+async function rattacherUserStructure(userId) {
+  const structId = document.getElementById('cs-existing')?.value;
+  const role     = document.getElementById('cs-existing-role')?.value || 'membre';
+  const hasLic   = document.getElementById('cs-existing-licence')?.checked ?? true;
+  if (!structId) return toast('Choisissez une structure', 'err');
+  try {
+    const { error: e1 } = await db.from('structure_membres')
+      .upsert({ structure_id: structId, user_id: userId, role }, { onConflict: 'structure_id,user_id' });
+    if (e1) throw e1;
+    // has_licence dans un update séparé (évite l'erreur de cache schéma)
+    await db.from('structure_membres')
+      .update({ has_licence: hasLic })
+      .eq('structure_id', structId).eq('user_id', userId);
+    const { error: e2 } = await db.from('profiles').update({ structure_id: structId }).eq('id', userId);
+    if (e2) throw e2;
+    closeModal();
+    toast('Membre rattaché ✓');
+    await loadAll();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function createStructureForUser(userId, type) {
@@ -823,7 +1471,12 @@ function planOptionsHtml(type, current) {
   const opts = {
     entrepreneur: [['unique','Unique']],
     moe:          [['gratuit','Gratuit']],
-    fournisseur:  [['consultation_envoyee','Consultations envoyées'],['consultation_ouverte','Consultations ouvertes']]
+    fournisseur:  [
+      ['decouverte','Découverte (gratuit)'],
+      ['essentiel','Essentiel (10 €/mois)'],
+      ['studio','Studio (30 €/mois)'],
+      ['marche','Marché (50 €/mois)']
+    ]
   };
   return (opts[type] || opts.entrepreneur).map(([v,l]) =>
     `<option value="${v}" ${current===v?'selected':''}>${l}</option>`
@@ -847,7 +1500,19 @@ async function saveEdit(structureId) {
 
   if (error) return toast(error.message, 'err');
 
+  // Pour les fournisseurs, propager le plan sur compte_fournisseur
   const s = state.structures.find(x => x.id === structureId);
+  if (s?.type === 'fournisseur' && s.referent_id) {
+    await db.from('compte_fournisseur').update({ plan }).eq('id', s.referent_id);
+    // Propager aussi à tous les membres de la structure
+    const { data: membres } = await db.from('structure_membres')
+      .select('user_id').eq('structure_id', structureId);
+    if (membres?.length > 1) {
+      const ids = membres.map(m => m.user_id);
+      await db.from('compte_fournisseur').update({ plan }).in('id', ids);
+    }
+  }
+
   if (s) Object.assign(s, { nom, plan, nb_licences_max: licences,
     statut_abonnement: statut, mode_paiement: mode, date_echeance: echeance, notes_admin: notes });
 
@@ -917,6 +1582,174 @@ function toast(msg, type) {
 }
 
 init();
+
+// ─── NAVIGATION ONGLETS ADMIN ─────────────────────────────────
+function switchAdminTab(tab) {
+  ['users','tela'].forEach(t => {
+    document.getElementById(`admin-view-${t}`)?.classList.toggle('hidden', t !== tab);
+    const btn = document.getElementById(`admin-tab-${t}`);
+    if (btn) {
+      btn.classList.toggle('border-indigo-600', t === tab);
+      btn.classList.toggle('text-indigo-600', t === tab);
+      btn.classList.toggle('border-transparent', t !== tab);
+      btn.classList.toggle('text-gray-500', t !== tab);
+    }
+  });
+  if (tab === 'tela') _telaLoadCount();
+}
+
+let _telaSearchTimer;
+async function _telaAdminSearch(val) {
+  clearTimeout(_telaSearchTimer);
+  const tbody = document.getElementById('tela-search-tbody');
+  const countEl = document.getElementById('tela-search-count');
+  if (!val || val.trim().length < 2) {
+    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-300 text-xs">Tapez au moins 2 caractères pour rechercher</td></tr>';
+    countEl.textContent = '';
+    return;
+  }
+  tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 text-xs">Recherche…</td></tr>';
+  _telaSearchTimer = setTimeout(async () => {
+    const { data, error } = await db.from('telabotanica')
+      .select('num_taxon, nom_sci, nom_sci_complet, genre, sp, auteur, biblio, hybride, url_biblio, nom_cultivar, nom_vern_fr, notes')
+      .or(`nom_sci.ilike.${val.trim()}%,genre.ilike.${val.trim()}%,sp.ilike.${val.trim()}%,nom_vern_fr.ilike.${val.trim()}%,nom_cultivar.ilike.${val.trim()}%`)
+      .order('nom_sci').limit(50);
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-red-400 text-xs">Erreur : ${escHtml(error.message)}</td></tr>`;
+      return;
+    }
+    if (!data?.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-gray-300 text-xs italic">Aucun résultat</td></tr>';
+      countEl.textContent = '';
+      return;
+    }
+    countEl.textContent = `${data.length}${data.length === 50 ? '+' : ''} résultat${data.length > 1 ? 's' : ''}`;
+    tbody.innerHTML = data.map(t => {
+      const nomComplet = (t.nom_sci_complet && !/^\d/.test(t.nom_sci_complet)) ? t.nom_sci_complet : '';
+      const hybBadge = t.hybride === true ? '<span class="text-amber-500 font-semibold">H</span>' : '';
+      const urlLink = t.url_biblio ? `<a href="${escHtml(t.url_biblio)}" target="_blank" class="text-indigo-400 hover:text-indigo-600">↗</a>` : '';
+      return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+        <td class="px-3 py-2 text-xs text-gray-400">${t.num_taxon}</td>
+        <td class="px-3 py-2 text-sm italic text-gray-800">${escHtml(t.nom_sci||'')}</td>
+        <td class="px-3 py-2 text-sm text-gray-500">${escHtml(nomComplet)}</td>
+        <td class="px-3 py-2 text-sm text-gray-600">${escHtml(t.nom_vern_fr||'')}</td>
+        <td class="px-3 py-2 text-sm text-gray-500 italic">${escHtml(t.nom_cultivar||'')}</td>
+        <td class="px-3 py-2 text-xs text-gray-400">${escHtml(t.auteur||'')}</td>
+        <td class="px-3 py-2 text-xs text-gray-400 max-w-xs truncate" title="${escHtml(t.biblio||'')}">${escHtml(t.biblio||'')}</td>
+        <td class="px-3 py-2 text-xs text-gray-400 max-w-sm truncate" title="${escHtml(t.notes||'')}">${escHtml(t.notes||'')}</td>
+        <td class="px-3 py-2 text-xs text-center">${hybBadge}</td>
+        <td class="px-3 py-2 text-xs text-center">${urlLink}</td>
+      </tr>`;
+    }).join('');
+  }, 300);
+}
+
+// ─── TELA BOTANICA ────────────────────────────────────────────
+function _toggleTelaSection() {
+  const body = document.getElementById('tela-section-body');
+  const chevron = document.getElementById('tela-chevron');
+  const open = body.classList.toggle('hidden');
+  chevron.textContent = open ? '▸' : '▾';
+  if (!open) _telaLoadCount();
+}
+
+async function _telaLoadCount() {
+  const { count } = await db.from('telabotanica').select('*', { count: 'exact', head: true });
+  const badge = document.getElementById('tela-count-badge');
+  if (count) {
+    badge.textContent = `${count.toLocaleString('fr-FR')} taxons`;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+  document.getElementById('tela-status').textContent = count ? `Base chargée : ${count.toLocaleString('fr-FR')} taxons.` : 'Base vide.';
+}
+
+async function _telaStartImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  const BATCH = 500;
+  const statusEl  = document.getElementById('tela-status');
+  const progressW = document.getElementById('tela-progress-wrap');
+  const barEl     = document.getElementById('tela-progress-bar');
+  const pctEl     = document.getElementById('tela-progress-pct');
+  const labelEl   = document.getElementById('tela-progress-label');
+  const previewEl = document.getElementById('tela-preview');
+
+  statusEl.textContent = 'Lecture du fichier…';
+  progressW.classList.remove('hidden');
+  previewEl.classList.remove('hidden');
+  previewEl.innerHTML = '';
+
+  const text = await file.text();
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const total = lines.length;
+  statusEl.textContent = `${total.toLocaleString('fr-FR')} lignes trouvées. Démarrage de l'import…`;
+
+  let imported = 0, errors = 0;
+  const rows = [];
+
+  for (const line of lines) {
+    const cols = line.split(';');
+    const numTaxon = parseInt(cols[0]);
+    const nomSci   = (cols[4] || '').trim();
+    if (!numTaxon || !nomSci) continue;
+    rows.push({
+      num_taxon:       numTaxon,
+      nom_sci:         nomSci,
+      nom_sci_complet: (cols[45] || '').trim() || null,
+      genre:           (cols[6]  || '').trim() || null,
+      sp:              (cols[8]  || '').trim() || null,
+      auteur:          (cols[14] || '').trim() || null,
+      hybride:         cols[38] === '1' ? true : cols[38] === '0' ? false : null,
+      biblio:          (cols[16] || '').trim() || null,
+      url_biblio:      (cols[75] || '').trim() || null,
+      nom_cultivar:    (cols[12] || '').trim() || null,
+      nom_vern_fr:     (cols[31] || '').trim() || null,
+      notes:           (cols[17] || '').trim() || null,
+    });
+  }
+
+  const totalRows = rows.length;
+  labelEl.textContent = `Import en cours… 0 / ${totalRows.toLocaleString('fr-FR')} taxons`;
+
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    const { error } = await db.from('telabotanica').upsert(batch, { onConflict: 'num_taxon' });
+    if (error) { errors += batch.length; }
+    else {
+      imported += batch.length;
+      // Aperçu des derniers
+      const last = batch[batch.length - 1];
+      const li = document.createElement('div');
+      li.textContent = `#${last.num_taxon} — ${last.nom_sci_complet || last.nom_sci}`;
+      previewEl.insertBefore(li, previewEl.firstChild);
+      if (previewEl.children.length > 20) previewEl.lastChild.remove();
+    }
+    const pct = Math.round(((i + batch.length) / totalRows) * 100);
+    barEl.style.width = pct + '%';
+    pctEl.textContent = pct + '%';
+    labelEl.textContent = `Import en cours… ${imported.toLocaleString('fr-FR')} / ${totalRows.toLocaleString('fr-FR')} taxons`;
+    await new Promise(r => setTimeout(r, 0)); // laisser respirer le navigateur
+  }
+
+  statusEl.textContent = `✅ Import terminé : ${imported.toLocaleString('fr-FR')} taxons importés${errors ? `, ${errors} erreurs` : ''}.`;
+  pctEl.textContent = '100%';
+  labelEl.textContent = 'Terminé';
+  _telaLoadCount();
+}
+
+async function _telaClear() {
+  if (!confirm('Supprimer tous les taxons Tela Botanica ? Cette action est irréversible.')) return;
+  const { error } = await db.from('telabotanica').delete().neq('num_taxon', 0);
+  if (error) { toast('Erreur : ' + error.message, 'err'); return; }
+  toast('Bibliothèque vidée.', 'ok');
+  _telaLoadCount();
+  document.getElementById('tela-progress-wrap').classList.add('hidden');
+  document.getElementById('tela-preview').classList.add('hidden');
+}
 </script>
 </body>
 </html>
