@@ -1004,7 +1004,7 @@ function _initNotifRealtime() {
       _showBrowserNotif(label, n.message || '');
       // Recharger la saisie si le déverrouillage concerne la consultation en cours
       if (n.type === 'modification_autorisee' && n.consultation_id && n.consultation_id === state.currentConsultation?.id) {
-        await loadSaisieForConsultation(n.consultation_id);
+        loadSaisie();
       }
     })
     .subscribe();
