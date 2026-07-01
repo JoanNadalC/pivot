@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Connexion · Portail MOE · Pivot La Racine</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-moe.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -261,7 +262,7 @@
     <div class="left-glow2"></div>
 
     <div class="logo-row">
-      <span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">La Racine</span></span>
+      <a href="index.html" style="text-decoration:none;"><span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">la racine</span></span></a>
     </div>
 
     <div>
@@ -330,11 +331,16 @@
 
     <div class="field">
       <label for="password">Mot de passe</label>
-      <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+      <div style="position:relative;">
+        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required style="padding-right:40px;" />
+        <button type="button" onclick="togglePwd('password',this)" tabindex="-1" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;color:#9CA3AF;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
     </div>
 
     <div class="forgot">
-      <a href="/forgot-password">Mot de passe oublié ?</a>
+      <a href="#" onclick="forgotPassword(event)">Mot de passe oublié ?</a>
     </div>
 
     <button class="btn-main" id="btn-login" onclick="handleLogin()">
@@ -347,22 +353,25 @@
     </div>
 
     <div class="form-footer">
-      <p>Un problème d'accès ? <a href="mailto:support@pivotlaracine.com">Contacter le support</a></p>
+      <p>Pas encore de compte ? <a href="pivot-inscription-moe.html">S'inscrire</a> · <a href="pivot-tarifs-moe.html">Voir les tarifs</a></p>
       <div class="portals-nav">
-        <a href="/login/entreprise" class="portal-link">Entreprise</a>
-        <a href="/login/fournisseur" class="portal-link">Fournisseur</a>
-        <a href="/login/moe" class="portal-link active">Maître d'œuvre</a>
+        <a href="pivot-login-entreprise.html" class="portal-link">Entreprise</a>
+        <a href="pivot-login-fournisseur.html" class="portal-link">Fournisseur</a>
+        <a href="pivot-login-moe.html" class="portal-link active">Maître d'œuvre</a>
       </div>
     </div>
   </div>
 
 </div>
 
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
   const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
   const PORTAIL_ROLE      = 'moe';
-  const REDIRECT_URL      = '/pivot-moe.html';
+  const REDIRECT_URL      = 'pivot-moe.html';
+
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   async function handleLogin() {
     const email    = document.getElementById('email').value.trim();
@@ -371,54 +380,34 @@
 
     document.getElementById('error-msg').classList.remove('visible');
 
-    if (!email || !password) {
-      showError('Veuillez renseigner votre email et votre mot de passe.');
-      return;
-    }
+    if (!email || !password) { showError('Veuillez renseigner votre email et votre mot de passe.'); return; }
 
     btn.disabled = true;
     btn.textContent = 'Connexion en cours…';
 
     try {
-      const authRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({ email, password }),
-      });
+      const { data: authData, error: authErr } = await db.auth.signInWithPassword({ email, password });
+      if (authErr) { showError('Email ou mot de passe incorrect.'); return; }
 
-      const authData = await authRes.json();
+      const { data: profil } = await db.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
 
-      if (!authRes.ok || authData.error) {
-        showError('Email ou mot de passe incorrect.');
-        return;
-      }
-
-      const profileRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${authData.user.id}&select=role`,
-        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authData.access_token}` } }
-      );
-
-      const profiles = await profileRes.json();
-
-      if (!profiles.length) {
+      if (!profil) {
         showError('Aucun profil trouvé. Contactez l\'administrateur.');
-        await signOut(authData.access_token);
-        return;
+        await db.auth.signOut(); return;
       }
 
-      const role = profiles[0].role;
-
+      const role = profil.role;
+      if (role === 'admin') {
+        showError('Email ou mot de passe incorrect.');
+        await db.auth.signOut(); return;
+      }
       if (role !== PORTAIL_ROLE) {
-        const labels = { entreprise: 'Portail Entreprise', fournisseur: 'Portail Fournisseur', moe: 'Portail Maître d\'œuvre' };
-        const urls   = { entreprise: '/login/entreprise', fournisseur: '/login/fournisseur', moe: '/login/moe' };
-        showError(`Ce compte est associé au ${labels[role] || role}. <a href="${urls[role] || '/'}">Se connecter sur le bon portail →</a>`);
-        await signOut(authData.access_token);
-        return;
+        const labels = { entreprise: 'Portail Entreprise', fournisseur: 'Portail Fournisseur' };
+        const urls   = { entreprise: 'pivot-login-entreprise.html', fournisseur: 'pivot-login-fournisseur.html' };
+        showError(`Ce compte est associé au ${labels[role] || role}. <a href="${urls[role] || '#'}">Se connecter sur le bon portail →</a>`);
+        await db.auth.signOut(); return;
       }
 
-      localStorage.setItem('pivot_access_token',  authData.access_token);
-      localStorage.setItem('pivot_refresh_token', authData.refresh_token);
-      localStorage.setItem('pivot_role',          role);
       window.location.href = REDIRECT_URL;
 
     } catch (err) {
@@ -429,13 +418,6 @@
     }
   }
 
-  async function signOut(token) {
-    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` },
-    });
-  }
-
   function showError(msg) {
     const el = document.getElementById('error-msg');
     el.innerHTML = msg;
@@ -443,6 +425,29 @@
   }
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+  function togglePwd(id, btn) {
+    const input = document.getElementById(id);
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.style.color = show ? 'var(--vert)' : '#9CA3AF';
+  }
+
+  async function forgotPassword(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    if (!email) { showError('Saisissez votre email dans le champ ci-dessus puis cliquez sur "Mot de passe oublié".'); return; }
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/pivot-reset-password.html'
+    });
+    if (error) { showError('Erreur : ' + error.message); return; }
+    const el = document.getElementById('error-msg');
+    el.innerHTML = 'Un email de réinitialisation a été envoyé à <strong>' + email + '</strong>.';
+    el.style.color = '#166534';
+    el.style.background = '#F0FDF4';
+    el.style.borderColor = '#BBF7D0';
+    el.classList.add('visible');
+  }
 </script>
 
 </body>

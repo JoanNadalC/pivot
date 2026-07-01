@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pivot La Racine, DAF, DOE et consultations fournisseurs pour paysagistes</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-entreprise.svg">
   <meta name="description" content="Pivot La Racine génère vos DAF et DOE automatiquement, centralise vos consultations pépinières et fournisseurs, et connecte votre maître d'œuvre. Fini Excel, les PDF fusionnés et les ressaisies.">
   <meta name="keywords" content="DAF paysagiste, DOE paysagiste, DAF entreprise paysage, DOE entreprise paysage, consultation fournisseur paysagiste, consultation pépinière en ligne, VISA DAF maître d'œuvre, fournitures chantier paysage, logiciel paysagiste fournitures, gestion chantier paysagiste, commande fournisseur paysagiste, suivi fournitures chantier VRD, générer DOE automatiquement paysagiste, plateforme achat végétaux professionnels, DAF VRD, DOE VRD, consultation fournisseur VRD, fournitures chantier VRD, logiciel DAF travaux publics, DOE travaux publics, consultation fournisseur travaux publics, DAF entreprise BTP, DOE entreprise BTP, consultation fournisseur BTP, fournitures chantier BTP, DAF aménagement paysager, DOE aménagement paysager, DAF espaces verts, DOE espaces verts, consultation fournisseur espaces verts, fournitures chantier espaces verts, DAF génie civil, DOE génie civil, DAF terrassement, DOE terrassement, consultation fournisseur terrassement, DAF maçonnerie paysagère, consultation fournisseur maçonnerie, DAF éclairage extérieur, DOE éclairage extérieur, DAF arrosage automatique, DOE arrosage automatique, consultation fournisseur arrosage, DAF clôture portail, DOE clôture portail, consultation fournisseur mobilier urbain">
   <meta property="og:title" content="Pivot La Racine, Générez vos DAF et DOE automatiquement">
@@ -323,16 +324,55 @@
 
 <!-- NAV -->
 <nav>
-  <div class="nav-logo" style="display:flex; align-items:baseline; gap:0.5rem; white-space:nowrap;">Pivot<span style="color:var(--cuivre); margin-right:0.4rem;">.</span><span style="font-family:'Inter',sans-serif; font-size:0.85rem; font-weight:500; color:var(--gris); letter-spacing:0.04em;">La Racine</span></div>
-  <a href="#waitlist" class="nav-cta">Être parmi les premiers →</a>
+  <div style="display:flex;align-items:baseline;white-space:nowrap">
+    <span style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:var(--vert);letter-spacing:-0.02em">Pivot<span style="color:var(--cuivre)">.</span></span><span style="font-family:'Playfair Display',serif;font-size:13px;font-style:italic;font-weight:400;color:var(--gris);letter-spacing:0;margin-left:7px;text-transform:none;font-variant:normal">la racine</span>
+  </div>
+  <div style="position:relative;" onmouseenter="document.getElementById('tarifs-dropdown').style.display='block'" onmouseleave="document.getElementById('tarifs-dropdown').style.display='none'">
+    <span style="font-size:0.82rem;font-weight:500;color:var(--gris);cursor:default;white-space:nowrap;display:flex;align-items:center;gap:4px;">
+      Tarifs
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </span>
+    <div id="tarifs-dropdown" style="display:none;position:absolute;top:100%;right:0;padding-top:6px;min-width:200px;z-index:100;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.1);overflow:hidden;">
+      <a href="pivot-tarifs-entreprise.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        🌿 <span><strong style="display:block;color:var(--vert)">Portail Entreprise</strong>30 € / mois</span>
+      </a>
+      <a href="pivot-tarifs-fournisseur.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        🪴 <span><strong style="display:block;color:var(--vert)">Portail Fournisseur</strong>Gratuit · plans payants</span>
+      </a>
+      <a href="pivot-tarifs-moe.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        📐 <span><strong style="display:block;color:var(--vert)">Portail MOE</strong>Gratuit · plan Pilote 10 €</span>
+      </a>
+    </div>
+    </div>
+  </div>
+  <div style="position:relative;" onmouseenter="document.getElementById('login-dropdown').style.display='block'" onmouseleave="document.getElementById('login-dropdown').style.display='none'">
+    <span style="font-size:0.82rem;font-weight:600;color:var(--vert);cursor:default;white-space:nowrap;display:flex;align-items:center;gap:4px;border:1px solid var(--vert);border-radius:8px;padding:0.45rem 0.9rem;">
+      Se connecter
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </span>
+    <div id="login-dropdown" style="display:none;position:absolute;top:100%;right:0;padding-top:6px;min-width:200px;z-index:100;">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.1);overflow:hidden;">
+      <a href="pivot-login-entreprise.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        🌿 <span><strong style="display:block;color:var(--vert)">Portail Entreprise</strong>Entrepreneur paysagiste</span>
+      </a>
+      <a href="pivot-login-fournisseur.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        🪴 <span><strong style="display:block;color:var(--vert)">Portail Fournisseur</strong>Pépiniériste</span>
+      </a>
+      <a href="pivot-login-moe.html" style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:0.82rem;color:#374151;text-decoration:none;border-top:1px solid #f3f4f6;transition:background 0.1s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        📐 <span><strong style="display:block;color:var(--vert)">Portail MOE</strong>Maître d'œuvre</span>
+      </a>
+    </div>
+    </div>
+  </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <p class="hero-eyebrow">Lancement dans quelques semaines · Secteur paysage</p>
-  <p style="font-size:1.1rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--cuivre); margin-bottom:1rem;">DAF · Fournitures · DOE</p>
-  <h1>Arrêtez de saisir<br>ce qui a déjà<br><em>été saisi.</em></h1>
-  <p class="hero-sub">Un fil conducteur : la fourniture. Pivot connecte votre entreprise, vos pépinières, vos fournisseurs et votre maître d'œuvre autour des fournitures de vos chantiers, en facilitant les échanges. Sans mail, sans copier-coller, sans impression, sans scan.</p>
+  <p class="hero-eyebrow">Bêta privée · Secteur paysage</p>
+  <p style="font-size:1.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--cuivre); margin-bottom:1rem;">DAF · Fournitures · DOE</p>
+  <h1>Arrêtons de <em>bricoler</em><br>et de ressaisir<br>ce qui a déjà été saisi.</h1>
+  <p class="hero-sub">Un fil conducteur : la fourniture. Pivot connecte entreprise, pépinières, fournisseurs et maître d'œuvre autour des fournitures de vos chantiers, en élaborant DAF, DOE et en facilitant les échanges. Sans mail, sans copier-coller, sans impression, sans scan.</p>
   <a href="#waitlist" class="hero-btn">Réserver ma place →</a>
   <div class="hero-scroll">Découvrir</div>
 </section>
@@ -356,7 +396,7 @@
           </ul>
         </div>
         <div class="douleur-after">
-          <p>Avec Pivot : <strong>importez votre devis une fois.</strong> Les consultations partent, les réponses rentrent, vous gardez la main sur chaque décision, et quand vous avez fait vos choix, la DAF comme le DOE se génèrent en un clic. Fini de jongler entre Excel, votre boîte mail et un logiciel de rédaction pour produire des documents que vous reconstituez à chaque chantier.</p>
+          <p>Avec Pivot : <strong>importez votre devis une fois.</strong> Les consultations partent, les réponses rentrent, vous gardez la main sur chaque décision, et quand vous avez fait vos choix, la DAF comme le DOE se génèrent en quelques clics. Fini de jongler entre Excel, votre boîte mail et un logiciel de rédaction pour produire des documents que vous reconstituez à chaque chantier.</p>
         </div>
       </div>
       <div class="douleur-card">
@@ -371,7 +411,7 @@
           </ul>
         </div>
         <div class="douleur-after">
-          <p>Avec Pivot : <strong>un lien, un formulaire.</strong> Vous renseignez prix et disponibilités directement, sans imprimante, sans scanner.</p>
+          <p>Avec Pivot : <strong>un lien, un formulaire.</strong> Vous renseignez prix et disponibilités directement, sans imprimante, sans scanner. Les prix précédemment rentrés se complètent seuls, ajustez-les.<br>Gagnez du temps et faites gagner du temps à votre client.</p>
         </div>
       </div>
       <div class="douleur-card">
@@ -486,6 +526,9 @@
             <h4>DOE en un clic</h4>
             <p>Pivot trace chaque commande et réception tout au long du chantier. En fin de chantier, le DOE est déjà constitué, vous n'avez plus qu'à l'exporter. Marchés privés et publics.</p>
           </div>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px;">
+            <a href="pivot-tarifs-entreprise.html" style="display:inline-flex;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;color:var(--vert);text-decoration:none;border:1px solid var(--vert);border-radius:8px;padding:7px 14px;transition:all 0.15s;" onmouseover="this.style.background='var(--vert)';this.style.color='var(--ecru)'" onmouseout="this.style.background='transparent';this.style.color='var(--vert)'">Voir les tarifs →</a>
+          </div>
         </div>
       </div>
       <div class="portail-row">
@@ -495,10 +538,6 @@
           <h3>Portail Pépinière</h3>
         </div>
         <div class="portail-right">
-          <div class="portail-feature">
-            <h4>Accès par lien unique</h4>
-            <p>Pas de compte à créer. Un lien sécurisé, vous répondez directement.</p>
-          </div>
           <div class="portail-feature">
             <h4>Réponse structurée</h4>
             <p>Prix, disponibilités, délais : renseignés ligne par ligne, sans imprimante ni scanner.</p>
@@ -510,6 +549,9 @@
           <div class="portail-feature">
             <h4>Photos depuis le téléphone</h4>
             <p>Photographiez vos végétaux en quelques taps depuis l'appli mobile. Elles arrivent instantanément chez le client.</p>
+          </div>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px;">
+            <a href="pivot-tarifs-fournisseur.html" style="display:inline-flex;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;color:var(--vert);text-decoration:none;border:1px solid var(--vert);border-radius:8px;padding:7px 14px;transition:all 0.15s;" onmouseover="this.style.background='var(--vert)';this.style.color='var(--ecru)'" onmouseout="this.style.background='transparent';this.style.color='var(--vert)'">Voir les tarifs →</a>
           </div>
         </div>
       </div>
@@ -529,8 +571,11 @@
             <p>Visualisez l'état des commandes en cours sur vos chantiers, tous lots confondus, en temps réel.</p>
           </div>
           <div class="portail-feature">
-            <h4>Accès gratuit</h4>
-            <p>Le portail MOE est gratuit. Pas d'abonnement, pas de compte à payer, votre entrepreneur vous invite. Vous pouvez inviter vos lots.</p>
+            <h4>Accès sur invitation</h4>
+            <p>Votre entrepreneur vous invite. Une formule gratuite couvre les échanges essentiels ; une formule payante est disponible pour les MOE qui pilotent leurs propres opérations.</p>
+          </div>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:4px;">
+            <a href="pivot-tarifs-moe.html" style="display:inline-flex;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;color:var(--vert);text-decoration:none;border:1px solid var(--vert);border-radius:8px;padding:7px 14px;transition:all 0.15s;" onmouseover="this.style.background='var(--vert)';this.style.color='var(--ecru)'" onmouseout="this.style.background='transparent';this.style.color='var(--vert)'">Voir les tarifs →</a>
           </div>
         </div>
       </div>
@@ -543,10 +588,9 @@
   <div class="waitlist-inner">
     <p class="section-label">Accès anticipé</p>
     <h2 class="section-title">Soyez parmi les premiers.</h2>
-    <p class="waitlist-sub">Pivot ouvre dans quelques semaines. Les inscrits en avant-première bénéficieront d'un tarif fondateur et d'un onboarding personnalisé.</p>
+    <p class="waitlist-sub">Pivot ouvre dans quelques semaines. Les inscrits en avant-première bénéficieront d'un onboarding personnalisé.</p>
 
     <div class="avantages">
-      <span class="avantage">Tarif fondateur</span>
       <span class="avantage">Onboarding personnalisé</span>
       <span class="avantage">Aucun engagement</span>
     </div>
@@ -577,6 +621,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
+  // Redirection automatique si lien d'invitation Supabase atterrit sur cette page
+  if (window.location.hash.includes('access_token')) {
+    const dest = window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery')
+      ? '/pivot-setup-password.html'
+      : '/pivot-app-photos.html';
+    window.location.href = dest + window.location.hash;
+  }
+
   const db = supabase.createClient(
     'https://djegdtlcvyjtrayrodxj.supabase.co',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s'
