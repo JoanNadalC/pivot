@@ -701,7 +701,8 @@ const state = {
   daf: [],
   notifications: [],
   filterChantier: 'tous',
-  filterDaf: 'all'
+  filterDaf: 'all',
+  pendingInvitations: []
 };
 
 // Ctrl+Z global (uniquement quand pas dans un input/textarea)
@@ -2234,6 +2235,9 @@ async function loadPendingInvitations() {
       ...(lots || []).map(l => ({ type: 'lot', ...l }))
     ];
 
+    state.pendingInvitations = allInvites;
+    renderChantiers();
+
     if (!allInvites.length) { el.classList.add('hidden'); return; }
 
     el.classList.remove('hidden');
@@ -2952,10 +2956,6 @@ function renderChantiers() {
   if (state.filterChantier !== 'tous') {
     list = list.filter(c => c.statut === state.filterChantier);
   }
-  if (!list.length) {
-    container.innerHTML = '<p class="text-gray-400 text-sm col-span-3">Aucun chantier. Créez-en un !</p>';
-    return;
-  }
   const hidden = state.chantiersHidden || [];
   const hiddenBanner = hidden.length ? `
     <div class="col-span-3 flex items-center gap-2 py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
@@ -2963,7 +2963,49 @@ function renderChantiers() {
       <button onclick="openChantiersHiddenModal()" class="text-purple-600 hover:text-purple-800 text-xs underline ml-1">Voir et restaurer</button>
     </div>` : '';
 
-  container.innerHTML = hiddenBanner + list.map(c => {
+  const pendingCards = (state.pendingInvitations || []).map(inv => {
+    if (inv.type === 'chantier') {
+      return `
+      <div style="background:var(--blanc);border:2px solid #6366f1;border-radius:14px;padding:18px 20px;position:relative;border-left:4px solid #6366f1">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+          <h3 style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--vert);padding-right:8px;line-height:1.3">🏗 ${escHtml(inv.nom_chantier || 'Chantier')}</h3>
+          <span style="font-size:10px;background:#eef2ff;color:#4338ca;padding:2px 8px;border-radius:999px;white-space:nowrap;flex-shrink:0">📬 Invitation</span>
+        </div>
+        <p style="font-size:11px;color:#6366f1;margin-bottom:10px">Reçue le ${new Date(inv.created_at).toLocaleDateString('fr-FR')}</p>
+        <div style="display:flex;gap:6px">
+          <button onclick="accepterInvitationChantier('${inv.id}','${inv.chantier_id}','${escHtml(inv.nom_chantier||'')}')"
+            style="flex:1;background:#4f46e5;color:white;border:none;padding:7px 0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">✅ Accepter</button>
+          <button onclick="refuserInvitationChantier('${inv.id}')"
+            style="flex:1;background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:7px 0;border-radius:8px;font-size:12px;cursor:pointer">Refuser</button>
+        </div>
+      </div>`;
+    } else {
+      const lotNom = inv.lots?.nom || '';
+      const chNom = inv.nom_chantier || inv.lots?.chantiers?.affaire || '';
+      return `
+      <div style="background:var(--blanc);border:2px solid #6366f1;border-radius:14px;padding:18px 20px;position:relative;border-left:4px solid #6366f1">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+          <h3 style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--vert);padding-right:8px;line-height:1.3">📦 ${escHtml(lotNom)}</h3>
+          <span style="font-size:10px;background:#eef2ff;color:#4338ca;padding:2px 8px;border-radius:999px;white-space:nowrap;flex-shrink:0">📬 Invitation lot</span>
+        </div>
+        ${chNom ? `<p style="font-size:11px;color:#6b7280;margin-bottom:4px">Chantier : ${escHtml(chNom)}</p>` : ''}
+        <p style="font-size:11px;color:#6366f1;margin-bottom:10px">Reçue le ${new Date(inv.created_at).toLocaleDateString('fr-FR')}</p>
+        <div style="display:flex;gap:6px">
+          <button onclick="_accepterLotInviteById('${inv.id}','${inv.lots?.chantier_id||''}','${escHtml(chNom)}','${escHtml(lotNom)}')"
+            style="flex:1;background:#4f46e5;color:white;border:none;padding:7px 0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">✅ Accepter</button>
+          <button onclick="refuserLotInvite('${inv.id}')"
+            style="flex:1;background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:7px 0;border-radius:8px;font-size:12px;cursor:pointer">Refuser</button>
+        </div>
+      </div>`;
+    }
+  }).join('');
+
+  if (!list.length && !pendingCards) {
+    container.innerHTML = '<p class="text-gray-400 text-sm col-span-3">Aucun chantier. Créez-en un !</p>';
+    return;
+  }
+
+  container.innerHTML = hiddenBanner + pendingCards + list.map(c => {
     const isOwner = !c._invite && !c._partage;
     const accentColor = c._invite ? '#3b82f6' : c._partage ? '#8b5cf6' : 'var(--vert-lt)';
     return `
