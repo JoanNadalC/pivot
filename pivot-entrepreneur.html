@@ -2505,20 +2505,18 @@ async function searchMoePortailAutocomplete(query) {
   if (query.length < 2) { box.classList.add('hidden'); return; }
   clearTimeout(_moeAutocompleteTimer);
   _moeAutocompleteTimer = setTimeout(async () => {
-    const { data, error } = await db.from('compte_moe')
-      .select('id, nom, societe, siret, tel, adresse, email')
-      .or(`nom.ilike.%${query}%,societe.ilike.%${query}%`)
-      .limit(8);
+    const { data, error } = await db.rpc('search_moe', { q: query });
+    if (error) { console.error('search_moe', error); box.classList.add('hidden'); return; }
     const results = data || [];
     if (!results.length) { box.classList.add('hidden'); return; }
     box.innerHTML = results.map(r => {
-      const label = r.societe ? `${r.societe} <span class="text-gray-400 font-normal">(${r.nom})</span>` : r.nom;
+      const { titre, sousTitre } = _formatSearchRow(r);
       return `<div class="flex items-center gap-3 px-3 py-2.5 hover:bg-purple-50 cursor-pointer border-b last:border-0"
           onclick="selectMoePortail(${JSON.stringify(r).replace(/"/g,'&quot;')})">
         <span class="text-purple-500">🟣</span>
         <div class="min-w-0">
-          <div class="text-sm font-medium truncate">${label}</div>
-          <div class="text-xs text-gray-400">${r.email || ''}</div>
+          <div class="text-sm font-medium truncate">${escHtml(titre)}</div>
+          <div class="text-xs text-gray-400 truncate">${escHtml(sousTitre)}</div>
         </div>
         <span class="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Portail</span>
       </div>`;
@@ -2529,16 +2527,16 @@ async function searchMoePortailAutocomplete(query) {
 
 function selectMoePortail(r) {
   window._moePortailId = r.id;
-  document.getElementById('moe-nom').value = r.nom;
+  document.getElementById('moe-nom').value = r.nom || r.societe || '';
   document.getElementById('moe-societe').value = r.societe || '';
   document.getElementById('moe-email').value = r.email || '';
-  document.getElementById('moe-tel').value = r.tel || '';
-  document.getElementById('moe-adresse').value = r.adresse || '';
+  document.getElementById('moe-tel').value = r.telephone || '';
+  document.getElementById('moe-adresse').value = '';
   document.getElementById('moe-nom-suggestions')?.classList.add('hidden');
   const badge = document.getElementById('moe-portail-badge');
   if (badge) {
     badge.classList.remove('hidden');
-    document.getElementById('moe-portail-badge-text').textContent = `${r.societe || r.nom} — inscrit sur le portail`;
+    document.getElementById('moe-portail-badge-text').textContent = `${r.societe || r.nom || 'MOE'} — inscrit sur le portail`;
   }
 }
 
