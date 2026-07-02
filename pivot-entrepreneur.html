@@ -417,7 +417,10 @@
               <p id="moe-none" class="text-sm text-gray-400 italic">Aucun MOE associé</p>
               <p id="moe-assigned" class="text-sm text-green-700 hidden"></p>
             </div>
-            <button onclick="openMoeModal()" class="mt-3 text-sm text-green-600 hover:underline">+ Associer un MOE</button>
+            <div class="mt-3 flex flex-col gap-2">
+              <button onclick="openMoeModal()" class="text-sm text-green-600 hover:underline text-left">+ Associer via carnet</button>
+              <button onclick="ouvrirInviterMoe(state.currentChantier?.id)" class="text-sm text-purple-600 hover:underline text-left">🔗 Envoyer un lien d'invitation</button>
+            </div>
           </div>
           <div class="bg-white rounded-xl p-5 shadow-sm">
             <h3 class="font-semibold mb-3">Fournisseurs du chantier</h3>
@@ -3023,11 +3026,6 @@ function renderChantiers() {
       <p style="font-size:12px;color:var(--gris)">${escHtml(c.ville || '')}${c.numero_marche ? ' · ' + escHtml(c.numero_marche) : ''}</p>
       <p style="font-size:11px;color:var(--gris-lt);margin-top:6px">${c.date_debut ? new Date(c.date_debut).toLocaleDateString('fr-FR') : ''}${c.date_fin_prevue ? ' → ' + new Date(c.date_fin_prevue).toLocaleDateString('fr-FR') : ''}</p>
       <div style="display:flex;align-items:center;gap:6px;margin-top:10px">
-        ${isOwner ? `<button onclick="event.stopPropagation();ouvrirInviterMoe('${c.id}')"
-          style="font-size:11px;font-weight:500;color:var(--vert-md);background:rgba(28,58,42,0.06);border:1px solid rgba(28,58,42,0.12);border-radius:6px;padding:4px 10px;cursor:pointer"
-          onmouseover="this.style.background='rgba(28,58,42,0.12)'" onmouseout="this.style.background='rgba(28,58,42,0.06)'">
-          + Inviter un MOE
-        </button>` : ''}
         ${isOwner && state.structureId ? `<button onclick="event.stopPropagation();openPartagerModal('${c.id}')"
           style="font-size:11px;font-weight:500;color:var(--gris);background:rgba(107,114,128,0.06);border:1px solid rgba(107,114,128,0.12);border-radius:6px;padding:4px 10px;cursor:pointer"
           onmouseover="this.style.background='rgba(107,114,128,0.12)'" onmouseout="this.style.background='rgba(107,114,128,0.06)'">
