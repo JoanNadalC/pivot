@@ -3556,8 +3556,13 @@ async function renommerLot(lotId) {
 
 async function retirerEntrepriseLot(memId, lotId) {
   if (!confirm('Retirer cette entreprise du lot ?')) return;
-  const { error } = await db.from('lot_entreprises').delete().eq('id', memId);
+  // .select() permet de vérifier combien de lignes ont réellement été supprimées
+  // (une suppression bloquée par RLS renvoie 0 ligne sans erreur)
+  const { data, error } = await db.from('lot_entreprises').delete().eq('id', memId).select();
   if (error) return toast(error.message, 'err');
+  if (!data || !data.length) {
+    return toast("Suppression refusée (droits insuffisants). Vérifiez la policy RLS DELETE sur lot_entreprises.", 'err');
+  }
   toast('Entreprise retirée');
   ouvrirLot(lotId);
 }
