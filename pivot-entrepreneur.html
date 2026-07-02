@@ -2385,11 +2385,16 @@ function renderCarnetMoe(liste) {
     el.innerHTML = '<p class="text-sm text-gray-400 italic">Aucun maître d\'œuvre dans le carnet.</p>';
     return;
   }
-  el.innerHTML = items.map(m => `
+  el.innerHTML = items.map(m => {
+    const soc = m.societe || '';
+    const titre = soc || m.nom || '—';
+    const contact = soc && m.nom ? m.nom : '';
+    const sousTitre = [contact, m.email || '', m.telephone || ''].filter(Boolean).join(' · ');
+    return `
     <div class="bg-white rounded-xl shadow-sm px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-gray-50">
       <div>
-        <p class="text-sm font-medium">${escHtml(m.nom)}${m.societe ? ` <span class="text-gray-400 font-normal text-xs">· ${escHtml(m.societe)}</span>` : ''}</p>
-        <p class="text-xs text-gray-400">${m.email || ''}${m.telephone ? ' · ' + m.telephone : ''}</p>
+        <p class="text-sm font-medium">${escHtml(titre)}</p>
+        <p class="text-xs text-gray-400">${escHtml(sousTitre)}</p>
         ${m.notes ? `<p class="text-xs text-gray-500 italic mt-0.5">${escHtml(m.notes)}</p>` : ''}
       </div>
       <div class="flex items-center gap-2 ml-2 shrink-0">
@@ -2397,7 +2402,8 @@ function renderCarnetMoe(liste) {
         <button onclick="openEditMoeCarnetModal('${m.id}')" class="text-blue-400 hover:text-blue-600 text-xs">✏️</button>
         <button onclick="deleteMoeCarnet('${m.id}')" class="text-red-300 hover:text-red-500 text-xs">✕</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function searchMoeCarnet(query) {
@@ -3350,7 +3356,10 @@ function openMoeModal() {
   const carnet = state.maitresOeuvre || [];
   const carnetHtml = carnet.length
     ? carnet.map(m => {
-        const label = m.societe ? `${escHtml(m.nom)} <span class="text-gray-400 font-normal text-xs">· ${escHtml(m.societe)}</span>` : escHtml(m.nom);
+        const soc = m.societe || '';
+        const label = soc
+          ? `${escHtml(soc)} <span class="text-gray-400 font-normal text-xs">· ${escHtml(m.nom)}</span>`
+          : escHtml(m.nom);
         if (m.compte_moe_id) {
           return `<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 hover:bg-green-50 cursor-pointer" onclick="linkMoeFromCarnet('${m.compte_moe_id}','${escHtml(m.nom)}')">
             <span class="text-sm font-medium">${label}</span>
@@ -3773,6 +3782,7 @@ async function searchFournisseurs(q) {
     // 1. Résultats locaux (carnet)
     const local = state.fournisseurs.filter(f =>
       (f.nom || '').toLowerCase().includes(ql) ||
+      (f.nom_entreprise || '').toLowerCase().includes(ql) ||
       (f.siret || '').toLowerCase().includes(ql) ||
       (f.email || '').toLowerCase().includes(ql)
     );
@@ -3800,16 +3810,21 @@ async function searchFournisseurs(q) {
       return;
     }
 
-    const localHtml = local.map(f => `
+    const localHtml = local.map(f => {
+      const societe = f.nom_entreprise || '';
+      const titre = societe || f.nom || '—';
+      const sousTitre = [societe && f.nom ? f.nom : '', f.email || ''].filter(Boolean).join(' · ');
+      return `
       <div class="px-4 py-2.5 flex items-center justify-between hover:bg-gray-50">
         <div class="min-w-0">
-          <p class="text-sm font-medium truncate">${escHtml(f.nom || '—')}</p>
-          <p class="text-xs text-gray-400 truncate">${f.email || ''}</p>
+          <p class="text-sm font-medium truncate">${escHtml(titre)}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(sousTitre)}</p>
         </div>
         <span class="ml-2 shrink-0 text-xs ${f.type_fournisseur === 'portail' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'} px-2 py-0.5 rounded-full">
           ${f.type_fournisseur === 'portail' ? '🟢 Portail' : 'Carnet'}
         </span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     const portailHtml = portailFiltered.map(p => {
       const displayNom = escHtml(p.nom_entreprise || p.nom || p.email || '?');
