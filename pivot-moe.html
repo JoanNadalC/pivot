@@ -1439,8 +1439,25 @@ async function loadCurrentLotMembers() {
   try {
     const { data } = await db.from('lot_entreprises')
       .select('*').eq('lot_id', state.currentLot.id).order('created_at');
-    state.currentLotMembers = data || [];
+    state.currentLotMembers = await _enrichSocietes(data || []);
   } catch (err) { console.error('loadCurrentLotMembers', err); state.currentLotMembers = []; }
+}
+
+// Résout la raison sociale à jour depuis les comptes (nom d'entreprise uniquement, jamais l'email)
+async function _enrichSocietes(members) {
+  const ids = [...new Set(members.filter(m => m.entreprise_id).map(m => m.entreprise_id))];
+  if (!ids.length) return members;
+  try {
+    const { data } = await db.from('compte_entrepreneur')
+      .select('id, raison_sociale, societe').in('id', ids);
+    const map = {};
+    (data || []).forEach(c => { const s = c.raison_sociale || c.societe; if (s) map[c.id] = s; });
+    members.forEach(m => { if (m.entreprise_id && map[m.entreprise_id]) m._societe = map[m.entreprise_id]; });
+  } catch (e) { console.warn('_enrichSocietes', e); }
+  return members;
+}
+function _lotMemberLabel(m) {
+  return m._societe || m.nom_entreprise || m.email_invite || '—';
 }
 
 function renderContextBar() {
@@ -1453,7 +1470,7 @@ function renderContextBar() {
     const membres = state.currentLotMembers || [];
     const membresHtml = membres.length ? membres.map(m => `
       <div class="flex items-center justify-between py-1.5 gap-2 border-b last:border-0">
-        <span class="text-sm text-gray-700 truncate">${escHtml(m.nom_entreprise || m.email_invite || '—')}</span>
+        <span class="text-sm text-gray-700 truncate">${escHtml(_lotMemberLabel(m))}</span>
         <div class="flex items-center gap-2 shrink-0">
           <span class="text-xs px-2 py-0.5 rounded-full font-medium ${LOT_STATUT_STYLE[m.statut] || 'bg-gray-100 text-gray-500'}">${LOT_STATUT_LABEL[m.statut] || m.statut}</span>
           ${m.statut === 'invited' ? `<button onclick="copierLienLot('${m.token}', this)" class="text-xs text-blue-500 hover:text-blue-700" title="Copier le lien d'invitation">📋</button>` : ''}
@@ -3499,7 +3516,7 @@ async function ouvrirLot(lotId) {
   if (!lot) return;
   const { data: membres } = await db.from('lot_entreprises')
     .select('*').eq('lot_id', lotId).order('created_at');
-  const mem = membres || [];
+  const mem = await _enrichSocietes(membres || []);
   const statutStyle = {
     invited:  'bg-amber-100 text-amber-700',
     accepted: 'bg-green-100 text-green-700',
@@ -3509,8 +3526,7 @@ async function ouvrirLot(lotId) {
   const membresHtml = mem.length ? mem.map(m => `
     <div class="flex items-center justify-between py-2 border-b last:border-0 gap-2 flex-wrap">
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-gray-800 truncate">${escHtml(m.nom_entreprise || m.email_invite || '—')}</p>
-        ${m.nom_entreprise && m.email_invite ? `<p class="text-xs text-gray-400">${escHtml(m.email_invite)}</p>` : ''}
+        <p class="text-sm font-medium text-gray-800 truncate">${escHtml(_lotMemberLabel(m))}</p>
         <p class="text-xs text-gray-300">Invitée le ${new Date(m.created_at).toLocaleDateString('fr-FR')}</p>
       </div>
       <span class="text-xs px-2 py-0.5 rounded-full font-medium ${statutStyle[m.statut]||'bg-gray-100 text-gray-600'}">
