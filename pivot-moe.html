@@ -1459,9 +1459,9 @@ function renderContextBar() {
   const pending = invs.filter(i => i.statut === 'pending' && !i.moe_invited_id);
   let entLine;
   if (accepted.length) {
-    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">✅ ${escHtml(accepted[0].email_invite || 'Entreprise')} · connectée</span>`;
+    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">✅ ${escHtml(accepted[0].nom_entreprise || accepted[0].email_invite || 'Entreprise')} · connectée</span>`;
   } else if (pending.length) {
-    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">⏳ ${escHtml(pending[0].email_invite || 'Entreprise')} · invitée</span>`;
+    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">⏳ ${escHtml(pending[0].nom_entreprise || pending[0].email_invite || 'Entreprise')} · invitée</span>`;
   } else {
     entLine = `<span class="text-xs text-gray-400">Aucune entreprise invitée</span>`;
   }
@@ -3157,27 +3157,24 @@ async function rechercherEntrepriseInvite(q) {
   clearTimeout(_invSearchTimer);
   if (!q || q.length < 2) { el.innerHTML = ''; return; }
   _invSearchTimer = setTimeout(async () => {
-    const { data } = await db.from('compte_entrepreneur')
-      .select('id, nom, prenom, email, societe, raison_sociale')
-      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
-      .limit(6);
+    const { data, error } = await db.rpc('search_entreprises', { q });
+    if (error) { console.error('search_entreprises', error); el.innerHTML = '<p class="text-xs text-red-400 px-2 py-1">Recherche indisponible.</p>'; return; }
     if (!data?.length) {
       el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
       return;
     }
     el.innerHTML = data.map(e => {
-      const societe = e.raison_sociale || e.societe || '';
-      const contact = [e.prenom, e.nom].filter(Boolean).join(' ');
-      const titre = societe || contact || e.email || 'Entreprise';
+      const contact = [e.prenom, e.nom_initiale].filter(Boolean).join(' ');
+      const titre = e.societe || contact || 'Entreprise';
       return `
-      <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(titre)}','${escHtml(e.email||'')}')"
+      <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(titre)}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition flex items-center gap-3">
         <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
           ${(titre||'?')[0].toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
-          <p class="text-xs text-gray-400 truncate">${contact && societe ? escHtml(contact) + ' · ' : ''}${escHtml(e.email||'')}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(e.societe && contact ? contact : '')}</p>
         </div>
         <span class="text-xs text-blue-500 shrink-0">Inviter →</span>
       </button>`;
@@ -3185,14 +3182,15 @@ async function rechercherEntrepriseInvite(q) {
   }, 280);
 }
 
-async function selectionnerEntrepriseInvite(entrepriseId, nom, email) {
+async function selectionnerEntrepriseInvite(entrepriseId, nom) {
   const ch = state.currentChantier;
   const { data: existing } = await db.from('chantier_invitations')
-    .select('id, statut').eq('chantier_id', ch.id).eq('email_invite', email).maybeSingle();
+    .select('id, statut').eq('chantier_id', ch.id).eq('entreprise_id', entrepriseId).maybeSingle();
   if (existing?.statut === 'pending') return toast('Une invitation est déjà en attente pour cette entreprise', 'err');
   const { data: inv, error } = await db.from('chantier_invitations').insert({
     chantier_id: ch.id, moe_id: state.user.id,
-    email_invite: email, nom_chantier: ch.affaire, statut: 'pending'
+    entreprise_id: entrepriseId, nom_entreprise: nom,
+    nom_chantier: ch.affaire, statut: 'pending'
   }).select().single();
   if (error) return toast(error.message, 'err');
   const link = `${location.origin}${location.pathname.replace('pivot-moe.html','pivot-entrepreneur.html')}?invitation=${inv.token}`;
@@ -3201,15 +3199,13 @@ async function selectionnerEntrepriseInvite(entrepriseId, nom, email) {
       <h2 class="text-lg font-semibold text-gray-800">✅ Invitation créée</h2>
       <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
     </div>
-    <p class="text-sm text-gray-500 mb-4">Pour : <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+    <p class="text-sm text-gray-500 mb-2">Pour : <strong>${escHtml(nom)}</strong></p>
+    <p class="text-sm text-gray-500 mb-4">L'entreprise verra l'invitation dans son portail. Vous pouvez aussi lui transmettre ce lien :</p>
     <div class="bg-gray-50 rounded-lg p-3 mb-3">
-      <p class="text-xs text-gray-500 mb-1">Lien à transmettre :</p>
       <p class="text-xs text-blue-700 break-all font-mono">${link}</p>
     </div>
     <div class="flex flex-col gap-2">
       <button onclick="copyInviteLink('${link}', this)" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">📋 Copier le lien</button>
-      <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Invitation chantier ' + (ch?.affaire||''))}&body=${encodeURIComponent('Bonjour,\n\nVous êtes invité à rejoindre le chantier "' + (ch?.affaire||'') + '" sur Pivot.\n\nLien :\n' + link)}"
-        class="w-full text-center border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 block">✉️ Envoyer par email</a>
       <button onclick="closeModal()" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Fermer</button>
     </div>
   `);
@@ -3533,27 +3529,24 @@ async function rechercherEntrepriseLot(q, lotId) {
   clearTimeout(_lotSearchTimer);
   if (!q || q.length < 2) { el.innerHTML = ''; return; }
   _lotSearchTimer = setTimeout(async () => {
-    const { data } = await db.from('compte_entrepreneur')
-      .select('id, nom, prenom, email, societe, raison_sociale')
-      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
-      .limit(6);
+    const { data, error } = await db.rpc('search_entreprises', { q });
+    if (error) { console.error('search_entreprises', error); el.innerHTML = '<p class="text-xs text-red-400 px-2 py-1">Recherche indisponible.</p>'; return; }
     if (!data?.length) {
       el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
       return;
     }
     el.innerHTML = data.map(e => {
-      const societe = e.raison_sociale || e.societe || '';
-      const contact = [e.prenom, e.nom].filter(Boolean).join(' ');
-      const titre = societe || contact || e.email || 'Entreprise';
+      const contact = [e.prenom, e.nom_initiale].filter(Boolean).join(' ');
+      const titre = e.societe || contact || 'Entreprise';
       return `
-      <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(titre)}','${escHtml(e.email||'')}','${lotId}')"
+      <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(titre)}','${lotId}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center gap-3">
         <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
           ${(titre||'?')[0].toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
-          <p class="text-xs text-gray-400 truncate">${contact && societe ? escHtml(contact) + ' · ' : ''}${escHtml(e.email || '')}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(e.societe && contact ? contact : '')}</p>
         </div>
         <span class="text-xs text-indigo-500 shrink-0">Inviter →</span>
       </button>`;
@@ -3561,15 +3554,13 @@ async function rechercherEntrepriseLot(q, lotId) {
   }, 280);
 }
 
-async function selectionnerEntrepriseLot(entrepriseId, nom, email, lotId) {
-  // Pré-remplir l'email et lancer l'invitation directement
+async function selectionnerEntrepriseLot(entrepriseId, nom, lotId) {
+  // Invitation par id de compte : l'email n'est jamais manipulé côté client
   try {
     const ch = state.currentChantier;
-    const lot = state.lots?.find(l => l.id === lotId);
     const { data: inv, error } = await db.from('lot_entreprises').insert({
       lot_id: lotId,
       entreprise_id: entrepriseId,
-      email_invite: email,
       nom_entreprise: nom,
       nom_chantier: ch?.affaire || null,
       ville_chantier: ch?.ville || null,
@@ -3583,15 +3574,13 @@ async function selectionnerEntrepriseLot(entrepriseId, nom, email, lotId) {
         <h2 class="text-lg font-semibold text-gray-800">✅ Invitation envoyée</h2>
         <button onclick="ouvrirLot('${lotId}')" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
       </div>
-      <p class="text-sm text-gray-600 mb-4">Pour : <strong>${escHtml(nom)}</strong> (${escHtml(email)})</p>
+      <p class="text-sm text-gray-600 mb-4">Pour : <strong>${escHtml(nom)}</strong></p>
+      <p class="text-sm text-gray-500 mb-4">L'entreprise verra l'invitation directement dans son portail (bouton Accepter/Refuser). Vous pouvez aussi lui transmettre ce lien :</p>
       <div class="bg-gray-50 rounded-lg p-3 mb-3">
-        <p class="text-xs text-gray-500 mb-1">Lien d'invitation :</p>
         <p class="text-xs text-blue-700 break-all font-mono">${link}</p>
       </div>
       <div class="flex flex-col gap-2">
         <button onclick="copierLienLot('${inv.token}', this)" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">📋 Copier le lien</button>
-        <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Invitation chantier ' + (ch?.affaire||''))}&body=${encodeURIComponent('Bonjour,\n\nVous êtes invité à rejoindre le lot "' + (lot?.nom||'') + '" du chantier "' + (ch?.affaire||'') + '" sur Pivot.\n\nLien :\n' + link)}"
-          class="w-full text-center border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 block">✉️ Envoyer par email</a>
         <button onclick="ouvrirLot('${lotId}')" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Retour au lot</button>
       </div>
     `);
