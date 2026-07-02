@@ -2229,9 +2229,13 @@ async function loadPendingInvitations() {
     const { data: invs } = await db.from('chantier_invitations')
       .select('id, chantier_id, nom_chantier, moe_id, created_at')
       .eq('email_invite', email).eq('statut', 'pending');
+    // On retrouve les invitations par lot via l'id de compte OU l'email (au cas où
+    // l'entreprise s'est inscrite avec un email différent de celui saisi par le MOE)
+    const orParts = [`entreprise_id.eq.${state.user.id}`];
+    if (email) orParts.push(`email_invite.eq.${email}`);
     const { data: lots } = await db.from('lot_entreprises')
       .select('*, lots(nom, chantier_id, created_by(nom, societe))')
-      .eq('email_invite', email).eq('statut', 'invited');
+      .or(orParts.join(',')).eq('statut', 'invited');
 
     const allInvites = [
       ...(invs || []).map(i => ({ type: 'chantier', ...i })),
