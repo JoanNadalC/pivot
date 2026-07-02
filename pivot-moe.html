@@ -857,6 +857,17 @@ function openCompteModal() {
         <input id="cpt-siret" type="text" value="${escHtml(p.siret || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
       </div>
       <div>
+        <label class="block text-xs text-gray-500 mb-1">Fonction</label>
+        <input id="cpt-fonction" type="text" value="${escHtml(p.fonction || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ex : Maître d'œuvre" />
+      </div>
+      <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
+        <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
+        <p class="text-xs text-blue-600 mb-2">Ce que les autres voient de vous quand ils vous cherchent.</p>
+        <select id="cpt-visibilite" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+          ${_visibiliteOptions(p.visibilite)}
+        </select>
+      </div>
+      <div>
         <label class="block text-xs text-gray-500 mb-1">Logo (PDF)</label>
         ${logoHtml}
         <input id="cpt-logo-file" type="file" accept="image/*" class="text-xs text-gray-600" onchange="previewCompteLogo(this)" />
@@ -929,6 +940,8 @@ async function saveCompte() {
   const telephone = document.getElementById('cpt-tel')?.value.trim() || '';
   const adresse = document.getElementById('cpt-adr')?.value.trim() || '';
   const siret = document.getElementById('cpt-siret')?.value.trim() || '';
+  const fonction = document.getElementById('cpt-fonction')?.value.trim() || '';
+  const visibilite = document.getElementById('cpt-visibilite')?.value || 'societe_initiale';
   const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
   const file = document.getElementById('cpt-logo-file')?.files?.[0];
   try {
@@ -944,8 +957,8 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    await db.from('compte_moe').update({ nom: nom || undefined, notif_preference }).eq('id', state.user.id);
-    state.profile = { ...state.profile, nom, telephone, adresse, siret, notif_preference, logo_url };
+    await db.from('compte_moe').update({ nom: nom || undefined, fonction, visibilite, notif_preference }).eq('id', state.user.id);
+    state.profile = { ...state.profile, nom, telephone, adresse, siret, fonction, visibilite, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
     closeModal();
@@ -1391,6 +1404,30 @@ function renderLotsSidebar() {
 
 const LOT_STATUT_STYLE = { invited: 'bg-amber-50 text-amber-600', accepted: 'bg-green-50 text-green-600', refused: 'bg-red-50 text-red-500' };
 const LOT_STATUT_LABEL = { invited: 'Invitée', accepted: 'Connectée', refused: 'Refusée' };
+
+// ── Visibilité recherche (préférence utilisateur) ──
+const VISIBILITE_LEVELS = [
+  ['societe_fonction',  'Société + Fonction'],
+  ['societe_prenom',    'Société + Prénom'],
+  ['societe_initiale',  'Société + Prénom + Initiale du nom (recommandé)'],
+  ['societe_nom',       'Société + Prénom + Nom'],
+  ['societe_complet',   'Société + Prénom + Nom + Téléphone + Email']
+];
+function _visibiliteOptions(cur) {
+  const c = cur || 'societe_initiale';
+  return VISIBILITE_LEVELS.map(([v, l]) => `<option value="${v}" ${v === c ? 'selected' : ''}>${l}</option>`).join('');
+}
+// {titre, sousTitre} depuis une ligne de recherche masquée (RPC)
+function _formatSearchRow(r) {
+  const titre = r.societe || [r.prenom, r.nom].filter(Boolean).join(' ') || 'Contact';
+  const nomLigne = [r.prenom, r.nom].filter(Boolean).join(' ');
+  const parts = [];
+  if (r.fonction) parts.push(r.fonction);
+  if (nomLigne && r.societe) parts.push(nomLigne);
+  if (r.telephone) parts.push(r.telephone);
+  if (r.email) parts.push(r.email);
+  return { titre, sousTitre: parts.join(' · ') };
+}
 
 function _lotModalOpen() {
   const m = document.getElementById('modal-overlay');
@@ -3164,8 +3201,7 @@ async function rechercherEntrepriseInvite(q) {
       return;
     }
     el.innerHTML = data.map(e => {
-      const contact = [e.prenom, e.nom_initiale].filter(Boolean).join(' ');
-      const titre = e.societe || contact || 'Entreprise';
+      const { titre, sousTitre } = _formatSearchRow(e);
       return `
       <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(titre)}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition flex items-center gap-3">
@@ -3174,7 +3210,7 @@ async function rechercherEntrepriseInvite(q) {
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
-          <p class="text-xs text-gray-400 truncate">${escHtml(e.societe && contact ? contact : '')}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(sousTitre)}</p>
         </div>
         <span class="text-xs text-blue-500 shrink-0">Inviter →</span>
       </button>`;
@@ -3536,8 +3572,7 @@ async function rechercherEntrepriseLot(q, lotId) {
       return;
     }
     el.innerHTML = data.map(e => {
-      const contact = [e.prenom, e.nom_initiale].filter(Boolean).join(' ');
-      const titre = e.societe || contact || 'Entreprise';
+      const { titre, sousTitre } = _formatSearchRow(e);
       return `
       <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(titre)}','${lotId}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center gap-3">
@@ -3546,7 +3581,7 @@ async function rechercherEntrepriseLot(q, lotId) {
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
-          <p class="text-xs text-gray-400 truncate">${escHtml(e.societe && contact ? contact : '')}</p>
+          <p class="text-xs text-gray-400 truncate">${escHtml(sousTitre)}</p>
         </div>
         <span class="text-xs text-indigo-500 shrink-0">Inviter →</span>
       </button>`;

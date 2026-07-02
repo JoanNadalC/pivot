@@ -1094,6 +1094,30 @@ async function _accepterLotInvite() {
   }
 }
 
+// ── Visibilité dans les recherches (préférence par utilisateur) ──
+const VISIBILITE_LEVELS = [
+  ['societe_fonction',  'Société + Fonction'],
+  ['societe_prenom',    'Société + Prénom'],
+  ['societe_initiale',  'Société + Prénom + Initiale du nom (recommandé)'],
+  ['societe_nom',       'Société + Prénom + Nom'],
+  ['societe_complet',   'Société + Prénom + Nom + Téléphone + Email']
+];
+function _visibiliteOptions(cur) {
+  const c = cur || 'societe_initiale';
+  return VISIBILITE_LEVELS.map(([v, l]) => `<option value="${v}" ${v === c ? 'selected' : ''}>${l}</option>`).join('');
+}
+// Construit {titre, sousTitre} à partir d'une ligne de recherche masquée renvoyée par la RPC
+function _formatSearchRow(r) {
+  const titre = r.societe || [r.prenom, r.nom].filter(Boolean).join(' ') || 'Contact';
+  const nomLigne = [r.prenom, r.nom].filter(Boolean).join(' ');
+  const parts = [];
+  if (r.fonction) parts.push(r.fonction);
+  if (nomLigne && r.societe) parts.push(nomLigne);
+  if (r.telephone) parts.push(r.telephone);
+  if (r.email) parts.push(r.email);
+  return { titre, sousTitre: parts.join(' · ') };
+}
+
 async function loadProfile() {
   try {
     const { data } = await db.from('compte_entrepreneur')
@@ -1223,6 +1247,17 @@ function openCompteModal() {
         </div>
       </div>
       <div>
+        <label class="block text-xs text-gray-500 mb-1">Fonction</label>
+        <input id="cpt-fonction" type="text" value="${escHtml(p.fonction || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ex : Conducteur de travaux" />
+      </div>
+      <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
+        <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
+        <p class="text-xs text-blue-600 mb-2">Ce que les autres voient de vous quand ils vous cherchent pour vous inviter.</p>
+        <select id="cpt-visibilite" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+          ${_visibiliteOptions(p.visibilite)}
+        </select>
+      </div>
+      <div>
         <label class="block text-xs text-gray-500 mb-1">Téléphone</label>
         <input id="cpt-tel" type="text" value="${escHtml(p.telephone || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
       </div>
@@ -1334,6 +1369,8 @@ async function saveCompte() {
   const siret         = document.getElementById('cpt-siret')?.value.trim() || '';
   const tva_intracom  = document.getElementById('cpt-tva')?.value.trim() || '';
   const raison_sociale = document.getElementById('cpt-raison-sociale')?.value.trim() || '';
+  const fonction      = document.getElementById('cpt-fonction')?.value.trim() || '';
+  const visibilite    = document.getElementById('cpt-visibilite')?.value || 'societe_initiale';
   const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
   const file          = document.getElementById('cpt-logo-file')?.files?.[0];
 
@@ -1350,11 +1387,11 @@ async function saveCompte() {
     }
 
     const { error } = await db.from('compte_entrepreneur')
-      .update({ prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, notif_preference, logo_url })
+      .update({ prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite, notif_preference, logo_url })
       .eq('id', state.user.id);
     if (error) throw error;
 
-    state.profile = { ...state.profile, prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, notif_preference, logo_url };
+    state.profile = { ...state.profile, prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite, notif_preference, logo_url };
     state.logoBase64 = null;
     const displayName = [prenom, nom].filter(Boolean).join(' ') || state.user.email || '';
     const societe2 = state.profile.raison_sociale || state.profile.societe || '';
@@ -3786,13 +3823,10 @@ async function searchFournisseurs(q) {
       (f.email || '').toLowerCase().includes(ql)
     );
 
-    // 2. Résultats portail (compte_fournisseur)
+    // 2. Résultats portail (via RPC masquée : aucun email/tél sauf si le fournisseur l'autorise)
     let portailFiltered = [];
     try {
-      const { data: portail, error } = await db.from('compte_fournisseur')
-        .select('id, nom, nom_entreprise, email, siret, telephone')
-        .or(`nom.ilike.%${q}%,nom_entreprise.ilike.%${q}%,email.ilike.%${q}%`)
-        .limit(10);
+      const { data: portail, error } = await db.rpc('search_fournisseurs', { q });
       if (!error && portail) {
         portailFiltered = portail.filter(p =>
           !state.fournisseurs.some(f =>
@@ -3826,23 +3860,18 @@ async function searchFournisseurs(q) {
     }).join('');
 
     const portailHtml = portailFiltered.map(p => {
-      const displayNom = escHtml(p.nom_entreprise || p.nom || p.email || '?');
-      const contact = p.nom_entreprise && p.nom ? `<span class="text-gray-400">(${escHtml(p.nom)})</span>` : '';
-      const safeId = p.id;
-      const safeNom = (p.nom_entreprise || p.nom || '').replace(/'/g, "\\'");
-      const safeEmail = (p.email || '').replace(/'/g, "\\'");
-      const safeSiret = (p.siret || '').replace(/'/g, "\\'");
-      const safeTel = (p.telephone || '').replace(/'/g, "\\'");
+      const { titre, sousTitre } = _formatSearchRow(p);
+      const safeNom = (titre || '').replace(/'/g, "\\'");
       return `
       <div class="px-4 py-2.5 flex items-center justify-between hover:bg-green-50 bg-green-50/30">
         <div class="min-w-0">
           <div class="flex items-center gap-1.5">
             <span class="text-green-500 text-xs">🟢</span>
-            <p class="text-sm font-medium truncate">${displayNom} ${contact}</p>
+            <p class="text-sm font-medium truncate">${escHtml(titre)}</p>
           </div>
-          <p class="text-xs text-gray-400 truncate pl-4">${p.email || ''} ${p.siret ? '· ' + p.siret : ''}</p>
+          ${sousTitre ? `<p class="text-xs text-gray-400 truncate pl-4">${escHtml(sousTitre)}</p>` : ''}
         </div>
-        <button onclick="addPortailFournisseurToCarnet('${safeId}','${safeNom}','${safeEmail}','${safeSiret}','${safeTel}')"
+        <button onclick="addPortailFournisseurToCarnet('${p.id}','${safeNom}')"
           class="ml-3 shrink-0 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium">
           ★ Favoris
         </button>
@@ -3857,11 +3886,11 @@ async function searchFournisseurs(q) {
   }, 300);
 }
 
-async function addPortailFournisseurToCarnet(compteId, nom, email, siret) {
+async function addPortailFournisseurToCarnet(compteId, nom) {
   try {
     const { data, error } = await db.from('fournisseurs').insert({
       entrepreneur_id: state.user.id,
-      nom, email, siret,
+      nom,
       compte_fournisseur_id: compteId,
       type_fournisseur: 'portail'
     }).select('*').single();

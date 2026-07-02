@@ -663,6 +663,19 @@
           </div>
           <label class="block text-xs text-gray-500 mb-1">Forme juridique</label>
           <input id="p-forme-juridique" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : SARL, SAS, EI…">
+          <label class="block text-xs text-gray-500 mb-1">Fonction</label>
+          <input id="p-fonction" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : Responsable commercial">
+          <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4">
+            <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
+            <p class="text-xs text-blue-600 mb-2">Ce que les entreprises voient de vous quand elles vous cherchent.</p>
+            <select id="p-visibilite" class="w-full border rounded px-3 py-2 text-sm bg-white">
+              <option value="societe_fonction">Société + Fonction</option>
+              <option value="societe_prenom">Société + Contact</option>
+              <option value="societe_initiale">Société + Contact (initiale) — recommandé</option>
+              <option value="societe_nom">Société + Contact (nom complet)</option>
+              <option value="societe_complet">Société + Contact + Téléphone + Email</option>
+            </select>
+          </div>
           <label class="block text-xs text-gray-500 mb-1">Logo (apparaît dans les PDFs)</label>
           <div id="p-logo-preview-wrap" class="mb-2 hidden"><img id="p-logo-preview" class="h-16 object-contain rounded border" /></div>
           <input id="p-logo-file" type="file" accept="image/*" class="text-xs text-gray-600 mb-1" onchange="previewProfilLogo(this)" />
@@ -1354,6 +1367,8 @@ function fillProfil(p) {
   document.getElementById('p-siret').value = p.siret || '';
   document.getElementById('p-tva').value = p.tva || '';
   document.getElementById('p-forme-juridique').value = p.forme_juridique || '';
+  document.getElementById('p-fonction').value = p.fonction || '';
+  document.getElementById('p-visibilite').value = p.visibilite || 'societe_initiale';
   document.getElementById('p-notif').value = p.notif_preference || 'each';
   const emailEl = document.getElementById('email-actuel');
   if (emailEl) emailEl.textContent = state.user?.email || '';
@@ -1431,6 +1446,8 @@ async function saveProfil() {
       siret: document.getElementById('p-siret').value.trim(),
       tva: document.getElementById('p-tva').value.trim(),
       forme_juridique: document.getElementById('p-forme-juridique').value.trim(),
+      fonction: document.getElementById('p-fonction').value.trim(),
+      visibilite: document.getElementById('p-visibilite').value,
       notif_preference: document.getElementById('p-notif').value,
       logo_url
     };
