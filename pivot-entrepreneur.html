@@ -3375,13 +3375,14 @@ async function linkMoeFromCarnet(compteMoeId, nom) {
       statut: 'pending'
     });
     if (error) throw error;
-    await db.from('notifications').insert({
+    const { error: notifErr } = await db.from('notifications').insert({
       user_id: compteMoeId,
       type: 'invitation_chantier_moe',
       message: `Vous avez été invité à rejoindre le chantier "${ch.affaire || ''}" en tant que MOE`,
       chantier_id: ch.id,
       read: false
-    }).then(r => r, () => {});
+    });
+    if (notifErr) console.warn('notification insert:', notifErr.message);
     toast(`Invitation envoyée à ${nom} ✉️`);
     closeModal();
   } catch (err) { toast(err.message, 'err'); }

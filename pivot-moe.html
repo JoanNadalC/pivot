@@ -681,11 +681,22 @@ function _initNotifRealtime() {
         invitation_acceptee: '🏗 Invitation acceptée',
         reponse_daf: '📋 Réponse DAF reçue',
         daf_soumise: '📄 Nouvelle DAF soumise',
+        invitation_chantier_moe: '📬 Invitation chantier',
       };
       const label = labels[n.type] || '🔔 Notification';
       toast(label + (n.message ? ' — ' + n.message : ''));
       _showBrowserNotif(label, n.message || '');
       loadNotifications();
+    })
+    .subscribe();
+
+  // Invitations reçues en temps réel (entrepreneur invite ce MOE via carnet)
+  db.channel('moe-invitations-' + state.user.id)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'chantier_invitations',
+      filter: `moe_invited_id=eq.${state.user.id}`
+    }, async () => {
+      await loadPendingMoeInvitations();
     })
     .subscribe();
 
