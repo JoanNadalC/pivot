@@ -152,22 +152,20 @@
     </div>
   </header>
 
-  <!-- TABS -->
-  <div class="bg-white border-b sticky z-30" style="top:56px">
+  <!-- TABS (visibles uniquement dans un chantier/lot ouvert) -->
+  <div id="tabs-bar" class="hidden bg-white border-b fixed left-0 right-0 z-30" style="top:56px">
     <div class="max-w-7xl mx-auto px-5 flex gap-1 overflow-x-auto">
-      <button onclick="setTab('dashboard')" id="ot-dashboard" class="tab-btn px-4 py-3 text-sm whitespace-nowrap tab-active">🏠 Tableau de bord</button>
-      <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📦 Fournitures</button>
+      <span id="tabs-context-label" class="hidden items-center pr-3 mr-1 border-r text-xs text-gray-400 whitespace-nowrap"></span>
+      <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-3 text-sm whitespace-nowrap tab-active">📦 Fournitures</button>
       <button onclick="setTab('daf')" id="ot-daf" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📋 DAF / VISA</button>
       <button onclick="setTab('suivi')" id="ot-suivi" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📈 Suivi</button>
-      <button onclick="setTab('lots')" id="ot-lots" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500 hidden">📦 Lots</button>
     </div>
   </div>
 
-  <div class="max-w-6xl mx-auto px-4 py-6" style="padding-top:1.5rem;margin-top:98px">
+  <div id="main-area" class="max-w-6xl mx-auto px-4 py-6" style="padding-top:1.5rem;margin-top:56px">
 
-    <!-- TAB: DASHBOARD -->
-    <div id="tab-dashboard" class="tab-content">
-      <!-- Sélecteur chantier (mode compte) -->
+    <!-- LIST VIEW : grille des chantiers (sans onglets) -->
+    <div id="list-view">
       <div id="chantiers-select-panel" class="mb-6">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-bold text-gray-800">Mes chantiers</h2>
@@ -189,63 +187,25 @@
         </div>
         <div id="chantiers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
-      <!-- Dashboard chantier actif -->
-      <div id="dashboard-chantier" class="hidden">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div class="bg-white rounded-xl p-4 shadow-sm text-center">
-            <div class="text-3xl font-bold text-blue-600" id="stat-soumises">0</div>
-            <p class="text-sm text-gray-500 mt-1">DAF en attente de VISA</p>
-          </div>
-          <div class="bg-white rounded-xl p-4 shadow-sm text-center">
-            <div class="text-3xl font-bold text-green-600" id="stat-validees">0</div>
-            <p class="text-sm text-gray-500 mt-1">DAF validées</p>
-          </div>
-          <div class="bg-white rounded-xl p-4 shadow-sm text-center">
-            <div class="text-3xl font-bold text-red-500" id="stat-refusees">0</div>
-            <p class="text-sm text-gray-500 mt-1">DAF refusées</p>
-          </div>
-        </div>
-        <div class="bg-white rounded-xl p-5 shadow-sm">
-          <h3 class="font-semibold mb-4">DAF en attente de VISA</h3>
-          <div id="daf-pending-list" class="space-y-2"></div>
-        </div>
-
-        <!-- Entreprise invitée -->
-        <div class="bg-white rounded-xl p-5 shadow-sm mt-4">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold">🏗 Entreprise invitée</h3>
-            <button onclick="openInviteModal()" class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">+ Inviter une entreprise</button>
-          </div>
-          <div id="invitations-list" class="space-y-2">
-            <p class="text-sm text-gray-400">Aucune invitation envoyée.</p>
-          </div>
-        </div>
-
-        <!-- Lots -->
-        <div class="bg-white rounded-xl p-5 shadow-sm mt-4">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold">📦 Lots du chantier</h3>
-            <button onclick="ouvrirCreerLot()" class="bg-indigo-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-700">+ Créer un lot</button>
-          </div>
-          <div id="lots-list" class="space-y-2">
-            <p class="text-sm text-gray-400">Aucun lot créé.</p>
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- TAB: LOTS (vue détaillée d'un lot) -->
-    <div id="tab-lots" class="tab-content hidden">
-      <div class="flex items-center gap-2 mb-4">
-        <button onclick="setTab('dashboard')" class="text-gray-500 hover:text-gray-800 text-sm">← Retour au tableau de bord</button>
-      </div>
-      <div id="lot-detail-content"></div>
-    </div>
+    <!-- CHANTIER VIEW : onglets d'un chantier / lot ouvert -->
+    <div id="chantier-view" class="hidden">
+      <div class="flex gap-5 items-start">
+        <!-- Sidebar lots -->
+        <aside id="lots-sidebar" class="hidden w-56 shrink-0"></aside>
+        <div class="flex-1 min-w-0">
+          <!-- Barre de contexte : entreprise / découpage en lots -->
+          <div id="chantier-context-bar" class="mb-4"></div>
+          <!-- Placeholder si chantier à lots sans lot sélectionné -->
+          <div id="no-lot-selected" class="hidden bg-white rounded-xl shadow-sm p-8 text-center text-sm text-gray-400">
+            👈 Sélectionnez un lot pour accéder à ses fournitures, DAF/VISA et suivi.
+          </div>
 
     <!-- TAB: FOURNITURES -->
     <div id="tab-fournitures" class="tab-content hidden">
       <!-- Barre d'outils collante -->
-      <div class="sticky top-16 z-30 bg-gray-50 pb-2 -mx-4 px-4 pt-2 border-b border-gray-100 shadow-sm">
+      <div class="sticky z-20 bg-gray-50 pb-2 -mx-4 px-4 pt-2 border-b border-gray-100 shadow-sm" style="top:105px">
         <div class="flex items-center gap-2 mb-2 flex-wrap">
           <button onclick="openAddFournitureModal()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">+ Ajouter fourniture</button>
           <button onclick="openFamillesActivesModal()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">🏷️ Gérer familles</button>
@@ -315,6 +275,10 @@
       </div>
     </div>
 
+        </div><!-- /flex-1 -->
+      </div><!-- /flex -->
+    </div><!-- /chantier-view -->
+
   </div>
 </div>
 
@@ -365,9 +329,12 @@ const state = {
   isGuest: false,
   guestToken: null,
   chantiers: [],
+  chantierStats: {},
   currentChantier: null,
+  currentLot: null,
   daf: [],
   fournitures: [],
+  allFournitures: [],
   familles: [],
   activeFamilles: [],
   pendingMoeInvitations: [],
@@ -809,9 +776,10 @@ async function initGuestMode(token) {
     showApp();
     await loadDafForChantier();
     await loadFournituresForChantier();
-    renderDashboard();
-    renderDafVisa();
-    renderFournitures();
+    state.lots = [];
+    document.getElementById('list-view').classList.add('hidden');
+    document.getElementById('chantier-view').classList.remove('hidden');
+    _setupChantierLayout();
   } catch (err) {
     document.getElementById('auth-token-banner').innerHTML = `<p class="text-red-600 text-sm">${err.message}</p>`;
     document.getElementById('auth-token-banner').classList.remove('hidden');
@@ -993,8 +961,7 @@ function showApp() {
     document.getElementById('btn-logout').classList.remove('hidden');
   } else {
     document.getElementById('user-name').textContent = 'Accès invité';
-    document.getElementById('chantiers-select-panel').classList.add('hidden');
-    document.getElementById('dashboard-chantier').classList.remove('hidden');
+    document.getElementById('list-view').classList.add('hidden');
     document.getElementById('chantier-header').textContent = state.currentChantier?.affaire || '';
     document.getElementById('chantier-header').classList.remove('hidden');
   }
@@ -1011,9 +978,51 @@ async function loadChantiers() {
       .order('created_at', { ascending: false });
     state.chantiers = data || [];
     renderChantiersList();
+    loadChantiersStats();
   } catch (err) {
     console.error('loadChantiers', err);
   }
+}
+
+// Compteurs affichés sur les cartes du tableau de bord :
+//  - DAF en attente de VISA
+//  - entreprises ayant accepté / invitées (direct + par lot)
+//  - nombre de lots
+async function loadChantiersStats() {
+  const ids = state.chantiers.map(c => c.id);
+  state.chantierStats = {};
+  if (!ids.length) return;
+  try {
+    const [dafRes, lotsRes, invRes] = await Promise.all([
+      db.from('daf').select('chantier_id, statut').in('chantier_id', ids),
+      db.from('lots').select('id, chantier_id').in('chantier_id', ids),
+      db.from('chantier_invitations').select('chantier_id, statut, moe_invited_id').in('chantier_id', ids)
+    ]);
+    const lots = lotsRes.data || [];
+    const lotToChantier = {};
+    const lotsByChantier = {};
+    lots.forEach(l => { lotToChantier[l.id] = l.chantier_id; (lotsByChantier[l.chantier_id] ||= []).push(l.id); });
+    let lotEnt = [];
+    if (lots.length) {
+      const { data } = await db.from('lot_entreprises').select('lot_id, statut').in('lot_id', lots.map(l => l.id));
+      lotEnt = data || [];
+    }
+    state.chantiers.forEach(c => {
+      const dafPending = (dafRes.data || []).filter(d => d.chantier_id === c.id && d.statut === 'soumise').length;
+      // invitations directes vers des entreprises (on exclut les invitations reçues par le MOE)
+      const directStatuts = (invRes.data || [])
+        .filter(i => i.chantier_id === c.id && !i.moe_invited_id).map(i => i.statut);
+      const lotStatuts = lotEnt.filter(le => lotToChantier[le.lot_id] === c.id).map(le => le.statut);
+      const allStatuts = [...directStatuts, ...lotStatuts];
+      state.chantierStats[c.id] = {
+        dafPending,
+        nbLots: (lotsByChantier[c.id] || []).length,
+        entAccepted: allStatuts.filter(s => s === 'accepted').length,
+        entTotal: allStatuts.length
+      };
+    });
+    renderChantiersList();
+  } catch (err) { console.error('loadChantiersStats', err); }
 }
 
 async function loadPendingMoeInvitations() {
@@ -1104,14 +1113,27 @@ function renderChantiersList() {
     return;
   }
   el.innerHTML = pendingCard + state.chantiers.map(c => {
-    const dafCount = state.daf.filter(d => d.chantier_id === c.id && d.statut === 'soumise').length;
+    const s = state.chantierStats[c.id] || {};
+    const dafCount = s.dafPending || 0;
+    const entTotal = s.entTotal || 0;
+    const entAccepted = s.entAccepted || 0;
+    const nbLots = s.nbLots || 0;
+    const entComplet = entTotal > 0 && entAccepted === entTotal;
     return `
       <div class="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition cursor-pointer border hover:border-purple-300" onclick="openChantier('${c.id}')">
-        <div class="flex items-start justify-between mb-2">
-          <h3 class="font-semibold text-gray-800">${c.affaire}</h3>
-          ${dafCount > 0 ? `<span class="bg-blue-500 text-white text-xs rounded-full px-2 py-0.5">${dafCount} DAF</span>` : ''}
+        <div class="flex items-start justify-between mb-2 gap-2">
+          <h3 class="font-semibold text-gray-800 min-w-0 truncate">${escHtml(c.affaire || '')}</h3>
+          ${dafCount > 0 ? `<span class="bg-blue-500 text-white text-xs rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">${dafCount} DAF</span>` : ''}
         </div>
-        <p class="text-sm text-gray-500">${c.ville || ''}</p>
+        <p class="text-sm text-gray-500">${escHtml(c.ville || '')}</p>
+        <div class="flex flex-wrap items-center gap-1.5 mt-3">
+          ${nbLots > 0 ? `<span class="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">📦 ${nbLots} lot${nbLots > 1 ? 's' : ''}</span>` : ''}
+          ${entTotal > 0
+            ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${entComplet ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}" title="Entreprises ayant accepté / invitées">
+                 🏗 ${entAccepted}/${entTotal} entreprise${entTotal > 1 ? 's' : ''}
+               </span>`
+            : `<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">Aucune entreprise invitée</span>`}
+        </div>
         <p class="text-xs text-gray-400 mt-2">${c.date_debut ? new Date(c.date_debut).toLocaleDateString('fr-FR') : ''}</p>
       </div>
     `;
@@ -1120,30 +1142,34 @@ function renderChantiersList() {
 
 async function openChantier(id, _noHistory) {
   state.currentChantier = state.chantiers.find(c => c.id === id);
-  document.getElementById('chantiers-select-panel').classList.add('hidden');
-  document.getElementById('dashboard-chantier').classList.remove('hidden');
+  state.currentLot = null;
+  document.getElementById('list-view').classList.add('hidden');
+  document.getElementById('chantier-view').classList.remove('hidden');
   document.getElementById('btn-back-chantiers').classList.remove('hidden');
   document.getElementById('chantier-header').textContent = state.currentChantier?.affaire || '';
   document.getElementById('chantier-header').classList.remove('hidden');
+
   await loadDafForChantier();
   await loadFournituresForChantier();
-  renderDashboard();
-  renderDafVisa();
-  if (!state.isGuest) { loadInvitations(); loadLots(); }
+  if (!state.isGuest) { await loadLots(); loadInvitations(); }
+  else state.lots = [];
+
+  _setupChantierLayout();
   if (!_noHistory) history.pushState({ view: 'chantier', chantierId: id }, '');
 
   // Realtime : nouvelles DAF soumises par l'entrepreneur
   if (window._dafChannel) db.removeChannel(window._dafChannel);
   window._dafChannel = db.channel('daf-moe-' + state.currentChantier.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'daf', filter: `chantier_id=eq.${state.currentChantier.id}` }, payload => {
-      const idx = state.daf.findIndex(x => x.id === payload.new?.id);
+      const idx = state.allDaf.findIndex(x => x.id === payload.new?.id);
       if (payload.eventType === 'INSERT') {
-        state.daf.push(payload.new);
+        state.allDaf.push(payload.new);
       } else if (payload.eventType === 'UPDATE' && idx >= 0) {
-        Object.assign(state.daf[idx], payload.new);
+        Object.assign(state.allDaf[idx], payload.new);
       }
-      renderDashboard();
+      applyLotScope();
       renderDafVisa();
+      renderLotsSidebar();
       if (payload.new?.statut === 'soumise') {
         showBrowserNotif('Nouvelle DAF', `DAF ${payload.new.numero || ''} soumise — en attente de VISA`);
       }
@@ -1151,13 +1177,105 @@ async function openChantier(id, _noHistory) {
     .subscribe();
 }
 
+// Décale le contenu selon que la barre d'onglets est visible ou non
+function _setMainOffset(tabsVisible) {
+  const el = document.getElementById('main-area');
+  if (el) el.style.marginTop = tabsVisible ? '105px' : '56px';
+}
+
+// Décide de l'affichage selon que le chantier a des lots ou non
+function _setupChantierLayout() {
+  const hasLots = (state.lots || []).length > 0;
+  const sidebar = document.getElementById('lots-sidebar');
+  const tabsBar = document.getElementById('tabs-bar');
+  const noLot = document.getElementById('no-lot-selected');
+
+  renderContextBar();
+
+  if (hasLots) {
+    sidebar.classList.remove('hidden');
+    renderLotsSidebar();
+    // Aucun lot sélectionné au départ : on masque les onglets, on montre le placeholder
+    state.currentLot = null;
+    tabsBar.classList.add('hidden');
+    _setMainOffset(false);
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    noLot.classList.remove('hidden');
+    _updateTabsContextLabel();
+  } else {
+    sidebar.classList.add('hidden');
+    noLot.classList.add('hidden');
+    // Mode entreprise unique : onglets directement sur le chantier
+    state.currentLot = null;
+    applyLotScope();
+    tabsBar.classList.remove('hidden');
+    _setMainOffset(true);
+    _updateTabsContextLabel();
+    setTab('fournitures', true);
+  }
+}
+
+function selectLot(lotId, _noHistory) {
+  state.currentLot = state.lots.find(l => l.id === lotId) || null;
+  document.getElementById('no-lot-selected').classList.add('hidden');
+  document.getElementById('tabs-bar').classList.remove('hidden');
+  _setMainOffset(true);
+  applyLotScope();
+  renderLotsSidebar();
+  _updateTabsContextLabel();
+  setTab('fournitures', _noHistory);
+}
+
+function _updateTabsContextLabel() {
+  const el = document.getElementById('tabs-context-label');
+  if (!el) return;
+  if (state.currentLot) {
+    el.textContent = '📦 ' + (state.currentLot.nom || 'Lot');
+    el.classList.remove('hidden'); el.classList.add('flex');
+  } else {
+    el.classList.add('hidden'); el.classList.remove('flex');
+  }
+}
+
+// Filtre fournitures + DAF selon le lot courant (null = niveau chantier)
+function applyLotScope() {
+  const inScope = f => state.currentLot ? f.lot_id === state.currentLot.id : true;
+  state.fournitures = (state.allFournitures || []).filter(inScope);
+  const usedIds = [...new Set(state.fournitures.map(f => f.famille_id).filter(Boolean))];
+  state.activeFamilles = [...new Set([...(state.activeFamilles || []), ...usedIds])];
+  // DAF : rattachée à un lot via sa fourniture, ou à défaut via l'entreprise émettrice
+  state.daf = (state.allDaf || []).filter(d => state.currentLot ? _dafLotId(d) === state.currentLot.id : true);
+}
+
+// Lot d'une DAF : priorité à sa fourniture, repli sur l'entreprise émettrice
+function _dafLotId(d) {
+  const f = (state.allFournitures || []).find(x => x.id === d.fourniture_id);
+  if (f && f.lot_id) return f.lot_id;
+  return (state.lotByEntreprise || {})[d.entrepreneur_id] || null;
+}
+
+// Ajoute une (ou plusieurs) fourniture(s) fraîchement créée(s) au référentiel + re-scope l'affichage
+function _registerFournitures(rows) {
+  (Array.isArray(rows) ? rows : [rows]).forEach(r => state.allFournitures.push(r));
+  applyLotScope();
+}
+function _unregisterFournitures(ids) {
+  const set = new Set(ids);
+  state.allFournitures = (state.allFournitures || []).filter(f => !set.has(f.id));
+  applyLotScope();
+}
+
 function showChantiersList(_noHistory) {
   state.currentChantier = null;
-  document.getElementById('chantiers-select-panel').classList.remove('hidden');
-  document.getElementById('dashboard-chantier').classList.add('hidden');
+  state.currentLot = null;
+  document.getElementById('list-view').classList.remove('hidden');
+  document.getElementById('chantier-view').classList.add('hidden');
+  document.getElementById('tabs-bar').classList.add('hidden');
+  _setMainOffset(false);
   document.getElementById('btn-back-chantiers').classList.add('hidden');
   document.getElementById('chantier-header').classList.add('hidden');
-  setTab('dashboard', true);
+  if (window._dafChannel) { db.removeChannel(window._dafChannel); window._dafChannel = null; }
+  loadChantiers();
   if (!_noHistory) history.pushState({ view: 'list' }, '');
 }
 
@@ -1174,10 +1292,10 @@ async function loadDafForChantier() {
         .eq('chantier_id', state.currentChantier.id)
         .order('created_at', { ascending: true });
       if (res.error) { console.error('loadDaf:', res.error); toast('Erreur DAF : ' + res.error.message, 'err'); }
-      console.log('[loadDaf] chantier_id:', state.currentChantier.id, 'rows:', res.data?.length, 'error:', res.error);
       data = res.data;
     }
-    state.daf = data || [];
+    state.allDaf = data || [];
+    state.daf = state.allDaf;
   } catch (err) {
     console.error('loadDaf', err);
   }
@@ -1191,8 +1309,9 @@ async function loadFournituresForChantier() {
       .eq('chantier_id', state.currentChantier.id)
       .order('ordre')
       .order('created_at');
-    state.fournitures = data || [];
-    const usedIds = [...new Set(state.fournitures.map(f => f.famille_id).filter(Boolean))];
+    state.allFournitures = data || [];
+    state.fournitures = state.allFournitures;
+    const usedIds = [...new Set(state.allFournitures.map(f => f.famille_id).filter(Boolean))];
     state.activeFamilles = [...new Set([...(state.activeFamilles || []), ...usedIds])];
   } catch (err) {
     console.error('loadFournitures', err);
@@ -1219,8 +1338,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'fournitures') renderFournitures();
   if (tab === 'daf') { renderDafVisa(); if (state.currentChantier) _markChantierNotifsRead(state.currentChantier.id, 'daf_soumise'); }
   if (tab === 'suivi') renderSuivi();
-  if (tab === 'lots') loadLots();
-  if (!_noHistory) history.pushState({ view: 'tab', tab }, '');
+  if (!_noHistory) history.pushState({ view: 'tab', tab, chantierId: state.currentChantier?.id, lotId: state.currentLot?.id }, '');
 }
 
 window.addEventListener('popstate', async e => {
@@ -1230,38 +1348,85 @@ window.addEventListener('popstate', async e => {
     showChantiersList(true);
   } else if (s.view === 'chantier' && s.chantierId) {
     if (state.currentChantier?.id !== s.chantierId) await openChantier(s.chantierId, true);
-    setTab('dashboard', true);
   } else if (s.view === 'tab' && s.tab) {
-    setTab(s.tab, true);
+    if (state.currentChantier?.id !== s.chantierId) await openChantier(s.chantierId, true);
+    if (s.lotId && state.currentLot?.id !== s.lotId) selectLot(s.lotId, true);
+    else setTab(s.tab, true);
   }
 });
 
 // ============================================================
-// DASHBOARD
+// SIDEBAR LOTS + BARRE DE CONTEXTE
 // ============================================================
-function renderDashboard() {
-  const soumises = state.daf.filter(d => d.statut === 'soumise');
-  const validees = state.daf.filter(d => d.statut === 'visa_ok');
-  const refusees = state.daf.filter(d => d.statut === 'refusee');
+function renderLotsSidebar() {
+  const el = document.getElementById('lots-sidebar');
+  if (!el || !(state.lots || []).length) { if (el) el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const rows = state.lots.map((lot, i) => {
+    const active = state.currentLot?.id === lot.id;
+    const nbF = (state.allFournitures || []).filter(f => f.lot_id === lot.id).length;
+    const nbDaf = (state.allDaf || []).filter(d => d.statut === 'soumise' && _dafLotId(d) === lot.id).length;
+    return `
+      <div onclick="selectLot('${lot.id}')"
+        class="group px-3 py-2.5 rounded-lg cursor-pointer mb-1 border ${active ? 'bg-indigo-50 border-indigo-300' : 'border-transparent hover:bg-gray-50'}">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm font-medium truncate ${active ? 'text-indigo-700' : 'text-gray-700'}">${escHtml(lot.nom)}</span>
+          ${nbDaf > 0 ? `<span class="bg-blue-500 text-white text-[10px] rounded-full px-1.5 py-0.5 shrink-0">${nbDaf}</span>` : ''}
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-[11px] text-gray-400">${nbF} fourn.</span>
+          <button onclick="event.stopPropagation();ouvrirLot('${lot.id}')" class="text-[11px] text-indigo-500 opacity-0 group-hover:opacity-100 hover:underline ml-auto">⚙ gérer</button>
+        </div>
+      </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm p-3 sticky" style="top:120px">
+      <div class="flex items-center justify-between mb-2 px-1">
+        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lots</span>
+        <button onclick="ouvrirCreerLot()" class="text-indigo-600 text-lg leading-none hover:text-indigo-800" title="Créer un lot">＋</button>
+      </div>
+      ${rows}
+    </div>`;
+}
 
-  document.getElementById('stat-soumises').textContent = soumises.length;
-  document.getElementById('stat-validees').textContent = validees.length;
-  document.getElementById('stat-refusees').textContent = refusees.length;
-
-  const el = document.getElementById('daf-pending-list');
-  if (!soumises.length) {
-    el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucune DAF en attente. ✅</p>';
+function renderContextBar() {
+  const el = document.getElementById('chantier-context-bar');
+  if (!el) return;
+  const hasLots = (state.lots || []).length > 0;
+  if (hasLots) {
+    // En mode lots, la barre reste discrète (le contexte est la sidebar)
+    el.innerHTML = `
+      <div class="flex items-center justify-between bg-white rounded-xl shadow-sm px-4 py-3">
+        <div class="min-w-0">
+          <h2 class="font-semibold text-gray-800 truncate">${escHtml(state.currentChantier?.affaire || '')}</h2>
+          <p class="text-xs text-gray-400">${(state.lots || []).length} lot(s) · sélectionnez un lot à gauche</p>
+        </div>
+      </div>`;
     return;
   }
-  el.innerHTML = soumises.map(d => `
-    <div class="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-      <div>
-        <p class="font-medium text-sm">${d.designation || d.numero}</p>
-        <p class="text-xs text-gray-400">${d.numero || ''} · ${d.date_soumission ? 'Soumis le ' + new Date(d.date_soumission).toLocaleDateString('fr-FR') : ''}</p>
+  // Mode entreprise unique : invitations directes + découpage en lots
+  const invs = state._chantierInvits || [];
+  const accepted = invs.filter(i => i.statut === 'accepted' && !i.moe_invited_id);
+  const pending = invs.filter(i => i.statut === 'pending' && !i.moe_invited_id);
+  let entLine;
+  if (accepted.length) {
+    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">✅ ${escHtml(accepted[0].email_invite || 'Entreprise')} · connectée</span>`;
+  } else if (pending.length) {
+    entLine = `<span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">⏳ ${escHtml(pending[0].email_invite || 'Entreprise')} · invitée</span>`;
+  } else {
+    entLine = `<span class="text-xs text-gray-400">Aucune entreprise invitée</span>`;
+  }
+  el.innerHTML = `
+    <div class="flex items-center justify-between bg-white rounded-xl shadow-sm px-4 py-3 gap-3 flex-wrap">
+      <div class="min-w-0">
+        <h2 class="font-semibold text-gray-800 truncate">${escHtml(state.currentChantier?.affaire || '')}</h2>
+        <div class="mt-1">${entLine}</div>
       </div>
-      <button onclick="openVisaModal('${d.id}')" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-purple-700">Donner VISA</button>
-    </div>
-  `).join('');
+      <div class="flex gap-2 shrink-0">
+        <button onclick="openInviteModal()" class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700">+ Inviter une entreprise</button>
+        <button onclick="ouvrirCreerLot()" class="border border-indigo-300 text-indigo-600 px-3 py-1.5 text-xs rounded-lg hover:bg-indigo-50">📦 Découper en lots</button>
+      </div>
+    </div>`;
 }
 
 // ============================================================
@@ -1434,11 +1599,11 @@ async function undoLast() {
   }
   try {
     if (entry.action === 'delete') {
-      const COLS = ['id','chantier_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
+      const COLS = ['id','chantier_id','lot_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
       const rows = entry.data.map(f => Object.fromEntries(COLS.filter(k => k in f).map(k => [k, f[k]])));
       const { error } = await db.from('fournitures').insert(rows);
       if (error) throw error;
-      entry.data.forEach(f => state.fournitures.push(f));
+      _registerFournitures(entry.data);
       sortFournitures();
       renderFournitures();
       toast(`${entry.data.length} fourniture(s) restaurée(s)`);
@@ -1482,7 +1647,7 @@ async function supprimerToutes() {
   const ids = state.fournitures.map(f => f.id);
   const { error } = await db.from('fournitures').delete().in('id', ids);
   if (error) return toast('Erreur : ' + error.message, 'err');
-  state.fournitures = [];
+  _unregisterFournitures(ids);
   renderFournitures();
   toast(`🗑 ${n} fourniture${n>1?'s':''} supprimée${n>1?'s':''}`);
 }
@@ -1496,7 +1661,7 @@ async function supprimerSelectionnes() {
     const { error } = await db.from('fournitures').delete().in('id', ids);
     if (error) throw error;
     pushUndo('delete', toDelete);
-    state.fournitures = state.fournitures.filter(f => !ids.includes(f.id));
+    _unregisterFournitures(ids);
     deselectionnerTout();
     renderFournitures();
     toast(`${ids.length} fourniture(s) supprimée(s) — Ctrl+Z pour annuler`);
@@ -1507,7 +1672,7 @@ async function deleteFourniture(id) {
   if (!confirm('Supprimer cette fourniture ?')) return;
   try {
     await db.from('fournitures').delete().in('id', [id]);
-    state.fournitures = state.fournitures.filter(f => f.id !== id);
+    _unregisterFournitures([id]);
     renderFournitures();
   } catch (err) { toast(err.message, 'err'); }
 }
@@ -2093,6 +2258,7 @@ async function saveInlineVariante(parentId) {
   if (!designation) return toast('Désignation obligatoire', 'err');
   const payload = {
     chantier_id: state.currentChantier.id,
+    lot_id: parent.lot_id || state.currentLot?.id || null,
     parent_id: parentId, is_variante: true,
     famille_id: parent.famille_id || null,
     numero_poste: parent.numero_poste || null,
@@ -2105,7 +2271,7 @@ async function saveInlineVariante(parentId) {
   try {
     const { data, error } = await db.from('fournitures').insert(payload).select('*').single();
     if (error) throw error;
-    state.fournitures.push(data);
+    _registerFournitures(data);
     cancelInlineVariante();
     renderFournitures();
     toast('Variante ajoutée !');
@@ -2351,8 +2517,10 @@ async function saveFourniture(parentId) {
   const contenantVal = champsInputs.find(i => /condit|contenant/i.test(i.dataset.champ))?.value.trim()
     || document.getElementById('nf-contenant')?.value.trim() || null;
   try {
+    const parentF = parentId ? state.allFournitures.find(f => f.id === parentId) : null;
     const { data, error } = await db.from('fournitures').insert({
       chantier_id: state.currentChantier.id,
+      lot_id: parentF?.lot_id || state.currentLot?.id || null,
       famille_id: document.getElementById('nf-famille').value || null,
       numero_poste: document.getElementById('nf-poste').value.trim(),
       designation,
@@ -2368,7 +2536,7 @@ async function saveFourniture(parentId) {
       certifications: certifications.length ? certifications : null
     }).select('*').single();
     if (error) throw error;
-    state.fournitures.push(data);
+    _registerFournitures(data);
     closeModal();
     renderFournitures();
     toast(parentId ? 'Variante ajoutée !' : 'Fourniture ajoutée !');
@@ -2723,8 +2891,8 @@ async function donnerVisa(dafId, type) {
     } catch (pdfErr) { console.warn('PDF visé:', pdfErr); }
 
     closeModal();
-    renderDashboard();
     renderDafVisa();
+    renderLotsSidebar();
     toast(type === 'sans_remarque' ? 'VISA accordé !' : type === 'avec_remarques' ? 'VISA avec remarques envoyé !' : 'Refus notifié à l\'entrepreneur !');
   } catch (err) {
     toast(err.message, 'err');
@@ -2897,42 +3065,13 @@ init();
 async function loadInvitations() {
   const ch = state.currentChantier;
   if (!ch) return;
-  const el = document.getElementById('invitations-list');
-  if (!el) return;
-
-  const { data, error } = await db.from('chantier_invitations')
+  const { data } = await db.from('chantier_invitations')
     .select('*')
     .eq('chantier_id', ch.id)
     .order('created_at', { ascending: false });
-
-  if (error || !data?.length) {
-    el.innerHTML = '<p class="text-sm text-gray-400">Aucune invitation envoyée.</p>';
-    return;
-  }
-
-  const statutStyle = {
-    pending:  'bg-amber-100 text-amber-700',
-    accepted: 'bg-green-100 text-green-700',
-    refused:  'bg-red-100 text-red-700'
-  };
-  const statutLabel = { pending: 'En attente', accepted: 'Acceptée', refused: 'Refusée' };
-
-  el.innerHTML = data.map(inv => {
-    const link = `${location.origin}${location.pathname.replace('pivot-moe.html','pivot-entrepreneur.html')}?invitation=${inv.token}`;
-    return `<div class="flex items-center justify-between py-2 border-b last:border-0 gap-3 flex-wrap">
-      <div class="flex-1 min-w-0">
-        <div class="text-sm font-medium text-gray-800 truncate">${escHtml(inv.email_invite)}</div>
-        <div class="text-xs text-gray-400 mt-0.5">Invité le ${new Date(inv.created_at).toLocaleDateString('fr-FR')}</div>
-      </div>
-      <span class="text-xs px-2 py-0.5 rounded-full font-medium ${statutStyle[inv.statut]||'bg-gray-100 text-gray-600'}">
-        ${statutLabel[inv.statut] || inv.statut}
-      </span>
-      ${inv.statut === 'pending' ? `
-        <button onclick="copyInviteLink('${link}', this)" class="text-xs px-2 py-1 border border-blue-200 rounded hover:bg-blue-50 text-blue-600 whitespace-nowrap">📋 Copier lien</button>
-        <button onclick="revokeInvitation('${inv.id}')" class="text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50 text-red-500">✕</button>
-      ` : ''}
-    </div>`;
-  }).join('');
+  // On ne garde que les invitations vers des entreprises (pas celles reçues par le MOE)
+  state._chantierInvits = (data || []).filter(i => !i.moe_invited_id);
+  renderContextBar();
 }
 
 function openInviteModal() {
@@ -3194,36 +3333,31 @@ async function loadLots() {
   try {
     const { data } = await db.from('lots').select('*').eq('chantier_id', ch.id).order('ordre');
     state.lots = data || [];
-    renderLots();
+    // Mapping entreprise → lot (pour rattacher les DAF soumises par une entreprise)
+    state.lotByEntreprise = {};
+    if (state.lots.length) {
+      const { data: mems } = await db.from('lot_entreprises')
+        .select('lot_id, entreprise_id').in('lot_id', state.lots.map(l => l.id));
+      (mems || []).forEach(m => { if (m.entreprise_id) state.lotByEntreprise[m.entreprise_id] = m.lot_id; });
+    }
+    renderLotsSidebar();
   } catch (err) {
     console.error('loadLots', err);
   }
 }
 
-function renderLots() {
-  const el = document.getElementById('lots-list');
-  if (!el) return;
-  if (!state.lots?.length) {
-    el.innerHTML = `
-      <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-        <p class="text-sm text-indigo-800 font-medium mb-1">Les lots sont facultatifs</p>
-        <p class="text-xs text-indigo-600 mb-3">Créez des lots si le chantier est divisé entre plusieurs entreprises (ex. Lot 1 - Végétaux, Lot 2 - Menuiseries). Sinon, invitez directement une entreprise depuis la section "Entreprises invitées" ci-dessus.</p>
-        <button onclick="ouvrirCreerLot()" class="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Créer un premier lot</button>
-      </div>`;
-    return;
+// Recharge les lots puis re-décide la mise en page (création/suppression de lot)
+async function refreshLotsLayout() {
+  const prevLotId = state.currentLot?.id;
+  await loadLots();
+  const stillExists = prevLotId && state.lots.some(l => l.id === prevLotId);
+  if (stillExists) {
+    _updateTabsContextLabel();
+    renderContextBar();
+    renderLotsSidebar();
+  } else {
+    _setupChantierLayout();
   }
-  el.innerHTML = state.lots.map((lot, i) => `
-    <div class="flex items-center justify-between p-3 border rounded-xl hover:bg-gray-50 gap-3">
-      <div class="flex items-center gap-3 flex-1 min-w-0">
-        <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full shrink-0">Lot ${i + 1}</span>
-        <span class="text-sm font-medium text-gray-800 truncate">${escHtml(lot.nom)}</span>
-      </div>
-      <div class="flex gap-2 shrink-0">
-        <button onclick="ouvrirLot('${lot.id}')" class="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded hover:bg-indigo-50">Gérer</button>
-        <button onclick="supprimerLot('${lot.id}')" class="text-xs text-red-400 border border-red-200 px-2 py-1 rounded hover:bg-red-50">✕</button>
-      </div>
-    </div>
-  `).join('');
 }
 
 function ouvrirCreerLot() {
@@ -3260,7 +3394,7 @@ async function creerLot() {
     if (error) throw error;
     closeModal();
     toast(`Lot "${nom}" créé`);
-    await loadLots();
+    await refreshLotsLayout();
   } catch (err) {
     toast(err.message, 'err');
   }
@@ -3271,7 +3405,8 @@ async function supprimerLot(lotId) {
   const { error } = await db.from('lots').delete().eq('id', lotId);
   if (error) return toast(error.message, 'err');
   toast('Lot supprimé');
-  await loadLots();
+  if (state.currentLot?.id === lotId) state.currentLot = null;
+  await refreshLotsLayout();
 }
 
 async function ouvrirLot(lotId) {
@@ -3412,7 +3547,9 @@ async function renommerLot(lotId) {
   if (error) return toast(error.message, 'err');
   const lot = state.lots?.find(l => l.id === lotId);
   if (lot) lot.nom = nom;
-  renderLots();
+  if (state.currentLot?.id === lotId) state.currentLot.nom = nom;
+  renderLotsSidebar();
+  _updateTabsContextLabel();
   toast('Lot renommé');
   ouvrirLot(lotId);
 }
