@@ -332,6 +332,7 @@ const state = {
   chantierStats: {},
   currentChantier: null,
   currentLot: null,
+  currentLotMembers: [],
   daf: [],
   fournitures: [],
   allFournitures: [],
@@ -1215,7 +1216,7 @@ function _setupChantierLayout() {
   }
 }
 
-function selectLot(lotId, _noHistory) {
+async function selectLot(lotId, _noHistory) {
   state.currentLot = state.lots.find(l => l.id === lotId) || null;
   document.getElementById('no-lot-selected').classList.add('hidden');
   document.getElementById('tabs-bar').classList.remove('hidden');
@@ -1224,6 +1225,8 @@ function selectLot(lotId, _noHistory) {
   renderLotsSidebar();
   _updateTabsContextLabel();
   setTab('fournitures', _noHistory);
+  await loadCurrentLotMembers();
+  renderContextBar();
 }
 
 function _updateTabsContextLabel() {
@@ -1368,15 +1371,12 @@ function renderLotsSidebar() {
     const nbDaf = (state.allDaf || []).filter(d => d.statut === 'soumise' && _dafLotId(d) === lot.id).length;
     return `
       <div onclick="selectLot('${lot.id}')"
-        class="group px-3 py-2.5 rounded-lg cursor-pointer mb-1 border ${active ? 'bg-indigo-50 border-indigo-300' : 'border-transparent hover:bg-gray-50'}">
+        class="px-3 py-2.5 rounded-lg cursor-pointer mb-1 border ${active ? 'bg-indigo-50 border-indigo-300' : 'border-transparent hover:bg-gray-50'}">
         <div class="flex items-center justify-between gap-2">
           <span class="text-sm font-medium truncate ${active ? 'text-indigo-700' : 'text-gray-700'}">${escHtml(lot.nom)}</span>
           ${nbDaf > 0 ? `<span class="bg-blue-500 text-white text-[10px] rounded-full px-1.5 py-0.5 shrink-0">${nbDaf}</span>` : ''}
         </div>
-        <div class="flex items-center gap-2 mt-1">
-          <span class="text-[11px] text-gray-400">${nbF} fourn.</span>
-          <button onclick="event.stopPropagation();ouvrirLot('${lot.id}')" class="text-[11px] text-indigo-500 opacity-0 group-hover:opacity-100 hover:underline ml-auto">⚙ gérer</button>
-        </div>
+        <span class="text-[11px] text-gray-400">${nbF} fourn.</span>
       </div>`;
   }).join('');
   el.innerHTML = `
@@ -1389,12 +1389,60 @@ function renderLotsSidebar() {
     </div>`;
 }
 
+const LOT_STATUT_STYLE = { invited: 'bg-amber-50 text-amber-600', accepted: 'bg-green-50 text-green-600', refused: 'bg-red-50 text-red-500' };
+const LOT_STATUT_LABEL = { invited: 'Invitée', accepted: 'Connectée', refused: 'Refusée' };
+
+function _lotModalOpen() {
+  const m = document.getElementById('modal-overlay');
+  return m && !m.classList.contains('hidden');
+}
+
+async function loadCurrentLotMembers() {
+  if (!state.currentLot) { state.currentLotMembers = []; return; }
+  try {
+    const { data } = await db.from('lot_entreprises')
+      .select('*').eq('lot_id', state.currentLot.id).order('created_at');
+    state.currentLotMembers = data || [];
+  } catch (err) { console.error('loadCurrentLotMembers', err); state.currentLotMembers = []; }
+}
+
 function renderContextBar() {
   const el = document.getElementById('chantier-context-bar');
   if (!el) return;
   const hasLots = (state.lots || []).length > 0;
+
+  // ── Mode lots, un lot sélectionné : encadré de gestion de l'entreprise ──
+  if (hasLots && state.currentLot) {
+    const membres = state.currentLotMembers || [];
+    const membresHtml = membres.length ? membres.map(m => `
+      <div class="flex items-center justify-between py-1.5 gap-2 border-b last:border-0">
+        <span class="text-sm text-gray-700 truncate">${escHtml(m.nom_entreprise || m.email_invite || '—')}</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs px-2 py-0.5 rounded-full font-medium ${LOT_STATUT_STYLE[m.statut] || 'bg-gray-100 text-gray-500'}">${LOT_STATUT_LABEL[m.statut] || m.statut}</span>
+          ${m.statut === 'invited' ? `<button onclick="copierLienLot('${m.token}', this)" class="text-xs text-blue-500 hover:text-blue-700" title="Copier le lien d'invitation">📋</button>` : ''}
+          <button onclick="retirerEntrepriseLot('${m.id}','${state.currentLot.id}')" class="text-red-400 hover:text-red-600 text-sm" title="Retirer">✕</button>
+        </div>
+      </div>`).join('')
+      : `<p class="text-sm text-gray-400 py-1.5">Aucune entreprise sur ce lot.</p>`;
+    el.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm px-4 py-3">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="min-w-0">
+            <p class="text-xs text-gray-400 truncate">${escHtml(state.currentChantier?.affaire || '')}</p>
+            <h2 class="font-semibold text-gray-800 truncate">📦 ${escHtml(state.currentLot.nom || 'Lot')}</h2>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button onclick="ouvrirLot('${state.currentLot.id}')" class="bg-blue-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-blue-700 whitespace-nowrap">+ Inviter une entreprise</button>
+            <button onclick="ouvrirLot('${state.currentLot.id}')" title="Renommer / supprimer le lot" class="border border-gray-200 text-gray-400 px-2.5 py-1.5 text-xs rounded-lg hover:bg-gray-50">⚙</button>
+          </div>
+        </div>
+        <div class="border-t pt-1">${membresHtml}</div>
+      </div>`;
+    return;
+  }
+
+  // ── Mode lots, aucun lot sélectionné ──
   if (hasLots) {
-    // En mode lots, la barre reste discrète (le contexte est la sidebar)
     el.innerHTML = `
       <div class="flex items-center justify-between bg-white rounded-xl shadow-sm px-4 py-3">
         <div class="min-w-0">
@@ -1404,7 +1452,8 @@ function renderContextBar() {
       </div>`;
     return;
   }
-  // Mode entreprise unique : invitations directes + découpage en lots
+
+  // ── Mode entreprise unique : invitation directe + découpage en lots ──
   const invs = state._chantierInvits || [];
   const accepted = invs.filter(i => i.statut === 'accepted' && !i.moe_invited_id);
   const pending = invs.filter(i => i.statut === 'pending' && !i.moe_invited_id);
@@ -3519,6 +3568,7 @@ async function selectionnerEntrepriseLot(entrepriseId, nom, email, lotId) {
       statut: 'invited'
     }).select().single();
     if (error) throw error;
+    if (state.currentLot?.id === lotId) { await loadCurrentLotMembers(); renderContextBar(); renderLotsSidebar(); }
     const link = `${location.origin}${location.pathname.replace('pivot-moe.html', 'pivot-entrepreneur.html')}?lot_invite=${inv.token}`;
     showModal(`
       <div class="flex items-center justify-between mb-4">
@@ -3550,6 +3600,7 @@ async function renommerLot(lotId) {
   if (state.currentLot?.id === lotId) state.currentLot.nom = nom;
   renderLotsSidebar();
   _updateTabsContextLabel();
+  renderContextBar();
   toast('Lot renommé');
   ouvrirLot(lotId);
 }
@@ -3564,7 +3615,9 @@ async function retirerEntrepriseLot(memId, lotId) {
     return toast("Suppression refusée (droits insuffisants). Vérifiez la policy RLS DELETE sur lot_entreprises.", 'err');
   }
   toast('Entreprise retirée');
-  ouvrirLot(lotId);
+  const modalOpen = _lotModalOpen();
+  if (state.currentLot?.id === lotId) { await loadCurrentLotMembers(); renderContextBar(); renderLotsSidebar(); }
+  if (modalOpen) ouvrirLot(lotId);
 }
 
 async function inviterEntrepriseLot(lotId) {
@@ -3580,6 +3633,7 @@ async function inviterEntrepriseLot(lotId) {
       statut: 'invited'
     }).select().single();
     if (error) throw error;
+    if (state.currentLot?.id === lotId) { await loadCurrentLotMembers(); renderContextBar(); renderLotsSidebar(); }
     const link = `${location.origin}${location.pathname.replace('pivot-moe.html', 'pivot-entrepreneur.html')}?lot_invite=${inv.token}`;
     // Afficher le lien + option mailto
     showModal(`
