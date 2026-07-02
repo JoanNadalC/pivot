@@ -3136,8 +3136,12 @@ async function openChantier(id, _noHistory) {
   state.activeFamilles = [];
   state.consultations = [];
   state.daf = [];
+  state.currentEntrepriseLotId = null;
   window._doeSelectedFids = new Set();
   window._doeExtraLines = [];
+
+  // Déterminer le lot de cette entreprise sur ce chantier (le cas échéant)
+  await _resolveEntrepriseLot(id);
 
   setTab('parametrage');
   fillParametrage();
@@ -3855,13 +3859,29 @@ async function addPortailFournisseurToCarnet(compteId, nom, email, siret) {
 // ============================================================
 // FOURNITURES
 // ============================================================
+// Détermine le lot auquel cette entreprise est rattachée sur le chantier.
+// null = chantier sans découpage en lots (ou entreprise propriétaire) → périmètre chantier.
+async function _resolveEntrepriseLot(chantierId) {
+  state.currentEntrepriseLotId = null;
+  try {
+    const { data: lots } = await db.from('lots').select('id').eq('chantier_id', chantierId);
+    const lotIds = (lots || []).map(l => l.id);
+    if (!lotIds.length) return; // pas de lots → périmètre chantier
+    const { data: mem } = await db.from('lot_entreprises')
+      .select('lot_id, statut').in('lot_id', lotIds).eq('entreprise_id', state.user.id);
+    const chosen = (mem || []).find(m => m.statut === 'accepted') || (mem || [])[0];
+    state.currentEntrepriseLotId = chosen?.lot_id || null;
+  } catch (err) { console.error('_resolveEntrepriseLot', err); }
+}
+
 async function loadFournitures() {
   try {
-    const { data } = await db.from('fournitures')
+    let q = db.from('fournitures')
       .select('*, famille:familles_fournitures(nom, icone, couleur)')
-      .eq('chantier_id', state.currentChantier.id)
-      .order('ordre')
-      .order('created_at');
+      .eq('chantier_id', state.currentChantier.id);
+    // Si l'entreprise est rattachée à un lot précis, on ne montre que ce lot
+    if (state.currentEntrepriseLotId) q = q.eq('lot_id', state.currentEntrepriseLotId);
+    const { data } = await q.order('ordre').order('created_at');
     state.fournitures = data || [];
     // Initialiser les familles actives depuis celles déjà utilisées
     const usedIds = [...new Set(state.fournitures.map(f => f.famille_id).filter(Boolean))];
@@ -4012,7 +4032,7 @@ async function undoLast() {
   try {
     if (entry.action === 'delete') {
       // Réinsérer les fournitures supprimées (sans les champs JS non-colonne)
-      const COLS = ['id','chantier_id','entrepreneur_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
+      const COLS = ['id','chantier_id','lot_id','entrepreneur_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
       const rows = entry.data.map(f => Object.fromEntries(COLS.filter(k => k in f).map(k => [k, f[k]])));
       const { error } = await db.from('fournitures').insert(rows);
       if (error) throw error;
@@ -4029,7 +4049,7 @@ async function undoLast() {
         if (f) f.qte = qteOrigine;
       }
       // Réinsérer les lignes supprimées
-      const COLS = ['id','chantier_id','entrepreneur_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
+      const COLS = ['id','chantier_id','lot_id','entrepreneur_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
       const rows = deleted.map(f => Object.fromEntries(COLS.filter(k => k in f).map(k => [k, f[k]])));
       const { error } = await db.from('fournitures').insert(rows);
       if (error) throw error;
@@ -4656,6 +4676,7 @@ async function saveInlineVariante(parentId) {
   if (!designation) return toast('Désignation obligatoire', 'err');
   const payload = {
     chantier_id: state.currentChantier.id,
+    lot_id: parent.lot_id ?? state.currentEntrepriseLotId ?? null,
     parent_id: parentId, is_variante: true,
     famille_id: parent.famille_id || null,
     numero_poste: parent.numero_poste || null,
@@ -5100,8 +5121,10 @@ async function saveFourniture(parentId) {
   const contenantVal = champsInputs.find(i => /condit|contenant/i.test(i.dataset.champ))?.value.trim()
     || document.getElementById('nf-contenant')?.value.trim() || null;
   try {
+    const parentF = parentId ? state.fournitures.find(f => f.id === parentId) : null;
     const { data, error } = await db.from('fournitures').insert({
       chantier_id: state.currentChantier.id,
+      lot_id: parentF?.lot_id ?? state.currentEntrepriseLotId ?? null,
       entrepreneur_id: state.user.id,
       famille_id: document.getElementById('nf-famille').value || null,
       numero_poste: document.getElementById('nf-poste').value.trim(),
@@ -5522,6 +5545,7 @@ async function ctImporter() {
     .map(row => {
       const obj = {
         chantier_id: state.currentChantier.id,
+        lot_id: state.currentEntrepriseLotId ?? null,
         entrepreneur_id: state.user.id,
         ordre: ordre++
       };
@@ -5629,6 +5653,7 @@ async function importBpu(event) {
 
       const { data, error } = await db.from('fournitures').insert({
         chantier_id: state.currentChantier.id,
+        lot_id: state.currentEntrepriseLotId ?? null,
         famille_id: famId,
         numero_poste: get(row, 'n°poste', 'numero_poste', 'poste') || null,
         designation,
@@ -5872,6 +5897,7 @@ async function executeBpuBlocksImport(mode) {
 
     const toInsert = blocks.map((b, i) => ({
       chantier_id:      state.currentChantierId,
+      lot_id:           state.currentEntrepriseLotId ?? null,
       entrepreneur_id:  state.profile.id,
       numero_poste:     b.poste,
       designation:      b.designation,
@@ -6587,6 +6613,7 @@ async function executeImport() {
 
         const { data, error } = await db.from('fournitures').insert({
           chantier_id:     state.currentChantier.id,
+          lot_id:          state.currentEntrepriseLotId ?? null,
           entrepreneur_id: state.user.id,
           famille_id,
           numero_poste:    cPoste !== null ? get(row, cPoste) : null,
@@ -7180,6 +7207,7 @@ async function createConsultation() {
           const fam = state.familles.find(f => f.id === famId);
           const { data: fp } = await db.from('fournitures').insert({
             chantier_id: state.currentChantier.id,
+            lot_id: state.currentEntrepriseLotId ?? null,
             famille_id: famId,
             designation: 'Frais de port',
             numero_poste: 'FP',
@@ -8193,6 +8221,11 @@ async function loadDaf() {
       db.from('consultations').select('id').eq('chantier_id', chantierId)
     ]);
     state.daf = dafData || [];
+    // Si l'entreprise est rattachée à un lot, ne garder que les DAF de ses fournitures (périmètre du lot)
+    if (state.currentEntrepriseLotId) {
+      const scopedFids = new Set(state.fournitures.map(f => f.id));
+      state.daf = state.daf.filter(d => !d.fourniture_id || scopedFids.has(d.fourniture_id));
+    }
     // Charger les visa associés
     if (state.daf.length) {
       const dafIds = state.daf.map(d => d.id);
