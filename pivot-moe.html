@@ -3158,26 +3158,30 @@ async function rechercherEntrepriseInvite(q) {
   if (!q || q.length < 2) { el.innerHTML = ''; return; }
   _invSearchTimer = setTimeout(async () => {
     const { data } = await db.from('compte_entrepreneur')
-      .select('id, nom, email, societe')
-      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%`)
+      .select('id, nom, prenom, email, societe, raison_sociale')
+      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
       .limit(6);
     if (!data?.length) {
       el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
       return;
     }
-    el.innerHTML = data.map(e => `
-      <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(e.nom||'')}','${escHtml(e.email||'')}')"
+    el.innerHTML = data.map(e => {
+      const societe = e.raison_sociale || e.societe || '';
+      const contact = [e.prenom, e.nom].filter(Boolean).join(' ');
+      const titre = societe || contact || e.email || 'Entreprise';
+      return `
+      <button onclick="selectionnerEntrepriseInvite('${e.id}','${escHtml(titre)}','${escHtml(e.email||'')}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition flex items-center gap-3">
         <div class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
-          ${(e.nom||'?')[0].toUpperCase()}
+          ${(titre||'?')[0].toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(e.nom||'')}${e.societe ? ' · ' + escHtml(e.societe) : ''}</p>
-          <p class="text-xs text-gray-400 truncate">${escHtml(e.email||'')}</p>
+          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
+          <p class="text-xs text-gray-400 truncate">${contact && societe ? escHtml(contact) + ' · ' : ''}${escHtml(e.email||'')}</p>
         </div>
         <span class="text-xs text-blue-500 shrink-0">Inviter →</span>
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
   }, 280);
 }
 
@@ -3530,26 +3534,30 @@ async function rechercherEntrepriseLot(q, lotId) {
   if (!q || q.length < 2) { el.innerHTML = ''; return; }
   _lotSearchTimer = setTimeout(async () => {
     const { data } = await db.from('compte_entrepreneur')
-      .select('id, nom, email, societe')
-      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%`)
+      .select('id, nom, prenom, email, societe, raison_sociale')
+      .or(`nom.ilike.%${q}%,email.ilike.%${q}%,societe.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
       .limit(6);
     if (!data?.length) {
       el.innerHTML = '<p class="text-xs text-gray-400 px-2 py-1">Aucune entreprise trouvée sur la plateforme.</p>';
       return;
     }
-    el.innerHTML = data.map(e => `
-      <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(e.nom||'')}','${escHtml(e.email||'')}','${lotId}')"
+    el.innerHTML = data.map(e => {
+      const societe = e.raison_sociale || e.societe || '';
+      const contact = [e.prenom, e.nom].filter(Boolean).join(' ');
+      const titre = societe || contact || e.email || 'Entreprise';
+      return `
+      <button onclick="selectionnerEntrepriseLot('${e.id}','${escHtml(titre)}','${escHtml(e.email||'')}','${lotId}')"
         class="w-full text-left px-3 py-2 rounded-lg border hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center gap-3">
         <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
-          ${(e.nom||'?')[0].toUpperCase()}
+          ${(titre||'?')[0].toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(e.nom || '')}${e.societe ? ' · ' + escHtml(e.societe) : ''}</p>
-          <p class="text-xs text-gray-400 truncate">${escHtml(e.email || '')}</p>
+          <p class="text-sm font-medium text-gray-800 truncate">${escHtml(titre)}</p>
+          <p class="text-xs text-gray-400 truncate">${contact && societe ? escHtml(contact) + ' · ' : ''}${escHtml(e.email || '')}</p>
         </div>
         <span class="text-xs text-indigo-500 shrink-0">Inviter →</span>
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
   }, 280);
 }
 
