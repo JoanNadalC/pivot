@@ -8417,6 +8417,16 @@ function dafRenderRow(f) {
   const row = window._dafRows[f.id] || {};
   const poste = row._numero_poste ?? f.numero_poste ?? '';
   const desig = (row._designation ?? f.designation ?? '').replace(/"/g, '&quot;');
+  // À partir d'une V2 : en-tête fourniture (fond clair) + versions sur fond jaune
+  const _olderVersions = state.daf.filter(d => d.fourniture_id === f.id && d.id !== row.daf_id);
+  const _showMulti = _olderVersions.length >= 1;
+  const _desigPlain = row._designation ?? f.designation ?? '';
+  const _headerRow = _showMulti ? `
+    <tr class="bg-gray-100 border-b border-gray-200">
+      <td class="px-2 py-2"></td>
+      <td class="px-3 py-2 text-xs font-semibold text-gray-600">${escHtml(String(poste || ''))}</td>
+      <td colspan="8" class="px-3 py-2 text-sm font-bold text-gray-800">${escHtml(_desigPlain)}</td>
+    </tr>` : '';
   const foursOpts = state.fournisseurs.map(fr =>
     `<option value="${fr.id}" ${row.fournisseur_id === fr.id ? 'selected' : ''}>${fr.nom}</option>`
   ).join('');
@@ -8486,8 +8496,9 @@ function dafRenderRow(f) {
     : '';
 
   return `
+    ${_headerRow}
     ${_dafVersionRows(f)}
-    <tr class="border-b hover:bg-gray-50" id="daf-row-${f.id}">
+    <tr class="border-b ${_showMulti ? 'bg-yellow-50' : 'hover:bg-gray-50'}" id="daf-row-${f.id}">
       <td class="px-2 py-2 text-center">
         <input type="checkbox" ${row._selected ? 'checked' : ''} onchange="dafSetSelected('${f.id}',this.checked)" class="rounded">
       </td>
@@ -8799,9 +8810,9 @@ function _dafVersionRows(f) {
     const vVisa = state.visaMoe?.[v.id];
     const obsColor = vVisa?.type === 'refus' ? 'bg-red-50' : vVisa?.type === 'avec_remarques' ? 'bg-yellow-50' : 'bg-green-50';
     const pdfVisaUrl = v.pdf_visa_url;
-    return `<tr class="border-b bg-gray-50">
+    return `<tr class="border-b bg-yellow-50">
       <td class="px-2 py-1.5 text-center"><span class="text-gray-300 text-xs">●</span></td>
-      <td class="px-3 py-1.5 text-xs text-gray-400 font-mono">v${v.version || 1}</td>
+      <td class="px-3 py-1.5 text-xs text-gray-500 font-mono">v${v.version || 1}</td>
       <td class="px-3 py-1.5 text-xs text-gray-600">${escHtml(v.designation || '')}</td>
       <td colspan="3" class="px-3 py-1.5"></td>
       <td class="px-3 py-1.5 text-center text-xs">
