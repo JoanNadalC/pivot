@@ -363,8 +363,8 @@
 
   <!-- CHANTIER DETAIL -->
   <div id="chantier-view" class="hidden max-w-7xl mx-auto px-4 py-6 pt-20">
-    <!-- Onglets -->
-    <div class="flex gap-1 border-b mb-6 overflow-x-auto">
+    <!-- Onglets (collés sous la bannière au défilement) -->
+    <div class="flex gap-1 border-b mb-6 overflow-x-auto sticky z-30 pt-3" style="top:56px;background:var(--ecru)">
       <button onclick="setTab('parametrage')" id="ot-parametrage" class="tab-btn px-4 py-2 text-sm whitespace-nowrap tab-active">⚙️ Paramétrage</button>
       <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📦 Fournitures</button>
       <button onclick="setTab('consultation')" id="ot-consultation" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📤 Consultation<span class="tab-dot" id="badge-consultation"></span></button>
