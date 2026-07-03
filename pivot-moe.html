@@ -3036,7 +3036,9 @@ function renderNotifList() {
     }
     groups[key].notifs.push(n);
   }
-  const sorted = Object.entries(groups).sort((a,b) => a[1].nom.localeCompare(b[1].nom));
+  // Le chantier dont la notification est la plus récente remonte en haut
+  const _newest = notifs => Math.max(...notifs.map(n => new Date(n.created_at).getTime()));
+  const sorted = Object.entries(groups).sort((a,b) => _newest(b[1].notifs) - _newest(a[1].notifs));
   el.innerHTML = sorted.map(([, g]) => `
     <div>
       <div class="px-3 py-1.5 bg-gray-100 text-xs font-semibold text-gray-600 border-b">🏗️ ${g.nom}</div>
