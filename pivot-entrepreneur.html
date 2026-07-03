@@ -8486,6 +8486,7 @@ function dafRenderRow(f) {
     : '';
 
   return `
+    ${_dafVersionRows(f)}
     <tr class="border-b hover:bg-gray-50" id="daf-row-${f.id}">
       <td class="px-2 py-2 text-center">
         <input type="checkbox" ${row._selected ? 'checked' : ''} onchange="dafSetSelected('${f.id}',this.checked)" class="rounded">
@@ -8523,8 +8524,7 @@ function dafRenderRow(f) {
       <td class="px-3 py-2">${obsCell}</td>
       <td class="px-3 py-2 text-center align-middle">${v2Cell}</td>
     </tr>
-    ${caractExpandedRow}
-    ${_dafVersionRows(f)}`;
+    ${caractExpandedRow}`;
 }
 
 // ── Copier / coller une ligne DAF ────────────────────────────────────────────
@@ -8800,7 +8800,7 @@ function _dafVersionRows(f) {
     const obsColor = vVisa?.type === 'refus' ? 'bg-red-50' : vVisa?.type === 'avec_remarques' ? 'bg-yellow-50' : 'bg-green-50';
     const pdfVisaUrl = v.pdf_visa_url;
     return `<tr class="border-b bg-gray-50">
-      <td class="px-2 py-1.5 text-center"><span class="text-orange-400 text-sm">⮑</span></td>
+      <td class="px-2 py-1.5 text-center"><span class="text-gray-300 text-xs">●</span></td>
       <td class="px-3 py-1.5 text-xs text-gray-400 font-mono">v${v.version || 1}</td>
       <td class="px-3 py-1.5 text-xs text-gray-600">${escHtml(v.designation || '')}</td>
       <td colspan="3" class="px-3 py-1.5"></td>
