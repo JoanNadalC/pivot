@@ -2938,24 +2938,14 @@ async function donnerVisa(dafId, type) {
   const moeId = state.isGuest ? null : (state.user ? state.user.id : null);
   const d = state.daf.find(x => x.id === dafId);
   try {
-    // Insérer le VISA
-    const visaData = {
-      daf_id: dafId,
-      type,
-      remarques: remarques || null,
-      date_visa: new Date().toISOString(),
-      moe_token: state.isGuest ? state.guestToken : null
-    };
-    if (moeId) {
-      visaData.moe_id = moeId;
-      visaData.entrepreneur_id = d?.entrepreneur_id || null;
-    }
-    const { error: visaErr } = await db.from('visa_moe').insert(visaData);
+    // Insérer le VISA + mettre à jour la DAF via fonction serveur :
+    // auth.uid() est fiable côté serveur même si state.user est momentanément vide.
+    const { error: visaErr } = await db.rpc('donner_visa', {
+      p_daf_id: dafId,
+      p_type: type,
+      p_remarques: remarques || null
+    });
     if (visaErr) throw new Error('Erreur visa_moe : ' + visaErr.message);
-
-    // Mettre à jour le statut de la DAF
-    const { error: dafErr } = await db.from('daf').update({ statut: statutDaf }).eq('id', dafId);
-    if (dafErr) throw new Error('Erreur mise à jour DAF : ' + dafErr.message);
 
     // Notification entrepreneur
     if (d?.entrepreneur_id) {
