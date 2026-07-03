@@ -8989,14 +8989,16 @@ function dafRefreshRow(fId) {
   document.getElementById(`daf-caract-${fId}`)?.remove();
   const rowEl = document.getElementById(`daf-row-${fId}`);
   if (!rowEl) return;
-  const row = window._dafRows[fId] || {};
-  // Rebuild only main TR (exclude version rows — they're static in DOM from initial render)
+  // On ne remplace que la ligne de travail + sa ligne caractéristiques ;
+  // l'en-tête et les lignes de version restent en place (sélection par id, pas par classe)
   const tmp = document.createElement('tbody');
-  const fullHtml = dafRenderRow(f);
-  tmp.innerHTML = fullHtml;
-  // Keep only the first TR (main row) and optional caract TR; skip version TRs (bg-gray-50)
-  const children = Array.from(tmp.children).filter(el => !el.classList.contains('bg-gray-50'));
-  rowEl.replaceWith(...children);
+  tmp.innerHTML = dafRenderRow(f);
+  const keep = [];
+  const mainTr = tmp.querySelector(`#daf-row-${CSS.escape(fId)}`);
+  const caractTr = tmp.querySelector(`#daf-caract-${CSS.escape(fId)}`);
+  if (mainTr) keep.push(mainTr);
+  if (caractTr) keep.push(caractTr);
+  if (keep.length) rowEl.replaceWith(...keep);
 }
 function dafTriggerFile(fId) { document.getElementById(`daf-file-${fId}`)?.click(); }
 function dafHandleFiles(fId, input) {
