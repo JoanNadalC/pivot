@@ -9056,11 +9056,14 @@ function dafRefreshRow(fId) {
   if (mainTr) keep.push(mainTr);
   if (caractTr) keep.push(caractTr);
   if (keep.length) rowEl.replaceWith(...keep);
-  // Rafraîchir le modal fiches s'il est ouvert pour cette ligne
-  if (window._dafFichesModalFid === fId) {
-    const body = document.getElementById('daf-fiches-modal-body');
-    if (body) body.innerHTML = _dafFichesModalBody(fId);
-  }
+  _refreshDafFichesModal(fId);
+}
+function _refreshDafFichesModal(fId) {
+  if (window._dafFichesModalFid !== fId) return;
+  const body = document.getElementById('daf-fiches-modal-body');
+  if (body) body.innerHTML = _dafFichesModalBody(fId);
+  const prompt = document.getElementById('daf-biblio-prompt');
+  if (prompt) prompt.innerHTML = _dafBiblioPromptHtml(fId);
 }
 
 // ── Modal fiches techniques (déclutter la colonne) ──
@@ -9083,14 +9086,16 @@ function _dafFichesModalBody(fId) {
 }
 function openDafFichesModal(fId) {
   window._dafFichesModalFid = fId;
+  window._dafPendingBiblio = null;
   const f = state.fournitures.find(x => x.id === fId);
   showModal(`
     <div class="flex items-center justify-between mb-1">
       <h2 class="text-base font-semibold text-gray-800">📄 Fiches techniques</h2>
-      <button onclick="closeModal();window._dafFichesModalFid=null" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+      <button onclick="closeModal();window._dafFichesModalFid=null;window._dafPendingBiblio=null" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
     </div>
     <p class="text-xs text-gray-400 mb-3">${escHtml(f?.designation || '')}</p>
     <div id="daf-fiches-modal-body">${_dafFichesModalBody(fId)}</div>
+    <div id="daf-biblio-prompt">${_dafBiblioPromptHtml(fId)}</div>
     <div class="flex gap-2 mt-4 flex-wrap">
       <button onclick="dafTriggerFile('${fId}')" class="border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-50">📎 Ajouter un PDF</button>
       <button onclick="dafAddFicheUrl('${fId}')" class="border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-50">🔗 Ajouter une URL</button>
@@ -9109,7 +9114,8 @@ async function dafHandleFiles(fId, input) {
   for (const file of files) {
     try {
       toast(`Upload « ${file.name} »…`);
-      const path = `daf/${state.user.id}/${fId}/${Date.now()}_${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${state.user.id}/daf/${fId}/${Date.now()}_${safeName}`;
       const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: file.type || 'application/pdf' });
       if (upErr) throw upErr;
       const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
@@ -9118,29 +9124,54 @@ async function dafHandleFiles(fId, input) {
       added.push(fiche);
     } catch (err) { toast('Erreur upload : ' + err.message, 'err'); }
   }
+  if (!added.length) { dafRefreshRow(fId); return; }
+  // Préparer la proposition d'ajout à la bibliothèque (nom + famille éditables, dans le modal)
+  window._dafPendingBiblio = added.map(ft => ({
+    url: ft.url,
+    _nom: (ft.nom || 'Fiche').replace(/\.pdf$/i, ''),
+    _fam: f?.famille_id || ''
+  }));
   dafRefreshRow(fId);
-  if (!added.length) return;
   toast(`${added.length} fiche(s) ajoutée(s)`);
-  // Proposer l'ajout à la bibliothèque de fiches techniques
-  if (confirm(`Ajouter ${added.length > 1 ? 'ces fiches' : 'cette fiche'} à votre bibliothèque de fiches techniques ?`)) {
-    await _dafAjouterFichesBibliotheque(f, added);
-  }
 }
 
-async function _dafAjouterFichesBibliotheque(f, fiches) {
+// Bloc "ajouter à la bibliothèque" affiché DANS le modal (nom + famille éditables)
+function _dafBiblioPromptHtml(fId) {
+  const pend = window._dafPendingBiblio || [];
+  if (!pend.length) return '';
+  const familles = state.familles.filter(x => x.actif !== false);
+  return `<div class="mt-3 border-t pt-3 bg-amber-50 -mx-1 px-3 pb-3 rounded-lg">
+    <p class="text-xs font-semibold text-amber-800 mb-2">📚 Ajouter ${pend.length > 1 ? 'ces fiches' : 'cette fiche'} à votre bibliothèque ?</p>
+    ${pend.map((p, i) => `
+      <div class="flex items-center gap-2 mb-2">
+        <input type="text" value="${escHtml(p._nom)}" oninput="window._dafPendingBiblio[${i}]._nom=this.value" placeholder="Nom de la fiche"
+          class="border rounded px-2 py-1 text-xs flex-1 bg-white">
+        <select onchange="window._dafPendingBiblio[${i}]._fam=this.value" class="border rounded px-2 py-1 text-xs bg-white">
+          <option value="">— Famille —</option>
+          ${familles.map(x => `<option value="${x.id}" ${x.id === p._fam ? 'selected' : ''}>${x.icone || ''} ${escHtml(x.nom)}</option>`).join('')}
+        </select>
+      </div>`).join('')}
+    <div class="flex gap-2 mt-1">
+      <button onclick="_dafConfirmBiblio('${fId}')" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700">✓ Ajouter à la bibliothèque</button>
+      <button onclick="window._dafPendingBiblio=null;_refreshDafFichesModal('${fId}')" class="border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50">Ignorer</button>
+    </div>
+  </div>`;
+}
+async function _dafConfirmBiblio(fId) {
+  const pend = window._dafPendingBiblio || [];
+  if (!pend.length) return;
   try {
-    const catFam = (_catState.familles || []).find(cf => cf.famille_fournitures_id === f?.famille_id);
-    const rows = fiches.map(ft => ({
-      user_id: state.user.id,
-      famille_id: catFam?.id || null,
-      nom: (ft.nom || 'Fiche').replace(/\.pdf$/i, ''),
-      pdf_url: ft.url,
-    }));
+    const rows = pend.map(p => {
+      const catFam = (_catState.familles || []).find(cf => cf.famille_fournitures_id === p._fam);
+      return { user_id: state.user.id, famille_id: catFam?.id || null, nom: p._nom || 'Fiche', pdf_url: p.url };
+    });
     const { data, error } = await db.from('catalogue_fiches').insert(rows).select();
     if (error) throw error;
     (data || []).forEach(d => _catState.fiches.push(d));
     toast('Ajouté à la bibliothèque ✓');
   } catch (err) { toast('Bibliothèque : ' + err.message, 'err'); }
+  window._dafPendingBiblio = null;
+  _refreshDafFichesModal(fId);
 }
 function dafAddFicheUrl(fId) {
   const url=prompt('URL de la fiche technique :');
