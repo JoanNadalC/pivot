@@ -220,6 +220,8 @@ async function buildPage1DAF(pdfDoc, fonts, config, daf, pageNum, totalPages) {
   drawRow('Fabricant', daf.fabricant, true);
   drawRow('Famille', daf.famille, false);
   drawRow('Fournisseur retenu', daf.fournisseur, true);
+  const fournLoc = [daf.fournisseur_adresse, daf.fournisseur_pays].filter(Boolean).join(' — ');
+  if (fournLoc) drawRow('Adresse fournisseur', fournLoc, false);
   y -= 8;
 
   // Section quantités + prix

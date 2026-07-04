@@ -3648,6 +3648,8 @@ function openAddFournisseurCarnetModal() {
     <input id="f-siret" type="text" placeholder="SIRET / N° identifiant" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <input id="f-email" type="email" placeholder="Email" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <input id="f-tel" type="text" placeholder="Téléphone" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <input id="f-adresse" type="text" placeholder="Adresse" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <input id="f-pays" type="text" placeholder="Pays" value="France" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <label class="block text-xs text-gray-500 mb-1">Famille principale</label>
     <select id="f-famille" class="w-full border rounded px-3 py-2 text-sm mb-4">
       <option value="">— Sans famille —</option>
@@ -3727,6 +3729,8 @@ async function addFournisseurCarnet() {
       siret,
       email:            document.getElementById('f-email').value.trim(),
       tel:              document.getElementById('f-tel').value.trim(),
+      adresse:          document.getElementById('f-adresse').value.trim() || null,
+      pays:             document.getElementById('f-pays').value.trim() || null,
       familles:         document.getElementById('f-famille').value ? [document.getElementById('f-famille').value] : [],
       type_fournisseur: window._selectedPortailId ? 'portail' : 'invite',
       fournisseur_portail_id: window._selectedPortailId || null
@@ -3756,6 +3760,8 @@ function openEditFournisseurCarnetModal(id) {
     <input id="ef-siret" type="text" value="${escHtml(f.siret || '')}" placeholder="SIRET / N° identifiant *" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <input id="ef-email" type="email" value="${escHtml(f.email || '')}" placeholder="Email" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <input id="ef-tel" type="text" value="${escHtml(f.tel || '')}" placeholder="Téléphone" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <input id="ef-adresse" type="text" value="${escHtml(f.adresse || '')}" placeholder="Adresse" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <input id="ef-pays" type="text" value="${escHtml(f.pays || '')}" placeholder="Pays" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <label class="block text-xs text-gray-500 mb-1">Famille principale</label>
     <select id="ef-famille" class="w-full border rounded px-3 py-2 text-sm mb-4">
       <option value="">— Sans famille —</option>
@@ -3779,6 +3785,8 @@ async function saveEditFournisseur(id) {
       nom, siret,
       email:    document.getElementById('ef-email').value.trim(),
       tel:      document.getElementById('ef-tel').value.trim(),
+      adresse:  document.getElementById('ef-adresse').value.trim() || null,
+      pays:     document.getElementById('ef-pays').value.trim() || null,
       familles: famVal ? [famVal] : []
     };
     const { error } = await db.from('fournisseurs').update(updates).eq('id', id);
@@ -9288,7 +9296,9 @@ async function dafGeneratePdf(fId) {
         reference:      row.reference || f.reference || '',
         fabricant:      row.fabricant || f.fabricant || '',
         famille:        state.familles.find(x => x.id === f.famille_id)?.nom || '',
-        fournisseur:    fournisseur?.nom || '',
+        fournisseur:    fournisseur?.nom_entreprise || fournisseur?.nom || '',
+        fournisseur_adresse: fournisseur?.adresse || '',
+        fournisseur_pays:    fournisseur?.pays || '',
         qte:            f.qte || '',
         unite:          f.unite || 'U',
         prix_unit_ht:   row.prix_unit_ht || f.prix_unit_ht || '',
