@@ -9250,7 +9250,7 @@ async function dafGeneratePdf(fId) {
 
     const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
     const payload = {
-      config: { bandeau_bg: config.bandeau_bg || '#1a2e44', bandeau_text: config.bandeau_text || '#ffffff' },
+      config: { bandeau_bg: config.bandeau_bg || '#1a2e44', bandeau_text: config.bandeau_text || '#ffffff', logo_base64: logoB64 },
       daf: {
         numero,
         designation:    row._designation || f.designation,

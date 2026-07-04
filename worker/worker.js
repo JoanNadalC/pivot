@@ -882,16 +882,27 @@ async function handleDAF(request, env) {
   const pdfDoc = await PDFDocument.create();
   const fonts = await loadFonts(pdfDoc, env);
 
-  let totalPages = 1 + annexes.length;
-  await buildPage1DAF(pdfDoc, fonts, config, daf, 1, totalPages);
-
-  let pageNum = 2;
+  // Pré-charger les annexes pour compter le vrai nombre de pages (chaque PDF peut en avoir plusieurs)
+  const prepared = [];
+  let totalPages = 1;
   for (const annexe of annexes) {
     if (!annexe.base64) continue;
     try {
-      const pdfBytes = Uint8Array.from(atob(annexe.base64), c => c.charCodeAt(0));
+      const bytes = Uint8Array.from(atob(annexe.base64), c => c.charCodeAt(0));
+      const doc = await PDFDocument.load(bytes);
+      const count = doc.getPageCount();
+      prepared.push({ annexe, bytes, count });
+      totalPages += count;
+    } catch {}
+  }
+
+  await buildPage1DAF(pdfDoc, fonts, config, daf, 1, totalPages);
+
+  let pageNum = 2;
+  for (const { annexe, bytes } of prepared) {
+    try {
       const label = `Pivot · DAF · ${daf.numero || ''} · ${annexe.nom || 'Annexe'}`;
-      const added = await buildAnnexPages(pdfDoc, fonts, config, pdfBytes, label, pageNum, totalPages);
+      const added = await buildAnnexPages(pdfDoc, fonts, config, bytes, label, pageNum, totalPages);
       pageNum += added;
     } catch {}
   }
