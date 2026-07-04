@@ -8427,9 +8427,8 @@ function dafRenderRow(f) {
       <td class="px-3 py-2 text-xs font-semibold text-gray-600">${escHtml(String(poste || ''))}</td>
       <td colspan="8" class="px-3 py-2 text-sm font-bold text-gray-800">${escHtml(_desigPlain)}</td>
     </tr>` : '';
-  const foursOpts = state.fournisseurs.map(fr =>
-    `<option value="${fr.id}" ${row.fournisseur_id === fr.id ? 'selected' : ''}>${fr.nom}</option>`
-  ).join('');
+  const _selFourn = row.fournisseur_id ? (state.fournisseurs.find(x => x.id === row.fournisseur_id) || null) : null;
+  const _selFournNom = _selFourn ? (_selFourn.nom_entreprise || _selFourn.nom || 'Fournisseur') : '';
   const caract = row._caract || [];
   const caractExpandedRow = row._caractExpanded ? `
     <tr id="daf-caract-${f.id}" class="bg-amber-50">
@@ -8508,10 +8507,10 @@ function dafRenderRow(f) {
         <button onclick="dafToggleCaract('${f.id}')" class="text-amber-500 hover:text-amber-700 text-sm" title="Caractéristiques techniques">${row._caractExpanded ? '🔼' : '📐'}</button>
       </td>
       <td class="px-3 py-2">
-        <select onchange="dafSetFournisseur('${f.id}',this.value)" class="w-full border rounded px-2 py-1 text-xs">
-          <option value="">— Choisir —</option>
-          ${foursOpts}
-        </select>
+        <button onclick="openDafFournisseurModal('${f.id}')" class="w-full border rounded px-2 py-1 text-xs text-left flex items-center justify-between gap-1 hover:bg-gray-50">
+          <span class="truncate ${row.fournisseur_id ? '' : 'text-gray-400'}">${row.fournisseur_id ? escHtml(_selFournNom) : '— Choisir —'}</span>
+          <span class="text-gray-400 text-[10px] shrink-0">▾</span>
+        </button>
       </td>
       <td class="px-3 py-2 text-xs">
         <div class="flex items-center gap-2">
@@ -8857,6 +8856,60 @@ function dafAddCaract(fId)       { _dafEnsure(fId); if(!window._dafRows[fId]._ca
 function dafRemoveCaract(fId,idx){ _dafEnsure(fId); window._dafRows[fId]._caract?.splice(idx,1); dafRefreshRow(fId); }
 function dafSetCaractKey(fId,idx,v){ _dafEnsure(fId); if(window._dafRows[fId]._caract?.[idx]) window._dafRows[fId]._caract[idx].cle=v; }
 function dafSetCaractVal(fId,idx,v){ _dafEnsure(fId); if(window._dafRows[fId]._caract?.[idx]) window._dafRows[fId]._caract[idx].valeur=v; }
+// ── Modal de sélection du fournisseur (recherche société + filtre famille) ──
+function openDafFournisseurModal(fId) {
+  window._dafFournModalFid = fId;
+  const f = state.fournitures.find(x => x.id === fId);
+  const defFam = f?.famille_id || '';
+  const familles = state.familles.filter(x => x.actif !== false);
+  showModal(`
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-base font-semibold text-gray-800">Choisir un fournisseur</h2>
+      <button onclick="closeModal();window._dafFournModalFid=null" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <input id="daf-fourn-search" type="text" placeholder="Rechercher par société / nom…" oninput="_renderDafFournList('${fId}')"
+      class="w-full border rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-green-200">
+    <div class="flex items-center gap-2 mb-2 text-xs">
+      <span class="text-gray-500">Famille :</span>
+      <select id="daf-fourn-fam" onchange="_renderDafFournList('${fId}')" class="border rounded px-2 py-1 text-xs">
+        <option value="">Toutes</option>
+        ${familles.map(x => `<option value="${x.id}" ${x.id === defFam ? 'selected' : ''}>${x.icone || ''} ${escHtml(x.nom)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="daf-fourn-list" class="max-h-72 overflow-y-auto divide-y border rounded-lg"></div>
+  `);
+  _renderDafFournList(fId);
+  setTimeout(() => document.getElementById('daf-fourn-search')?.focus(), 50);
+}
+function _renderDafFournList(fId) {
+  const el = document.getElementById('daf-fourn-list');
+  if (!el) return;
+  const q = (document.getElementById('daf-fourn-search')?.value || '').toLowerCase().trim();
+  const fam = document.getElementById('daf-fourn-fam')?.value || '';
+  let list = state.fournisseurs || [];
+  if (fam) list = list.filter(fr => fr.famille_id === fam);
+  if (q) list = list.filter(fr =>
+    (fr.nom_entreprise || '').toLowerCase().includes(q) ||
+    (fr.nom || '').toLowerCase().includes(q) ||
+    (fr.email || '').toLowerCase().includes(q));
+  if (!list.length) { el.innerHTML = '<p class="text-sm text-gray-400 p-3">Aucun fournisseur trouvé.</p>'; return; }
+  const cur = window._dafRows[fId]?.fournisseur_id;
+  el.innerHTML = list.map(fr => {
+    const titre = fr.nom_entreprise || fr.nom || '—';
+    const sub = (fr.nom_entreprise && fr.nom) ? fr.nom : (fr.email || '');
+    return `<button onclick="_dafPickFournisseur('${fId}','${fr.id}')" class="w-full text-left px-3 py-2 hover:bg-green-50 flex items-center justify-between gap-2 ${cur === fr.id ? 'bg-green-50' : ''}">
+      <div class="min-w-0"><p class="text-sm font-medium truncate">${escHtml(titre)}</p>${sub ? `<p class="text-xs text-gray-400 truncate">${escHtml(sub)}</p>` : ''}</div>
+      ${cur === fr.id ? '<span class="text-green-600 text-xs shrink-0">✓</span>' : ''}
+    </button>`;
+  }).join('');
+}
+async function _dafPickFournisseur(fId, frId) {
+  window._dafFournModalFid = null;
+  closeModal();
+  await dafSetFournisseur(fId, frId);
+  dafRefreshRow(fId);
+}
+
 async function dafSetFournisseur(fId, v) {
   _dafEnsure(fId);
   window._dafRows[fId].fournisseur_id = v;
