@@ -10708,54 +10708,83 @@ function dafCreateV2(fId) {
 // ============================================================
 // SUIVI
 // ============================================================
+function _suiviLatestDaf(fournitureId) {
+  let best = null;
+  for (const d of state.daf) {
+    if (d.fourniture_id !== fournitureId) continue;
+    if (!best || (d.version || 1) > (best.version || 1)) best = d;
+  }
+  return best;
+}
+
 async function loadSuivi() {
   const familleFilter = document.getElementById('suivi-famille-filter')?.value;
   const statutFilter = document.getElementById('suivi-statut-filter')?.value;
   const el = document.getElementById('suivi-tbody');
   if (!el) return;
 
-  let dafList = state.daf;
-  if (statutFilter) dafList = dafList.filter(d => d.statut === statutFilter);
-
   // Peupler filtre famille si vide
   const sel = document.getElementById('suivi-famille-filter');
   if (sel && sel.options.length === 1) {
     state.familles.forEach(f => {
       const opt = document.createElement('option');
-      opt.value = f.id;
-      opt.textContent = `${f.icone} ${f.nom}`;
+      opt.value = f.id; opt.textContent = `${f.icone} ${f.nom}`;
       sel.appendChild(opt);
     });
   }
 
-  el.innerHTML = dafList.map(d => {
-    const f = state.fournitures.find(x => x.id === d.fourniture_id);
-    const fam = f ? state.familles.find(ff => ff.id === f.famille_id) : null;
+  const inputCls = (v) => `border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-xs focus:outline-none${v ? '' : ' text-gray-300'}`;
+  // Toutes les fournitures (même sans DAF) pour voir ce qu'il reste à faire
+  const fournitures = state.fournitures.filter(f => !f.is_variante);
+  const rows = fournitures.map(f => {
+    const fam = state.familles.find(ff => ff.id === f.famille_id);
     if (familleFilter && fam?.id !== familleFilter) return '';
+    const d = _suiviLatestDaf(f.id);
+    if (statutFilter && (!d || d.statut !== statutFilter)) return '';
+    const dsoum = (d?.date_soumission || '').slice(0, 10);
+    const dvisa = (d?.date_visa || state.visaMoe?.[d?.id]?.date_visa || '').slice(0, 10);
+    const obs   = d?.visa_remarques ?? state.visaMoe?.[d?.id]?.remarques ?? '';
+    const dcmd  = (d?.date_commande || '').slice(0, 10);
+    const dliv  = (d?.date_livraison_prevue || '').slice(0, 10);
+    const drec  = (d?.date_recu || '').slice(0, 10);
+    const fid = f.id;
     return `
       <tr class="hover:bg-gray-50 border-b text-sm">
-        <td class="px-3 py-2 text-gray-400">${f?.numero_poste || ''}</td>
-        <td class="px-3 py-2">${d.designation || f?.designation || ''}</td>
-        <td class="px-3 py-2">${fam ? fam.icone + ' ' + fam.nom : ''}</td>
-        <td class="px-3 py-2">${statutBadge(d.statut)}</td>
-        <td class="px-3 py-2 text-xs text-gray-500">${d.date_soumission ? new Date(d.date_soumission).toLocaleDateString('fr-FR') : '—'}</td>
-        <td class="px-3 py-2 text-xs text-gray-500">${(state.visaMoe?.[d.id]?.date_visa) ? new Date(state.visaMoe[d.id].date_visa).toLocaleDateString('fr-FR') : '—'}</td>
-        <td class="px-3 py-2 text-xs max-w-xs">${state.visaMoe?.[d.id]?.remarques ? `<span class="text-gray-700 leading-relaxed">${escHtml(state.visaMoe[d.id].remarques)}</span>` : '<span class="text-gray-300">—</span>'}</td>
-        <td class="px-3 py-2">
-          <input type="date" value="${d.date_commande || ''}" onchange="saveSuiviField('${d.id}','date_commande',this.value);this.classList.toggle('text-gray-300',!this.value)"
-            class="border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-xs focus:outline-none${d.date_commande ? '' : ' text-gray-300'}">
-        </td>
-        <td class="px-3 py-2">
-          <input type="date" value="${d.date_livraison_prevue || ''}" onchange="saveSuiviField('${d.id}','date_livraison_prevue',this.value);this.classList.toggle('text-gray-300',!this.value)"
-            class="border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-xs focus:outline-none${d.date_livraison_prevue ? '' : ' text-gray-300'}">
-        </td>
-        <td class="px-3 py-2">
-          <input type="date" value="${d.date_recu || ''}" onchange="saveSuiviField('${d.id}','date_recu',this.value);this.classList.toggle('text-gray-300',!this.value)"
-            class="border-0 border-b border-transparent hover:border-gray-300 focus:border-green-500 bg-transparent text-xs focus:outline-none${d.date_recu ? '' : ' text-gray-300'}">
-        </td>
-      </tr>
-    `;
-  }).filter(Boolean).join('') || '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-400 text-sm">Aucune donnée</td></tr>';
+        <td class="px-3 py-2 text-gray-400">${escHtml(f.numero_poste || '')}</td>
+        <td class="px-3 py-2">${escHtml(d?.designation || f.designation || '')}</td>
+        <td class="px-3 py-2">${fam ? fam.icone + ' ' + escHtml(fam.nom) : ''}</td>
+        <td class="px-3 py-2">${d ? statutBadge(d.statut) : '<span class="text-xs text-gray-300 italic">Sans DAF</span>'}</td>
+        <td class="px-3 py-2"><input type="date" value="${dsoum}" onchange="saveSuiviCell('${fid}','date_soumission',this.value)" class="${inputCls(dsoum)}"></td>
+        <td class="px-3 py-2"><input type="date" value="${dvisa}" onchange="saveSuiviCell('${fid}','date_visa',this.value)" class="${inputCls(dvisa)}"></td>
+        <td class="px-3 py-2"><input type="text" value="${escHtml(obs)}" placeholder="—" onchange="saveSuiviCell('${fid}','visa_remarques',this.value)" class="${inputCls(obs)} w-40"></td>
+        <td class="px-3 py-2"><input type="date" value="${dcmd}" onchange="saveSuiviCell('${fid}','date_commande',this.value)" class="${inputCls(dcmd)}"></td>
+        <td class="px-3 py-2"><input type="date" value="${dliv}" onchange="saveSuiviCell('${fid}','date_livraison_prevue',this.value)" class="${inputCls(dliv)}"></td>
+        <td class="px-3 py-2"><input type="date" value="${drec}" onchange="saveSuiviCell('${fid}','date_recu',this.value)" class="${inputCls(drec)}"></td>
+      </tr>`;
+  }).filter(Boolean).join('');
+  el.innerHTML = rows || '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-400 text-sm">Aucune fourniture</td></tr>';
+}
+
+// Sauvegarde d'un champ de suivi ; crée une DAF minimale si la fourniture n'en a pas encore
+async function saveSuiviCell(fournitureId, field, value) {
+  try {
+    let d = _suiviLatestDaf(fournitureId);
+    if (!d) {
+      const f = state.fournitures.find(x => x.id === fournitureId);
+      const ch = state.currentChantier;
+      const { data, error } = await db.from('daf').insert({
+        chantier_id: ch.id, fourniture_id: fournitureId,
+        entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
+        lot_id: state.currentEntrepriseLotId ?? null,
+        designation: f?.designation || '', statut: 'brouillon', version: 1
+      }).select().single();
+      if (error) throw error;
+      state.daf.push(data);
+      d = data;
+    }
+    await db.from('daf').update({ [field]: value || null }).eq('id', d.id);
+    d[field] = value || null;
+  } catch (err) { toast(err.message, 'err'); }
 }
 
 function editSuivi(dafId) {
