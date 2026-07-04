@@ -8451,15 +8451,6 @@ function dafRenderRow(f) {
       </td>
     </tr>` : '';
   const fiches = row.fiches || [];
-  const fichesHtml = fiches.map((ft, idx) => {
-    const icon = ft.type === 'file' ? '📎' : '🔗';
-    const lbl = ft.nom || (ft.type === 'file' ? 'Fichier' : 'Lien');
-    const link = ft.type === 'file' && ft._objectUrl
-      ? `<a href="${ft._objectUrl}" target="_blank" class="text-xs text-blue-500 hover:underline truncate max-w-32" title="${lbl}">${icon} ${lbl}</a>`
-      : ft.url ? `<a href="${ft.url}" target="_blank" class="text-xs text-blue-500 hover:underline truncate max-w-32">${icon} ${lbl}</a>`
-      : `<span class="text-xs text-gray-500">${icon} ${lbl}</span>`;
-    return `<div class="flex items-center gap-1">${link}<button onclick="dafRemoveFiche('${f.id}',${idx})" class="text-red-400 text-xs">✕</button></div>`;
-  }).join('');
   const ver = row.version || 1;
   const canV2 = row.daf_id && ['soumise','visa_ok','visa_remarques','refusee','commandee'].includes(row.statut);
   const dafRecord = state.daf.find(d => d.id === row.daf_id);
@@ -8482,7 +8473,7 @@ function dafRenderRow(f) {
         <button onclick="dafSaveAndGeneratePdf('${f.id}')" class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 whitespace-nowrap">📄 Générer</button>
       </div>`
     : `<div class="flex flex-col gap-1 items-start">
-        <button onclick="dafGeneratePdf('${f.id}')" class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-200 whitespace-nowrap">📄 PDF v${ver}</button>
+        <button onclick="dafGeneratePdf('${f.id}')" class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-200 whitespace-nowrap">📄 PDF</button>
         ${row.statut === 'brouillon' ? `<button onclick="soumettreDaf('${row.daf_id}')" class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 whitespace-nowrap">✉ Soumettre</button>` : ''}
       </div>`;
 
@@ -8523,13 +8514,17 @@ function dafRenderRow(f) {
         </select>
       </td>
       <td class="px-3 py-2 text-xs">
-        ${fichesHtml}
-        <div class="flex gap-2 mt-1 flex-wrap">
-          <button onclick="dafTriggerFile('${f.id}')" class="text-blue-500 hover:underline text-xs">📎 PDF</button>
-          <button onclick="dafAddFicheUrl('${f.id}')" class="text-blue-500 hover:underline text-xs">🔗 URL</button>
-          <button onclick="openCataloguePicker(url => dafAddFicheFromCatalogue('${f.id}', url))" class="text-green-600 hover:underline text-xs font-medium">📚 Cat.</button>
-          <button onclick="dafCopyRow('${f.id}')" class="text-amber-600 hover:underline text-xs" title="Copier fiches, caract. et fournisseur">📋</button>
-          ${window._dafClipboard ? `<button onclick="dafPasteRow('${f.id}')" class="text-amber-700 font-semibold hover:underline text-xs" title="Coller depuis ${escHtml(window._dafClipboard.sourceDesig)}">📥</button>` : ''}
+        <div class="flex items-center gap-2">
+          <button onclick="openDafFichesModal('${f.id}')" class="flex items-center gap-1 border rounded px-2 py-1 hover:bg-gray-50" title="Gérer les fiches techniques">
+            ${fiches.length
+              ? `<span title="${fiches.length} fiche(s) chargée(s)">📄</span><span class="text-gray-500">${fiches.length}</span>`
+              : `<span class="text-gray-400">📎</span>`}
+            <span class="text-gray-400 text-[10px]">▾</span>
+          </button>
+          <button onclick="dafCopyRow('${f.id}')" class="text-amber-600 hover:text-amber-800" title="Copier fiches, caract. et fournisseur">📋</button>
+          <button onclick="dafPasteRow('${f.id}')" ${window._dafClipboard ? '' : 'disabled'}
+            class="${window._dafClipboard ? 'text-amber-700 hover:text-amber-900 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}"
+            title="${window._dafClipboard ? 'Coller depuis ' + escHtml(window._dafClipboard.sourceDesig) : 'Rien à coller'}">📥</button>
         </div>
         <input type="file" id="daf-file-${f.id}" accept=".pdf" multiple class="hidden" onchange="dafHandleFiles('${f.id}',this)">
       </td>
@@ -8999,6 +8994,47 @@ function dafRefreshRow(fId) {
   if (mainTr) keep.push(mainTr);
   if (caractTr) keep.push(caractTr);
   if (keep.length) rowEl.replaceWith(...keep);
+  // Rafraîchir le modal fiches s'il est ouvert pour cette ligne
+  if (window._dafFichesModalFid === fId) {
+    const body = document.getElementById('daf-fiches-modal-body');
+    if (body) body.innerHTML = _dafFichesModalBody(fId);
+  }
+}
+
+// ── Modal fiches techniques (déclutter la colonne) ──
+function _dafFichesModalBody(fId) {
+  const row = window._dafRows[fId] || {};
+  const fiches = row.fiches || [];
+  if (!fiches.length) return '<p class="text-sm text-gray-400 py-2">Aucune fiche technique pour l\'instant.</p>';
+  return `<div class="divide-y border rounded-lg">${fiches.map((ft, idx) => {
+    const icon = ft.type === 'file' ? '📎' : '🔗';
+    const lbl = ft.nom || (ft.type === 'file' ? 'Fichier' : 'Lien');
+    const href = (ft.type === 'file' && ft._objectUrl) ? ft._objectUrl : (ft.url || '');
+    const nameHtml = href
+      ? `<a href="${href}" target="_blank" class="text-sm text-blue-600 hover:underline truncate">${icon} ${escHtml(lbl)}</a>`
+      : `<span class="text-sm text-gray-600 truncate">${icon} ${escHtml(lbl)}</span>`;
+    return `<div class="flex items-center justify-between px-3 py-2 gap-2">
+      ${nameHtml}
+      <button onclick="dafRemoveFiche('${fId}',${idx})" class="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+function openDafFichesModal(fId) {
+  window._dafFichesModalFid = fId;
+  const f = state.fournitures.find(x => x.id === fId);
+  showModal(`
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold text-gray-800">📄 Fiches techniques</h2>
+      <button onclick="closeModal();window._dafFichesModalFid=null" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">${escHtml(f?.designation || '')}</p>
+    <div id="daf-fiches-modal-body">${_dafFichesModalBody(fId)}</div>
+    <div class="flex gap-2 mt-4 flex-wrap">
+      <button onclick="dafTriggerFile('${fId}')" class="border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-50">📎 Ajouter un PDF</button>
+      <button onclick="dafAddFicheUrl('${fId}')" class="border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-50">🔗 Ajouter une URL</button>
+      <button onclick="openCataloguePicker(url => dafAddFicheFromCatalogue('${fId}', url))" class="border border-green-200 text-green-700 px-3 py-1.5 rounded-lg text-sm hover:bg-green-50">📚 Catalogue</button>
+    </div>
+  `);
 }
 function dafTriggerFile(fId) { document.getElementById(`daf-file-${fId}`)?.click(); }
 function dafHandleFiles(fId, input) {
