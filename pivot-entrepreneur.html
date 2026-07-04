@@ -8522,9 +8522,7 @@ function dafRenderRow(f) {
             <span class="text-gray-400 text-[10px]">▾</span>
           </button>
           <button onclick="dafCopyRow('${f.id}')" class="text-amber-600 hover:text-amber-800" title="Copier fiches, caract. et fournisseur">📋</button>
-          <button onclick="dafPasteRow('${f.id}')" ${window._dafClipboard ? '' : 'disabled'}
-            class="${window._dafClipboard ? 'text-amber-700 hover:text-amber-900 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}"
-            title="${window._dafClipboard ? 'Coller depuis ' + escHtml(window._dafClipboard.sourceDesig) : 'Rien à coller'}">📥</button>
+          ${window._dafClipboard ? `<button onclick="dafPasteRow('${f.id}')" class="text-amber-700 hover:text-amber-900" title="Coller depuis ${escHtml(window._dafClipboard.sourceDesig)}">📥</button>` : ''}
         </div>
         <input type="file" id="daf-file-${f.id}" accept=".pdf" multiple class="hidden" onchange="dafHandleFiles('${f.id}',this)">
       </td>
@@ -8538,6 +8536,17 @@ function dafRenderRow(f) {
 
 // ── Copier / coller une ligne DAF ────────────────────────────────────────────
 window._dafClipboard = null;
+
+// Échap annule la copie en mémoire
+if (!window._dafClipboardEscBound) {
+  window._dafClipboardEscBound = true;
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && window._dafClipboard) {
+      window._dafClipboard = null;
+      if (state.currentTab === 'daf') renderDaf();
+    }
+  });
+}
 
 function dafCopyRow(fId) {
   const row = window._dafRows[fId];
@@ -9037,21 +9046,48 @@ function openDafFichesModal(fId) {
   `);
 }
 function dafTriggerFile(fId) { document.getElementById(`daf-file-${fId}`)?.click(); }
-function dafHandleFiles(fId, input) {
+async function dafHandleFiles(fId, input) {
   _dafEnsure(fId);
-  Array.from(input.files||[]).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      window._dafRows[fId].fiches.push({
-        nom: file.name, type:'file',
-        _arrayBuffer: e.target.result,
-        _objectUrl: URL.createObjectURL(file)
-      });
-      dafRefreshRow(fId);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-  input.value='';
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const f = state.fournitures.find(x => x.id === fId);
+  const added = [];
+  for (const file of files) {
+    try {
+      toast(`Upload « ${file.name} »…`);
+      const path = `daf/${state.user.id}/${fId}/${Date.now()}_${file.name}`;
+      const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: file.type || 'application/pdf' });
+      if (upErr) throw upErr;
+      const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
+      const fiche = { nom: file.name, url: urlData.publicUrl, type: 'file' };
+      window._dafRows[fId].fiches.push(fiche);
+      added.push(fiche);
+    } catch (err) { toast('Erreur upload : ' + err.message, 'err'); }
+  }
+  dafRefreshRow(fId);
+  if (!added.length) return;
+  toast(`${added.length} fiche(s) ajoutée(s)`);
+  // Proposer l'ajout à la bibliothèque de fiches techniques
+  if (confirm(`Ajouter ${added.length > 1 ? 'ces fiches' : 'cette fiche'} à votre bibliothèque de fiches techniques ?`)) {
+    await _dafAjouterFichesBibliotheque(f, added);
+  }
+}
+
+async function _dafAjouterFichesBibliotheque(f, fiches) {
+  try {
+    const catFam = (_catState.familles || []).find(cf => cf.famille_fournitures_id === f?.famille_id);
+    const rows = fiches.map(ft => ({
+      user_id: state.user.id,
+      famille_id: catFam?.id || null,
+      nom: (ft.nom || 'Fiche').replace(/\.pdf$/i, ''),
+      pdf_url: ft.url,
+    }));
+    const { data, error } = await db.from('catalogue_fiches').insert(rows).select();
+    if (error) throw error;
+    (data || []).forEach(d => _catState.fiches.push(d));
+    toast('Ajouté à la bibliothèque ✓');
+  } catch (err) { toast('Bibliothèque : ' + err.message, 'err'); }
 }
 function dafAddFicheUrl(fId) {
   const url=prompt('URL de la fiche technique :');
