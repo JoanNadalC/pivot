@@ -410,13 +410,20 @@ async function loadAll() {
     '<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Chargement…</td></tr>';
 
   // Charger tous les comptes des 3 portails + structures + membres
-  const [eRes, fRes, mRes, strRes, memRes] = await Promise.all([
+  const [eRes, fRes, mRes, strRes, memRes, collabRes] = await Promise.all([
     db.from('compte_entrepreneur').select('id, email, nom, compte_bloque').order('created_at', { ascending: false }),
     db.from('compte_fournisseur').select('id, email, nom, nom_entreprise, compte_bloque, plan').order('created_at', { ascending: false }),
     db.from('compte_moe').select('id, email, nom').order('created_at', { ascending: false }),
     db.from('structures').select('*'),
-    db.from('structure_membres').select('user_id, structure_id, role, has_licence')
+    db.from('structure_membres').select('user_id, structure_id, role, has_licence'),
+    db.from('collaborateurs').select('id, nom, email, fournisseur_id')
   ]);
+
+  // Collaborateurs photos par fournisseur (équipe légère, sans compte portail complet)
+  const collabByFournisseur = {};
+  (collabRes.data || []).forEach(c => {
+    (collabByFournisseur[c.fournisseur_id] ||= []).push(c);
+  });
 
   // Index structures par id
   const structMap = {};
@@ -465,7 +472,8 @@ async function loadAll() {
       _has_licence: mem?.has_licence !== false,
       _nb_membres: struct ? (countMap[struct.id] || 0) : null,
       _notes: notesMap[u.id] || '',
-      _portail_role: rolesMap[u.id] || ''
+      _portail_role: rolesMap[u.id] || '',
+      _collabs: u._type === 'fournisseur' ? (collabByFournisseur[u.id] || []) : []
     };
   });
 
@@ -587,7 +595,7 @@ function renderStructureCard(s, members) {
         <button onclick="openNotesModal('${m.id}')" class="text-gray-300 hover:text-amber-500" title="Notes">📝</button>
         <button onclick="deleteUser('${m.id}','${escHtml(m.email||'')}','${m._type}')" class="text-gray-300 hover:text-red-500" title="Supprimer">🗑️</button>
       </div>
-    </div>`;
+    </div>` + _collabsHtml(m);
   }).join('');
 
   return `<div class="bg-white" id="struct-card-${s.id}">
@@ -621,6 +629,20 @@ function renderStructureCard(s, members) {
   </div>`;
 }
 
+// Sous-liste des collaborateurs photos (équipe légère fournisseur, sans compte portail)
+function _collabsHtml(m) {
+  const collabs = m._collabs || [];
+  if (!collabs.length) return '';
+  return `<div class="ml-10 mb-1 pl-3 border-l-2 border-blue-100 space-y-1">
+    <p class="text-xs text-blue-500 font-medium">📷 Collaborateurs photos (${collabs.length})</p>
+    ${collabs.map(c => `<div class="flex items-center gap-2 text-xs text-gray-500">
+      <span class="w-1.5 h-1.5 rounded-full bg-blue-300 shrink-0"></span>
+      <span class="text-gray-700">${escHtml(c.nom||'—')}</span>
+      <span class="text-gray-400 truncate">${escHtml(c.email||'')}</span>
+    </div>`).join('')}
+  </div>`;
+}
+
 function renderOrphansSection(orphans) {
   const rows = orphans.map(c => `<div class="flex items-center gap-3 bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
     <div class="flex-1 min-w-0">
@@ -630,7 +652,7 @@ function renderOrphansSection(orphans) {
     <button onclick="openCreateStructureForUser('${c.id}','${c._type}','${escHtml(c._nom)}','${escHtml(c.email||'')}')"
       class="text-xs px-2 py-1 border border-indigo-300 rounded hover:bg-indigo-50 text-indigo-600">+ Rattacher</button>
     <button onclick="deleteUser('${c.id}','${escHtml(c.email||'')}','${c._type}')" class="text-gray-300 hover:text-red-500">🗑️</button>
-  </div>`).join('');
+  </div>` + _collabsHtml(c)).join('');
   return `<div class="bg-white border-t" id="struct-card-__orphans">
     <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 select-none" onclick="toggleStructure('__orphans')">
       <span class="font-medium text-gray-400 text-sm">Sans structure (${orphans.length})</span>
