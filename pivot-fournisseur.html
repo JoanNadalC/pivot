@@ -1065,6 +1065,7 @@ function _initNotifRealtime() {
       const labels = {
         nouvelle_consultation: '📬 Nouvelle consultation reçue',
         modification_autorisee: '🔓 Modification autorisée',
+        demande_photo: '📷 Demande de photos',
       };
       const label = labels[n.type] || '🔔 Notification';
       toast(label);
@@ -1222,7 +1223,7 @@ async function loadDashboard() {
     const compteId = state.user?.id;
     const [cfRes, dpRes] = await Promise.all([
       compteId ? db.from('consultation_fournisseurs').select('*', { count: 'exact', head: true })
-        .eq('compte_fournisseur_id', compteId).eq('statut', 'en_attente') : Promise.resolve({ count: 0 }),
+        .eq('compte_fournisseur_id', compteId) : Promise.resolve({ count: 0 }),
       db.from('demandes_photos').select('*', { count: 'exact', head: true })
         .eq('fournisseur_id', fId).in('statut', ['en_attente', 'en_cours']),
     ]);
@@ -1911,7 +1912,7 @@ function renderNotifList() {
     return;
   }
   el.innerHTML = state.notifications.map(n => {
-    const tab = n.type === 'modification_autorisee' ? 'saisie' : 'consultations';
+    const tab = n.type === 'modification_autorisee' ? 'saisie' : n.type === 'demande_photo' ? 'photos-cons' : 'consultations';
     const isRead = !!n.read;
     return `<div class="p-3 border-b flex items-start gap-2 ${isRead ? 'bg-white opacity-50' : 'bg-blue-50 hover:bg-blue-100 cursor-pointer'}"
         ${!isRead ? `onclick="notifNavigate('${n.id}','${tab}','${n.consultation_id||''}')"` : ''}>

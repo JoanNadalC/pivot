@@ -11877,10 +11877,33 @@ async function envoyerDemandePh() {
     entrepreneur_id: state.user.id,
     fourniture_ids:  checked,
     message:         message || null,
-    statut:          'pending',
+    statut:          'en_attente', // convention utilisée côté portail fournisseur (pas 'pending')
   }).select('id').single();
 
   if (error) { toast('Erreur : ' + error.message, 'err'); return; }
+
+  // Notifier le fournisseur (in-app + email) s'il a un compte portail
+  try {
+    const { data: carnetEntry } = await db.from('fournisseurs')
+      .select('fournisseur_portail_id, compte_fournisseur_id, nom')
+      .eq('id', _dphState.fournisseurId).maybeSingle();
+    const compteFournisseurId = carnetEntry?.compte_fournisseur_id || carnetEntry?.fournisseur_portail_id || null;
+    if (compteFournisseurId) {
+      const nomChantierPh = state.currentChantier?.affaire || '';
+      const msgPh = `${checked.length} photo(s) demandée(s)${nomChantierPh ? ` — ${nomChantierPh}` : ''}`;
+      await db.from('notifications').insert({
+        type: 'demande_photo',
+        user_id: compteFournisseurId,
+        message: msgPh,
+        consultation_id: _dphState.consId,
+        read: false
+      });
+      fetch(`${WORKER_URL}/notify-event`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: 'Demande de photos', message: msgPh })
+      }).catch(() => {});
+    }
+  } catch (err) { console.warn('notif demande photo:', err); }
 
   fermerModalDemandePh();
   toast('Demande de photos envoyée au fournisseur ✓');
