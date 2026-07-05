@@ -8391,6 +8391,20 @@ function renderDaf() {
         <span>${escHtml(redacteurNom)}</span>
       </div>
     </div>`;
+  // Colonnes fixes et identiques pour toutes les familles (alignement vertical entre tableaux)
+  const DAF_COLGROUP = `
+    <colgroup>
+      <col style="width:32px">
+      <col style="width:80px">
+      <col>
+      <col style="width:32px">
+      <col style="width:144px">
+      <col style="width:160px">
+      <col style="width:80px">
+      <col style="width:96px">
+      <col style="width:180px">
+      <col style="width:64px">
+    </colgroup>`;
   for (const [famId, items] of Object.entries(famMap)) {
     const fam = state.familles.find(f => f.id === famId) || { nom: 'Autres', icone: '📦', couleur: '#6b7280' };
     const rows = items.map(f => dafRenderRow(f)).join('');
@@ -8400,19 +8414,20 @@ function renderDaf() {
           ${fam.icone} ${fam.nom}
         </div>
         <div class="overflow-x-auto bg-white shadow-sm rounded-b">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm" style="table-layout:fixed">
+            ${DAF_COLGROUP}
             <thead class="bg-gray-50 text-xs text-gray-500 border-b">
               <tr>
-                <th class="px-2 py-2 w-8"></th>
-                <th class="px-3 py-2 text-left w-20">N°Poste</th>
+                <th class="px-2 py-2"></th>
+                <th class="px-3 py-2 text-left">N°Poste</th>
                 <th class="px-3 py-2 text-left">Désignation</th>
-                <th class="px-2 py-2 w-8 text-center">📐</th>
-                <th class="px-3 py-2 text-left w-36">Fournisseur</th>
-                <th class="px-3 py-2 text-left w-40">Fiches techniques</th>
-                <th class="px-3 py-2 text-center w-20">PDF</th>
-                <th class="px-3 py-2 text-center w-24">VISA</th>
+                <th class="px-2 py-2 text-center">📐</th>
+                <th class="px-3 py-2 text-left">Fournisseur</th>
+                <th class="px-3 py-2 text-left">Fiches techniques</th>
+                <th class="px-3 py-2 text-center">PDF</th>
+                <th class="px-3 py-2 text-center">VISA</th>
                 <th class="px-3 py-2 text-left">Observations</th>
-                <th class="px-3 py-2 text-center w-16">V(n+1)</th>
+                <th class="px-3 py-2 text-center">V(n+1)</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
