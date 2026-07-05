@@ -340,6 +340,37 @@ async function buildAnnexPages(pdfDoc, fonts, config, annexPdfBytes, chapLabel, 
 }
 
 // ============================================================
+// PAGE PHOTO FOURNISSEUR (auto-intégrée depuis Pivot Photos)
+// ============================================================
+// Une photo par page : on ne tente pas d'en placer plusieurs par page pour
+// rester fiable quelle que soit l'orientation/taille des photos envoyées.
+async function buildPhotoPage(pdfDoc, fonts, config, base64, label, pageNum, totalPages) {
+  const page = pdfDoc.addPage([A4W, A4H]);
+  const clean = base64.replace(/^data:[^;]+;base64,/, '');
+  const imgBytes = Uint8Array.from(atob(clean), c => c.charCodeAt(0));
+  // Détection du format par octets magiques (le base64 fourni n'a pas de préfixe data:mime)
+  const isPng = imgBytes[0] === 0x89 && imgBytes[1] === 0x50 && imgBytes[2] === 0x4E && imgBytes[3] === 0x47;
+  const img = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
+
+  const areaTop = A4H - MARGIN;
+  const areaBottom = BANDEAU_H + MARGIN;
+  const areaW = CONTENT_W;
+  const areaH = areaTop - areaBottom;
+
+  const scale = Math.min(areaW / img.width, areaH / img.height, 3);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  const x = MARGIN + (areaW - w) / 2;
+  const y = areaBottom + (areaH - h) / 2;
+
+  page.drawRectangle({ x: MARGIN, y: areaBottom, width: areaW, height: areaH, borderColor: rgb(0.9,0.9,0.9), borderWidth: 0.5 });
+  page.drawImage(img, { x, y, width: w, height: h });
+
+  drawBandeauBas(page, fonts, config, label, pageNum, totalPages);
+  return page;
+}
+
+// ============================================================
 // FICHE FOURNITURE DOE
 // ============================================================
 async function buildFicheFournitureDOE(pdfDoc, fonts, config, doeData, fiche, pageNum, totalPages) {
@@ -886,7 +917,7 @@ async function buildDOE(payload, env) {
 // ============================================================
 async function handleDAF(request, env) {
   const payload = await request.json();
-  const { config = {}, daf = {}, annexes = [] } = payload;
+  const { config = {}, daf = {}, annexes = [], photos = [] } = payload;
 
   const pdfDoc = await PDFDocument.create();
   const fonts = await loadFonts(pdfDoc, env);
@@ -904,6 +935,9 @@ async function handleDAF(request, env) {
       totalPages += count;
     } catch {}
   }
+  // Photos envoyées par le fournisseur retenu (validées) : une page par photo
+  const validPhotos = photos.filter(p => p.base64);
+  totalPages += validPhotos.length;
 
   await buildPage1DAF(pdfDoc, fonts, config, daf, 1, totalPages);
 
@@ -913,6 +947,13 @@ async function handleDAF(request, env) {
       const label = `Pivot · DAF · ${daf.numero || ''} · ${annexe.nom || 'Annexe'}`;
       const added = await buildAnnexPages(pdfDoc, fonts, config, bytes, label, pageNum, totalPages);
       pageNum += added;
+    } catch {}
+  }
+  for (const photo of validPhotos) {
+    try {
+      const label = `Pivot · DAF · ${daf.numero || ''} · Photo fournisseur`;
+      await buildPhotoPage(pdfDoc, fonts, config, photo.base64, label, pageNum, totalPages);
+      pageNum++;
     } catch {}
   }
 

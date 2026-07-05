@@ -9468,6 +9468,29 @@ async function dafGeneratePdf(fId) {
       }
     }
 
+    // Photos validées envoyées par le fournisseur retenu pour cette fourniture (auto-intégrées)
+    const photos = [];
+    if (row.fournisseur_id) {
+      try {
+        const { data: demandes } = await db.from('demandes_photos')
+          .select('id')
+          .eq('fournisseur_id', row.fournisseur_id)
+          .contains('fourniture_ids', [f.id]);
+        const demandeIds = (demandes || []).map(d => d.id);
+        if (demandeIds.length) {
+          const { data: photosData } = await db.from('photos_fournitures')
+            .select('url')
+            .in('demande_id', demandeIds)
+            .eq('fourniture_id', f.id)
+            .eq('valide', true);
+          for (const p of photosData || []) {
+            if (!p.url) continue;
+            try { photos.push({ base64: await _urlToBase64(p.url) }); } catch {}
+          }
+        }
+      } catch (err) { console.warn('photos fournisseur DAF:', err); }
+    }
+
     // Visa MOE
     let visa = null;
     if (dafRecord?.visa_moe) {
@@ -9509,6 +9532,7 @@ async function dafGeneratePdf(fId) {
         champs_masques: Array.isArray(config.daf_champs_masques) ? config.daf_champs_masques : [],
       },
       annexes,
+      photos,
     };
 
     const resp = await fetch(`${WORKER_URL}/generate-daf`, {
