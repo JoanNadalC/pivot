@@ -3368,7 +3368,7 @@ async function unlinkMoe() {
 async function saveChantier() {
   const c = state.currentChantier;
   try {
-    const { error } = await db.from('chantiers').update({
+    const payload = {
       affaire: document.getElementById('ch-affaire').value.trim(),
       ville: document.getElementById('ch-ville').value.trim(),
       maitre_ouvrage: document.getElementById('ch-moa').value.trim(),
@@ -3377,8 +3377,11 @@ async function saveChantier() {
       date_fin_prevue: document.getElementById('ch-fin').value || null,
       remarques: document.getElementById('ch-remarques').value.trim(),
       statut: document.getElementById('ch-statut').value
-    }).eq('id', c.id);
+    };
+    const { error } = await db.from('chantiers').update(payload).eq('id', c.id);
     if (error) throw error;
+    // Garder l'objet en mémoire à jour (sinon les vérifs comme le MOA restent périmées tant qu'on ne rouvre pas le chantier)
+    Object.assign(state.currentChantier, payload);
     toast('Chantier enregistré !');
     await loadChantiers();
   } catch (err) {
@@ -8965,9 +8968,10 @@ function dafSetCaractVal(fId,idx,v){ _dafEnsure(fId); if(window._dafRows[fId]._c
 // ── Modal de sélection du fournisseur (recherche société + filtre famille) ──
 function openDafFournisseurModal(fId) {
   window._dafFournModalFid = fId;
-  const f = state.fournitures.find(x => x.id === fId);
-  const defFam = f?.famille_id || '';
   const familles = state.familles.filter(x => x.actif !== false);
+  // Par défaut on affiche TOUS les fournisseurs (pas de pré-filtre famille) : un fournisseur
+  // consulté peut ne pas avoir la même famille renseignée que la fourniture, et se retrouvait
+  // masqué à tort si on présélectionnait la famille de la fourniture.
   showModal(`
     <div class="flex items-center justify-between mb-2">
       <h2 class="text-base font-semibold text-gray-800">Choisir un fournisseur</h2>
@@ -8979,7 +8983,7 @@ function openDafFournisseurModal(fId) {
       <span class="text-gray-500">Famille :</span>
       <select id="daf-fourn-fam" onchange="_renderDafFournList('${fId}')" class="border rounded px-2 py-1 text-xs">
         <option value="">Toutes</option>
-        ${familles.map(x => `<option value="${x.id}" ${x.id === defFam ? 'selected' : ''}>${x.icone || ''} ${escHtml(x.nom)}</option>`).join('')}
+        ${familles.map(x => `<option value="${x.id}">${x.icone || ''} ${escHtml(x.nom)}</option>`).join('')}
       </select>
     </div>
     <div id="daf-fourn-list" class="max-h-72 overflow-y-auto divide-y border rounded-lg"></div>
