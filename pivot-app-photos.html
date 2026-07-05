@@ -370,7 +370,7 @@ async function chargerDemandes() {
   show('screen-loading');
 
   let query = db.from('demandes_photos')
-    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, consultations(nom_chantier, entrepreneur_id, compte_entrepreneur(nom_entreprise))')
+    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, consultations(titre, entrepreneur_id, chantiers(affaire))')
     .neq('statut', 'terminé')
     .order('created_at', { ascending: false });
 
@@ -383,6 +383,20 @@ async function chargerDemandes() {
   const { data, error } = await query;
 
   if (error) { showError('Erreur de chargement : ' + error.message); return; }
+
+  // Pas de relation FK directe reconnue entre consultations et compte_entrepreneur :
+  // on résout le nom du client séparément, comme fait ailleurs dans l'app.
+  const entrepriseIds = [...new Set((data || []).map(d => d.consultations?.entrepreneur_id).filter(Boolean))];
+  let entrepriseMap = {};
+  if (entrepriseIds.length) {
+    const { data: entreprises } = await db.from('compte_entrepreneur').select('id, nom_entreprise, raison_sociale, societe, nom').in('id', entrepriseIds);
+    (entreprises || []).forEach(e => { entrepriseMap[e.id] = e; });
+  }
+  (data || []).forEach(d => {
+    const e = d.consultations?.entrepreneur_id ? entrepriseMap[d.consultations.entrepreneur_id] : null;
+    d._nomClient = e ? (e.raison_sociale || e.nom_entreprise || e.societe || e.nom || '') : '';
+    d._nomChantier = d.consultations?.chantiers?.affaire || d.consultations?.titre || '';
+  });
 
   state.demandes = data || [];
   renderDemandes();
@@ -405,8 +419,8 @@ function renderDemandes() {
     const statutClass = d.statut === 'complete' ? 'badge-complete' : d.statut === 'en_cours' ? 'badge-en_cours' : 'badge-pending';
     const statutLabel = d.statut === 'complete' ? 'Terminé' : d.statut === 'en_cours' ? 'En cours' : 'En attente';
     const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-    const nomChantier = isCatalogue ? 'Catalogue' : (d.consultations?.nom_chantier || '');
-    const nomClient = d.consultations?.compte_entrepreneur?.nom_entreprise || '';
+    const nomChantier = isCatalogue ? 'Catalogue' : (d._nomChantier || '');
+    const nomClient = d._nomClient || '';
     const sousTitre = isCatalogue ? d.catalogue_ref : `${total} fourniture${total > 1 ? 's' : ''} à photographier`;
     return `<div class="demande-card" onclick="ouvrirDemande(${i})">
       <div style="font-size:11px;font-weight:600;color:var(--cuivre);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">${escHtml(nomChantier)}</div>
@@ -460,8 +474,8 @@ function renderListe() {
   const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
   const isCatalogue = !!d.catalogue_ref;
-  const nomChantier = isCatalogue ? 'Catalogue' : (d.consultations?.nom_chantier || '');
-  const nomClient = d.consultations?.compte_entrepreneur?.nom_entreprise || '';
+  const nomChantier = isCatalogue ? 'Catalogue' : (d._nomChantier || '');
+  const nomClient = d._nomClient || '';
   document.getElementById('liste-titre').textContent = nomChantier || `Photos (${done}/${total})`;
   document.getElementById('liste-sous-titre').textContent = isCatalogue
     ? d.catalogue_ref
