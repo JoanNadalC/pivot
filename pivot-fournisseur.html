@@ -882,6 +882,60 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
+// ── Remplacements des dialogues natifs (confirm/prompt) par des modals Pivot ──
+// Empilés au-dessus de #modal-overlay (z-[9999]) pour pouvoir s'ouvrir même
+// par-dessus un modal déjà affiché, sans en perdre le contenu.
+function showConfirm(message, opts = {}) {
+  return new Promise(resolve => {
+    document.getElementById('_confirmDlg')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = '_confirmDlg';
+    overlay.className = 'fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center p-4';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        ${opts.title ? `<h2 class="text-lg font-bold mb-2">${escHtml(opts.title)}</h2>` : ''}
+        <p class="text-sm text-gray-600 mb-6 whitespace-pre-line">${escHtml(message)}</p>
+        <div class="flex gap-3">
+          <button id="_confirmOk" class="flex-1 text-white py-2 rounded-lg text-sm font-medium ${opts.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}">${escHtml(opts.okLabel || 'Confirmer')}</button>
+          <button id="_confirmCancel" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">${escHtml(opts.cancelLabel || 'Annuler')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = val => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_confirmOk').onclick = () => cleanup(true);
+    overlay.querySelector('#_confirmCancel').onclick = () => cleanup(false);
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') cleanup(false); });
+    overlay.querySelector('#_confirmCancel').focus();
+  });
+}
+function showPrompt(message, opts = {}) {
+  return new Promise(resolve => {
+    document.getElementById('_promptDlg')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = '_promptDlg';
+    overlay.className = 'fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center p-4';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        ${opts.title ? `<h2 class="text-lg font-bold mb-2">${escHtml(opts.title)}</h2>` : ''}
+        <p class="text-sm text-gray-600 mb-3">${escHtml(message)}</p>
+        <input id="_promptInput" type="text" placeholder="${escHtml(opts.placeholder || '')}"
+          class="w-full border rounded-lg px-3 py-2 text-sm mb-4">
+        <div class="flex gap-3">
+          <button id="_promptOk" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">${escHtml(opts.okLabel || 'Valider')}</button>
+          <button id="_promptCancel" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#_promptInput');
+    input.value = opts.defaultValue || '';
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    const cleanup = val => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_promptOk').onclick = () => cleanup(input.value);
+    overlay.querySelector('#_promptCancel').onclick = () => cleanup(null);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') cleanup(input.value); if (e.key === 'Escape') cleanup(null); });
+  });
+}
+
 // Fermeture uniquement via la croix — pas au clic sur le fond
 
 function fmt(n) {
@@ -3021,7 +3075,7 @@ async function inviterMembre() {
 }
 
 async function retirerMembre(userId) {
-  if (!confirm('Retirer ce membre de l\'équipe ?')) return;
+  if (!await showConfirm('Retirer ce membre de l\'équipe ?')) return;
   try {
     const { error } = await db.from('structure_membres').delete()
       .eq('user_id', userId).eq('structure_id', state.structureId);
@@ -3825,7 +3879,7 @@ function editCatalogue(id) {
 }
 
 async function deleteCatalogue(id) {
-  if (!confirm('Supprimer cet article ?')) return;
+  if (!await showConfirm('Supprimer cet article ?')) return;
   try {
     await db.from('catalogue_fournisseur').delete().eq('id', id);
     state.catalogue = state.catalogue.filter(c => c.id !== id);
@@ -4688,7 +4742,7 @@ async function envoyerInvitationUnifiee() {
 async function envoyerInvitation() { return envoyerInvitationUnifiee(); }
 
 async function supprimerCollaborateur(id) {
-  if (!confirm('Supprimer ce collaborateur ?')) return;
+  if (!await showConfirm('Supprimer ce collaborateur ?')) return;
   await db.from('collaborateurs').delete().eq('id', id);
   await loadCollaborateurs();
 }

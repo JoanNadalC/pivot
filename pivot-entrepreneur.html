@@ -743,6 +743,60 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
+// ── Remplacements des dialogues natifs (confirm/prompt) par des modals Pivot ──
+// Empilés au-dessus de #modal-overlay (z-[9999]) pour pouvoir s'ouvrir même
+// par-dessus un modal déjà affiché, sans en perdre le contenu.
+function showConfirm(message, opts = {}) {
+  return new Promise(resolve => {
+    document.getElementById('_confirmDlg')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = '_confirmDlg';
+    overlay.className = 'fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center p-4';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        ${opts.title ? `<h2 class="text-lg font-bold mb-2">${escHtml(opts.title)}</h2>` : ''}
+        <p class="text-sm text-gray-600 mb-6 whitespace-pre-line">${escHtml(message)}</p>
+        <div class="flex gap-3">
+          <button id="_confirmOk" class="flex-1 text-white py-2 rounded-lg text-sm font-medium ${opts.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}">${escHtml(opts.okLabel || 'Confirmer')}</button>
+          <button id="_confirmCancel" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">${escHtml(opts.cancelLabel || 'Annuler')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const cleanup = val => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_confirmOk').onclick = () => cleanup(true);
+    overlay.querySelector('#_confirmCancel').onclick = () => cleanup(false);
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') cleanup(false); });
+    overlay.querySelector('#_confirmCancel').focus();
+  });
+}
+function showPrompt(message, opts = {}) {
+  return new Promise(resolve => {
+    document.getElementById('_promptDlg')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = '_promptDlg';
+    overlay.className = 'fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center p-4';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        ${opts.title ? `<h2 class="text-lg font-bold mb-2">${escHtml(opts.title)}</h2>` : ''}
+        <p class="text-sm text-gray-600 mb-3">${escHtml(message)}</p>
+        <input id="_promptInput" type="text" placeholder="${escHtml(opts.placeholder || '')}"
+          class="w-full border rounded-lg px-3 py-2 text-sm mb-4">
+        <div class="flex gap-3">
+          <button id="_promptOk" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">${escHtml(opts.okLabel || 'Valider')}</button>
+          <button id="_promptCancel" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#_promptInput');
+    input.value = opts.defaultValue || '';
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+    const cleanup = val => { overlay.remove(); resolve(val); };
+    overlay.querySelector('#_promptOk').onclick = () => cleanup(input.value);
+    overlay.querySelector('#_promptCancel').onclick = () => cleanup(null);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') cleanup(input.value); if (e.key === 'Escape') cleanup(null); });
+  });
+}
+
 // Fermeture uniquement via la croix — pas au clic sur le fond
 
 function statutBadge(statut) {
@@ -1541,7 +1595,7 @@ async function retirerMembre(userId) {
 
     if (!chantiers.length) {
       // Pas de chantiers — retrait direct
-      if (!confirm(`Retirer ${nomMembre} de l'équipe ?`)) return;
+      if (!await showConfirm(`Retirer ${nomMembre} de l'équipe ?`)) return;
       await _execRetirerMembre(userId);
       return;
     }
@@ -1604,7 +1658,7 @@ async function confirmerRetirerAvecReassign(userId, chantierIds) {
 }
 
 async function confirmerRetirerSansReassign(userId) {
-  if (!confirm('Retirer ce membre sans réassigner ses chantiers ?')) return;
+  if (!await showConfirm('Retirer ce membre sans réassigner ses chantiers ?')) return;
   await _execRetirerMembre(userId);
 }
 
@@ -2193,7 +2247,7 @@ async function saveFamilleModal(id) {
 }
 
 async function deleteFamilleConfirm(id) {
-  if (!confirm('Supprimer cette famille ? Les fournitures associées perdront leur famille.')) return;
+  if (!await showConfirm('Supprimer cette famille ? Les fournitures associées perdront leur famille.')) return;
   const { error } = await db.from('familles_fournitures').delete().eq('id', id);
   if (error) return toast(error.message, 'err');
   state.familles = state.familles.filter(f => f.id !== id);
@@ -2577,7 +2631,7 @@ async function saveMoeCarnet(editId) {
 }
 
 async function deleteMoeCarnet(id) {
-  if (!confirm('Supprimer ce maître d\'œuvre du carnet ?')) return;
+  if (!await showConfirm('Supprimer ce maître d\'œuvre du carnet ?')) return;
   try {
     const { error } = await db.from('maitres_oeuvre').delete().eq('id', id);
     if (error) throw error;
@@ -2761,7 +2815,7 @@ async function catalogueSaveFamilles() {
 }
 
 async function catalogueAjouterSousFamille(familleId) {
-  const nom = prompt('Nom de la sous-famille :');
+  const nom = await showPrompt('Nom de la sous-famille :');
   if (!nom?.trim()) return;
   const { data, error } = await db.from('catalogue_sous_familles').insert({ user_id: state.user.id, famille_id: familleId, nom: nom.trim() }).select().single();
   if (error) return toast(error.message, 'err');
@@ -2773,7 +2827,7 @@ async function catalogueAjouterSousFamille(familleId) {
 }
 
 async function catalogueDeleteSousFamille(id) {
-  if (!confirm('Supprimer cette sous-famille et ses fiches ?')) return;
+  if (!await showConfirm('Supprimer cette sous-famille et ses fiches ?')) return;
   const { error } = await db.from('catalogue_sous_familles').delete().eq('id', id);
   if (error) return toast(error.message, 'err');
   _catState.sousFamilles = _catState.sousFamilles.filter(s => s.id !== id);
@@ -2783,7 +2837,7 @@ async function catalogueDeleteSousFamille(id) {
 }
 
 async function catalogueDeleteFiche(id) {
-  if (!confirm('Supprimer cette fiche ?')) return;
+  if (!await showConfirm('Supprimer cette fiche ?')) return;
   const { error } = await db.from('catalogue_fiches').delete().eq('id', id);
   if (error) return toast(error.message, 'err');
   _catState.fiches = _catState.fiches.filter(f => f.id !== id);
@@ -3523,7 +3577,7 @@ async function _genererLienMoe(chantierId) {
 }
 
 async function _regenererLienMoe(chantierId) {
-  if (!confirm('Regénérer invalide l\'ancien lien. Confirmer ?')) return;
+  if (!await showConfirm('Regénérer invalide l\'ancien lien. Confirmer ?')) return;
   await _genererLienMoe(chantierId);
 }
 
@@ -3804,7 +3858,7 @@ async function saveEditFournisseur(id) {
 }
 
 async function deleteFournisseur(id) {
-  if (!confirm('Supprimer ce fournisseur du carnet ?')) return;
+  if (!await showConfirm('Supprimer ce fournisseur du carnet ?')) return;
   try {
     await db.from('fournisseurs').delete().eq('id', id);
     state.fournisseurs = state.fournisseurs.filter(f => f.id !== id);
@@ -4167,7 +4221,7 @@ async function supprimerToutes() {
 async function supprimerSelectionnes() {
   const ids = [...document.querySelectorAll('.fourniture-cb:checked')].map(cb => cb.value);
   if (!ids.length) return;
-  if (!confirm(`Supprimer ${ids.length} fourniture(s) sélectionnée(s) ?`)) return;
+  if (!await showConfirm(`Supprimer ${ids.length} fourniture(s) sélectionnée(s) ?`)) return;
   try {
     const toDelete = state.fournitures.filter(f => ids.includes(f.id));
     const { error } = await db.from('fournitures').delete().in('id', ids);
@@ -5208,7 +5262,7 @@ async function saveFourniture(parentId) {
 }
 
 async function deleteFourniture(id) {
-  if (!confirm('Supprimer cette fourniture ?')) return;
+  if (!await showConfirm('Supprimer cette fourniture ?')) return;
   try {
     await _cascadeDeleteFournitures([id]);
     state.fournitures = state.fournitures.filter(f => f.id !== id);
@@ -5491,7 +5545,7 @@ function _ctRenderGrid(rows) {
   });
 }
 
-function ctSupprimerLignes(mode = 'both') {
+async function ctSupprimerLignes(mode = 'both') {
   // Contexte modal (grille d'import ouverte)
   const tbody = document.querySelector('#ct-table tbody');
   if (tbody) {
@@ -5540,7 +5594,7 @@ function ctSupprimerLignes(mode = 'both') {
   const label = mode === 'qte' ? 'sans quantité'
               : mode === 'unite' ? 'sans unité'
               : 'sans quantité et sans unité';
-  if (!confirm(`Supprimer ${aSupprimer.length} fourniture(s) ${label} ?`)) return;
+  if (!await showConfirm(`Supprimer ${aSupprimer.length} fourniture(s) ${label} ?`)) return;
 
   pushUndo('delete', aSupprimer);
   const ids = aSupprimer.map(f => f.id);
@@ -6963,7 +7017,7 @@ function toggleConsCaract(fId) {
 async function renommerConsultation(id) {
   const c = state.consultations.find(x => x.id === id);
   if (!c) return;
-  const nouveau = prompt('Nouveau nom de la consultation :', c.titre || '');
+  const nouveau = await showPrompt('Nouveau nom de la consultation :', { defaultValue: c.titre || '' });
   if (!nouveau?.trim() || nouveau.trim() === c.titre) return;
   const { error } = await db.from('consultations').update({ titre: nouveau.trim() }).eq('id', id);
   if (error) return toast(error.message, 'err');
@@ -7422,7 +7476,7 @@ async function toggleConsSelection(consId, checked) {
 
 async function switchJeu(val) {
   if (val === '_new') {
-    const nom = prompt('Nom du nouveau jeu de sélection :');
+    const nom = await showPrompt('Nom du nouveau jeu de sélection :');
     if (!nom?.trim()) { _renderJeuxSelect(); return; }
     const { data: j, error } = await db.from('comparatif_jeux')
       .insert({ chantier_id: state.currentChantier.id, nom: nom.trim() })
@@ -9092,7 +9146,7 @@ async function ctFusionnerDoublons() {
   const nbFusions = aFusionner.length;
   const nbSuppr = aFusionner.reduce((s, g) => s + g.length - 1, 0);
 
-  if (!confirm(`${nbFusions} groupe(s) de doublons trouvé(s).\n${nbSuppr} ligne(s) seront supprimées, les quantités additionnées.\n\nContinuer ?`)) return;
+  if (!await showConfirm(`${nbFusions} groupe(s) de doublons trouvé(s).\n${nbSuppr} ligne(s) seront supprimées, les quantités additionnées.\n\nContinuer ?`)) return;
 
   const aSupprimer = [];
   const updates = [];
@@ -9284,10 +9338,10 @@ async function _dafConfirmBiblio(fId) {
   window._dafPendingBiblio = null;
   _refreshDafFichesModal(fId);
 }
-function dafAddFicheUrl(fId) {
-  const url=prompt('URL de la fiche technique :');
+async function dafAddFicheUrl(fId) {
+  const url = await showPrompt('URL de la fiche technique :');
   if(!url?.trim()) return;
-  const nom=prompt('Nom :','Fiche technique')||'Fiche';
+  const nom = (await showPrompt('Nom :', { defaultValue: 'Fiche technique' })) || 'Fiche';
   _dafEnsure(fId);
   window._dafRows[fId].fiches.push({nom,url:url.trim(),type:'url'});
   dafRefreshRow(fId);
@@ -9900,10 +9954,10 @@ function _doeRemoveFournFiche(chapIdx, fId, ficheIdx) {
   document.getElementById('doe-chapitres-list').innerHTML = _renderChapitresList();
 }
 
-function _doeAddFournUrl(chapIdx, fId) {
-  const url = prompt('URL de la fiche technique :');
+async function _doeAddFournUrl(chapIdx, fId) {
+  const url = await showPrompt('URL de la fiche technique :');
   if (!url?.trim()) return;
-  const nom = prompt('Nom :', 'Fiche technique') || 'Fiche';
+  const nom = (await showPrompt('Nom :', { defaultValue: 'Fiche technique' })) || 'Fiche';
   _doeAddFournFiche(chapIdx, fId, nom, url.trim());
 }
 
@@ -10799,7 +10853,7 @@ async function dafExportFiches() {
     }
   }
   if(!pdfBufs.length&&!urlFiches.length) return toast('Aucune fiche dans la sélection','err');
-  if(urlFiches.length&&confirm(`${urlFiches.length} lien(s) — ouvrir dans des onglets ?`))
+  if(urlFiches.length && await showConfirm(`${urlFiches.length} lien(s) — ouvrir dans des onglets ?`))
     urlFiches.forEach(u=>window.open(u,'_blank'));
   if(pdfBufs.length&&window.PDFLib){
     try{
@@ -10821,7 +10875,7 @@ async function dafExportFiches() {
 
 
 async function soumettreDaf(id) {
-  if (!confirm('Soumettre cette DAF au MOE ?')) return;
+  if (!await showConfirm('Soumettre cette DAF au MOE ?')) return;
   try {
     await db.from('daf').update({ statut: 'soumise', date_soumission: new Date().toISOString() }).eq('id', id);
     const daf = state.daf.find(d => d.id === id);
@@ -10847,7 +10901,7 @@ async function soumettreDaf(id) {
 }
 
 async function commanderDaf(id) {
-  if (!confirm('Confirmer la commande ?')) return;
+  if (!await showConfirm('Confirmer la commande ?')) return;
   try {
     await db.from('daf').update({ statut:'commandee', date_commande:new Date().toISOString() }).eq('id',id);
     const daf=state.daf.find(d=>d.id===id);
