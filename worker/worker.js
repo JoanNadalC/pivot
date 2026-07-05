@@ -211,29 +211,36 @@ async function buildPage1DAF(pdfDoc, fonts, config, daf, pageNum, totalPages) {
     y -= ROW_H * rowLines;
   }
 
+  // Lignes optionnelles masquables depuis "Paramètres DAF"
+  const hidden = new Set(daf.champs_masques || []);
+
   // Section identité
   page.drawText('IDENTIFICATION', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: hexToRgb(config.bandeau_bg||'#1a2e44') });
   y -= 16;
   drawRow('N° DAF', daf.numero, false);
   drawRow('Désignation', daf.designation, true);
-  drawRow('Référence', daf.reference, false);
-  drawRow('Fabricant', daf.fabricant, true);
-  drawRow('Famille', daf.famille, false);
-  drawRow('Fournisseur retenu', daf.fournisseur, true);
-  const fournLoc = [daf.fournisseur_adresse, daf.fournisseur_pays].filter(Boolean).join(' — ');
-  if (fournLoc) drawRow('Adresse fournisseur', fournLoc, false);
+  if (!hidden.has('reference')) drawRow('Référence', daf.reference, false);
+  if (!hidden.has('fabricant')) drawRow('Fabricant', daf.fabricant, true);
+  if (!hidden.has('famille'))   drawRow('Famille', daf.famille, false);
+  if (!hidden.has('fournisseur')) {
+    drawRow('Fournisseur retenu', daf.fournisseur, true);
+    const fournLoc = [daf.fournisseur_adresse, daf.fournisseur_pays].filter(Boolean).join(' — ');
+    if (fournLoc) drawRow('Adresse fournisseur', fournLoc, false);
+  }
   y -= 8;
 
   // Section quantités + prix
   page.drawText('QUANTITÉS & PRIX', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: hexToRgb(config.bandeau_bg||'#1a2e44') });
   y -= 16;
   drawRow('Quantité', daf.qte ? `${daf.qte} ${daf.unite || 'U'}` : '—', false);
-  drawRow('Prix unitaire HT', daf.prix_unit_ht ? `${parseFloat(daf.prix_unit_ht).toFixed(2)} €` : '—', true);
-  drawRow('Total HT', (daf.qte && daf.prix_unit_ht) ? `${(parseFloat(daf.qte)*parseFloat(daf.prix_unit_ht)).toFixed(2)} €` : '—', false);
+  if (!hidden.has('prix')) {
+    drawRow('Prix unitaire HT', daf.prix_unit_ht ? `${parseFloat(daf.prix_unit_ht).toFixed(2)} €` : '—', true);
+    drawRow('Total HT', (daf.qte && daf.prix_unit_ht) ? `${(parseFloat(daf.qte)*parseFloat(daf.prix_unit_ht)).toFixed(2)} €` : '—', false);
+  }
   y -= 8;
 
   // Caractéristiques techniques
-  if (daf.caracteristiques && daf.caracteristiques.length) {
+  if (!hidden.has('caracteristiques') && daf.caracteristiques && daf.caracteristiques.length) {
     page.drawText('CARACTÉRISTIQUES TECHNIQUES', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: hexToRgb(config.bandeau_bg||'#1a2e44') });
     y -= 16;
     daf.caracteristiques.forEach((c, i) => drawRow(c.cle || '', c.valeur || '', i%2===0));
@@ -244,8 +251,8 @@ async function buildPage1DAF(pdfDoc, fonts, config, daf, pageNum, totalPages) {
   page.drawText('DATES', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: hexToRgb(config.bandeau_bg||'#1a2e44') });
   y -= 16;
   drawRow('Date émission', daf.date_emission || '—', false);
-  drawRow('Date livraison prévue', daf.date_livraison || '—', true);
-  if (daf.date_commande) drawRow('Date commande', daf.date_commande, false);
+  if (!hidden.has('delai')) drawRow('Délai indicatif', daf.date_livraison || '—', true);
+  if (daf.date_commande && !hidden.has('date_commande')) drawRow('Date commande', daf.date_commande, false);
   y -= 8;
 
   // Section VISA (si visé)
@@ -414,7 +421,7 @@ async function buildFicheFournitureDOE(pdfDoc, fonts, config, doeData, fiche, pa
     y -= 16;
     const lv = fiche.livraison;
     if (lv.fournisseur)  drawRow('Fournisseur', lv.fournisseur, false);
-    if (lv.livraison)    drawRow('Date livraison', lv.livraison, true);
+    if (lv.livraison)    drawRow('Délai indicatif', lv.livraison, true);
     if (lv.garantie)     drawRow('Garantie', lv.garantie, false);
     if (lv.maintenance)  drawRow('Maintenance', lv.maintenance, true);
   }
@@ -719,7 +726,7 @@ async function buildListeFournisseurDOE(pdfDoc, fonts, config, doe, chap, fourni
     { label: 'Fabricant',   x: MARGIN + 212,  w: 60 },
     { label: 'Qté',         x: MARGIN + 272,  w: 22 },
     { label: 'Unité',       x: MARGIN + 294,  w: 22 },
-    { label: 'Livraison',   x: MARGIN + 316,  w: 40 },
+    { label: 'Délai',       x: MARGIN + 316,  w: 40 },
     { label: 'Entretien',   x: MARGIN + 356,  w: 65 },
   ];
   const ROW_H = 14;

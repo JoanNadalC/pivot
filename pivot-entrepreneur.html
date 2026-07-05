@@ -590,7 +590,7 @@
               <th class="px-3 py-2 text-left">Date VISA</th>
               <th class="px-3 py-2 text-left">Observations MOE</th>
               <th class="px-3 py-2 text-left">Commandé</th>
-              <th class="px-3 py-2 text-left">Livraison prévue</th>
+              <th class="px-3 py-2 text-left">Délai indicatif</th>
               <th class="px-3 py-2 text-left">Reçu</th>
             </tr>
           </thead>
@@ -8340,6 +8340,9 @@ async function loadDaf() {
         fiches: ex.fiches?.length ? ex.fiches : fiches,
         entretien: d.entretien || ex.entretien || '',
         notes: d.notes_entrepreneur || '',
+        reference: ex.reference ?? d.reference ?? '',
+        fabricant: ex.fabricant ?? d.fabricant ?? '',
+        date_livraison_prevue: ex.date_livraison_prevue ?? d.date_livraison_prevue ?? '',
         daf_id: d.id, statut: d.statut, numero: d.numero,
         version: d.version || 1,
         visa_type: lastVisa?.type || null,
@@ -8458,6 +8461,23 @@ function dafRenderRow(f) {
   const caractExpandedRow = row._caractExpanded ? `
     <tr id="daf-caract-${f.id}" class="bg-amber-50">
       <td colspan="10" class="px-4 py-3 border-b">
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">Référence</label>
+            <input type="text" value="${escHtml(row.reference || '')}" onchange="dafSetReference('${f.id}',this.value)"
+              class="w-full border rounded px-2 py-1 text-xs bg-white">
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">Fabricant</label>
+            <input type="text" value="${escHtml(row.fabricant || '')}" onchange="dafSetFabricant('${f.id}',this.value)"
+              class="w-full border rounded px-2 py-1 text-xs bg-white">
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">Délai indicatif</label>
+            <input type="text" placeholder="ex : 4 à 6 semaines" value="${escHtml(row.date_livraison_prevue || '')}" onchange="dafSetDelai('${f.id}',this.value)"
+              class="w-full border rounded px-2 py-1 text-xs bg-white">
+          </div>
+        </div>
         <div class="space-y-1.5 mb-2">
           ${caract.map((c, i) => `
             <div class="flex items-center gap-2">
@@ -8913,6 +8933,7 @@ function _dafEnsure(fId) {
     }
     window._dafRows[fId] = {
       fournisseur_id:'', fiches:[], entretien:'', notes:'',
+      reference:'', fabricant:'', date_livraison_prevue:'',
       daf_id:null, statut:null, numero:null,
       _caractExpanded:false, _selected:false, _numero_poste:null, _designation:null,
       _caract: baseCaract
@@ -8921,6 +8942,22 @@ function _dafEnsure(fId) {
 }
 function dafSetPoste(fId,v)      { _dafEnsure(fId); window._dafRows[fId]._numero_poste=v; }
 function dafSetDesignation(fId,v){ _dafEnsure(fId); window._dafRows[fId]._designation=v; }
+// Référence / Fabricant / Délai indicatif : persistés immédiatement si la DAF existe déjà en base
+async function dafSetReference(fId,v) {
+  _dafEnsure(fId); window._dafRows[fId].reference = v;
+  const dafId = window._dafRows[fId].daf_id;
+  if (dafId) { try { await db.from('daf').update({ reference: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+}
+async function dafSetFabricant(fId,v) {
+  _dafEnsure(fId); window._dafRows[fId].fabricant = v;
+  const dafId = window._dafRows[fId].daf_id;
+  if (dafId) { try { await db.from('daf').update({ fabricant: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+}
+async function dafSetDelai(fId,v) {
+  _dafEnsure(fId); window._dafRows[fId].date_livraison_prevue = v;
+  const dafId = window._dafRows[fId].daf_id;
+  if (dafId) { try { await db.from('daf').update({ date_livraison_prevue: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+}
 function dafAddCaract(fId)       { _dafEnsure(fId); if(!window._dafRows[fId]._caract) window._dafRows[fId]._caract=[]; window._dafRows[fId]._caract.push({cle:'',valeur:''}); dafRefreshRow(fId); }
 function dafRemoveCaract(fId,idx){ _dafEnsure(fId); window._dafRows[fId]._caract?.splice(idx,1); dafRefreshRow(fId); }
 function dafSetCaractKey(fId,idx,v){ _dafEnsure(fId); if(window._dafRows[fId]._caract?.[idx]) window._dafRows[fId]._caract[idx].cle=v; }
@@ -9266,7 +9303,25 @@ function dafRemoveFiche(fId,idx) {
   dafRefreshRow(fId);
 }
 
+// Avertit (sans bloquer) si le MOA n'est pas renseigné, avant de créer une DAF ou un DOE
+function _avertirSiMoaManquant(onContinuer) {
+  const ch = state.currentChantier;
+  if (ch?.maitre_ouvrage) { onContinuer(); return; }
+  window._moaWarnContinue = onContinuer;
+  showModal(`
+    <h2 class="text-lg font-bold mb-2">⚠️ Maître d'ouvrage non renseigné</h2>
+    <p class="text-sm text-gray-600 mb-5">Le champ Maître d'ouvrage (MOA) est vide pour ce chantier. Vous pouvez le renseigner dans l'onglet Paramétrage, ou continuer sans.</p>
+    <div class="flex gap-3">
+      <button onclick="closeModal();setTab('parametrage');document.getElementById('ch-moa')?.focus()" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Renseigner maintenant</button>
+      <button onclick="closeModal();window._moaWarnContinue?.()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Continuer sans</button>
+    </div>
+  `);
+}
+
 async function dafSaveAndGeneratePdf(fId) {
+  _avertirSiMoaManquant(() => _dafSaveAndGeneratePdfConfirmed(fId));
+}
+async function _dafSaveAndGeneratePdfConfirmed(fId) {
   const f = state.fournitures.find(x=>x.id===fId);
   if (!f) return;
   const row = window._dafRows[fId]||{};
@@ -9287,6 +9342,9 @@ async function dafSaveAndGeneratePdf(fId) {
       parent_daf_id: row._parent_daf_id || null,
       designation: row._designation||f.designation,
       fournisseur_id: row.fournisseur_id||null,
+      reference: row.reference||null,
+      fabricant: row.fabricant||null,
+      date_livraison_prevue: row.date_livraison_prevue||null,
       qte: f.qte||null, unite: f.unite||'U',
       fiche_technique_url: fichesJson,
       notes_entrepreneur: row.notes||null,
@@ -9367,7 +9425,7 @@ async function dafGeneratePdf(fId) {
         statut:         row.statut || 'brouillon',
         version:        row.version || 1,
         date_emission:  new Date().toLocaleDateString('fr-FR'),
-        date_livraison: row.date_livraison ? new Date(row.date_livraison).toLocaleDateString('fr-FR') : '',
+        date_livraison: row.date_livraison_prevue || '',
         date_commande:  row.date_commande ? new Date(row.date_commande).toLocaleDateString('fr-FR') : '',
         chantier:       ch.affaire || ch.nom || '',
         ville:          ch.ville || '',
@@ -9376,6 +9434,7 @@ async function dafGeneratePdf(fId) {
         caracteristiques: caract,
         visa,
         logo_base64: logoB64,
+        champs_masques: Array.isArray(config.daf_champs_masques) ? config.daf_champs_masques : [],
       },
       annexes,
     };
@@ -9516,12 +9575,25 @@ async function showConfigPalettePanel() {
 // ══════════════════════════════════════════════════════════════
 // PARAMÈTRES DAF — Modal Apparence + MOA/MOE
 // ══════════════════════════════════════════════════════════════
+// Lignes du PDF DAF que l'on peut choisir de masquer (les autres restent toujours affichées)
+const DAF_CHAMPS_OPTIONNELS = [
+  { key: 'reference',      label: 'Référence' },
+  { key: 'fabricant',      label: 'Fabricant' },
+  { key: 'famille',        label: 'Famille' },
+  { key: 'fournisseur',    label: 'Fournisseur retenu' },
+  { key: 'prix',           label: 'Prix unitaire / Total HT' },
+  { key: 'caracteristiques', label: 'Caractéristiques techniques' },
+  { key: 'delai',          label: 'Délai indicatif' },
+  { key: 'date_commande',  label: 'Date de commande' },
+];
+
 async function ouvrirParametresDAF() {
   const ch = state.currentChantier;
   if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
   const config = await _loadChantierConfig(ch.id);
   const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
   const moeNom = moe ? (moe.societe ? `${moe.nom} · ${moe.societe}` : moe.nom) : '';
+  const champsMasques = Array.isArray(config.daf_champs_masques) ? config.daf_champs_masques : [];
 
   let selBg   = config.bandeau_bg   || '#1a2e44';
   let selText = config.bandeau_text || '#ffffff';
@@ -9558,9 +9630,10 @@ async function ouvrirParametresDAF() {
         <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Intervenants</p>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Maître d'ouvrage (MOA)</label>
-          <input id="daf-param-moa" type="text" value="${escHtml(ch.maitre_ouvrage || '')}"
-            class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-            placeholder="Nom ou raison sociale du MOA">
+          ${ch.maitre_ouvrage
+            ? `<div class="px-3 py-2 bg-gray-50 border rounded-lg text-sm text-gray-700">${escHtml(ch.maitre_ouvrage)}</div>`
+            : `<div class="px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-700">Non renseigné</div>`}
+          <p class="text-xs text-gray-400 mt-1">Modifiable dans l'onglet <button onclick="closeModal();setTab('parametrage')" class="underline hover:text-gray-600">Paramétrage</button></p>
         </div>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Maître d'œuvre (MOE)</label>
@@ -9575,6 +9648,18 @@ async function ouvrirParametresDAF() {
                  <button onclick="closeModal();openMoeModal()" class="underline hover:text-amber-900">Associer un MOE</button>
                </div>`
           }
+        </div>
+      </div>
+
+      <!-- Lignes visibles dans le PDF -->
+      <div class="border-t pt-4">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Lignes à afficher dans le PDF</p>
+        <div class="grid grid-cols-2 gap-2">
+          ${DAF_CHAMPS_OPTIONNELS.map(c => `
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" class="daf-champ-cb rounded" value="${c.key}" ${champsMasques.includes(c.key) ? '' : 'checked'}>
+              ${c.label}
+            </label>`).join('')}
         </div>
       </div>
     </div>
@@ -9618,26 +9703,19 @@ async function ouvrirParametresDAF() {
 async function _sauvegarderParametresDAF() {
   const ch = state.currentChantier;
   const { bg, text } = window._dafParamGetColor?.() || {};
-  const moa = document.getElementById('daf-param-moa')?.value.trim() || '';
+  const champsMasques = DAF_CHAMPS_OPTIONNELS
+    .map(c => c.key)
+    .filter(key => !document.querySelector(`.daf-champ-cb[value="${key}"]`)?.checked);
 
   try {
-    // Sauvegarder couleur bandeau
-    if (bg) {
-      const existing = await _loadChantierConfig(ch.id);
-      if (existing.id) {
-        await db.from('chantier_config').update({ bandeau_bg: bg, bandeau_text: text }).eq('id', existing.id);
-      } else {
-        await db.from('chantier_config').insert({ chantier_id: ch.id, bandeau_bg: bg, bandeau_text: text });
-      }
-      delete _chantierConfigCache[ch.id];
+    const existing = await _loadChantierConfig(ch.id);
+    const payload = { bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques };
+    if (existing.id) {
+      await db.from('chantier_config').update(payload).eq('id', existing.id);
+    } else {
+      await db.from('chantier_config').insert({ chantier_id: ch.id, ...payload });
     }
-    // Sauvegarder MOA dans le chantier
-    if (moa !== (ch.maitre_ouvrage || '')) {
-      await db.from('chantiers').update({ maitre_ouvrage: moa }).eq('id', ch.id);
-      state.currentChantier.maitre_ouvrage = moa;
-      const el = document.getElementById('ch-moa');
-      if (el) el.value = moa;
-    }
+    delete _chantierConfigCache[ch.id];
     closeModal();
     toast('Paramètres DAF enregistrés');
   } catch(err) { toast(err.message, 'err'); }
@@ -10124,11 +10202,10 @@ function _renderOngletInfos() {
       </div>
       <div>
         <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Maître d'ouvrage</label>
-        <input id="doe-moa" type="text" value="${escHtml(state.currentChantier?.maitre_ouvrage||'')}"
-          oninput="state.currentChantier && (state.currentChantier._doeMoa = this.value)"
-          placeholder="Nom ou raison sociale du MOA"
-          class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
-        <p class="text-xs text-gray-400 mt-1">Modifiable ici ou dans les paramètres du chantier</p>
+        ${state.currentChantier?.maitre_ouvrage
+          ? `<div class="mt-1 px-3 py-2 bg-gray-50 border rounded-lg text-sm text-gray-700">${escHtml(state.currentChantier.maitre_ouvrage)}</div>`
+          : `<div class="mt-1 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-700">Non renseigné</div>`}
+        <p class="text-xs text-gray-400 mt-1">Modifiable dans l'onglet <button onclick="closeModal();setTab('parametrage')" class="underline hover:text-gray-600">Paramétrage</button></p>
       </div>
     </div>`;
 }
@@ -10534,14 +10611,6 @@ async function _doeSauvegarder() {
   delete _chantierConfigCache[ch.id];
   // Sauvegarder doe_config
   const { data: existing } = await db.from('doe_config').select('id').eq('chantier_id', ch.id).maybeSingle();
-  // Sauvegarder MOA si modifié dans l'onglet infos
-  const moaVal = document.getElementById('doe-moa')?.value.trim();
-  if (moaVal !== undefined && moaVal !== (ch.maitre_ouvrage || '')) {
-    await db.from('chantiers').update({ maitre_ouvrage: moaVal }).eq('id', ch.id);
-    state.currentChantier.maitre_ouvrage = moaVal;
-    const elMoa = document.getElementById('ch-moa');
-    if (elMoa) elMoa.value = moaVal;
-  }
   const payload = {
     chantier_id: ch.id,
     ref_doe: _doeState.ref,
@@ -10589,6 +10658,10 @@ function _hideDoeLoader() {
 async function genererDOE() {
   const ch = state.currentChantier;
   if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
+  _avertirSiMoaManquant(() => _genererDOEConfirmed());
+}
+async function _genererDOEConfirmed() {
+  const ch = state.currentChantier;
 
   // Toutes les fournitures sélectionnées dans le tableau DOE (cochées)
   const selectedFids = window._doeSelectedFids;
@@ -10644,7 +10717,7 @@ async function genererDOE() {
         famille: v.nom,
         designation: f.designation || d.designation || '',
         entrepreneur: state.user?.email || '',
-        date_mise_en_oeuvre: d.date_livraison ? new Date(d.date_livraison).toLocaleDateString('fr-FR') : '',
+        date_mise_en_oeuvre: row.date_livraison_prevue || d.date_livraison_prevue || '',
         lignes: [{
           designation: f.designation || d.designation || '',
           fabricant: row.fabricant || d.fabricant || f.fabricant || '',
@@ -10655,7 +10728,7 @@ async function genererDOE() {
         }],
         livraison: {
           fournisseur: state.fournisseurs.find(x => x.id === (row.fournisseur_id || d.fournisseur_id))?.nom || f.fournisseur_nom || '',
-          livraison: d.date_livraison ? new Date(d.date_livraison).toLocaleDateString('fr-FR') : '',
+          livraison: row.date_livraison_prevue || d.date_livraison_prevue || '',
           garantie: row.garantie || '',
           maintenance: row.entretien || d.entretien || '',
         },
@@ -10861,7 +10934,7 @@ async function loadSuivi() {
     const dvisa = (d?.date_visa || state.visaMoe?.[d?.id]?.date_visa || '').slice(0, 10);
     const obs   = d?.visa_remarques ?? state.visaMoe?.[d?.id]?.remarques ?? '';
     const dcmd  = (d?.date_commande || '').slice(0, 10);
-    const dliv  = (d?.date_livraison_prevue || '').slice(0, 10);
+    const dliv  = d?.date_livraison_prevue || '';
     const drec  = (d?.date_recu || '').slice(0, 10);
     const fid = f.id;
     return `
@@ -10874,7 +10947,7 @@ async function loadSuivi() {
         <td class="px-3 py-2"><input type="date" value="${dvisa}" onchange="saveSuiviCell('${fid}','date_visa',this.value)" class="${inputCls(dvisa)}"></td>
         <td class="px-3 py-2"><input type="text" value="${escHtml(obs)}" placeholder="—" onchange="saveSuiviCell('${fid}','visa_remarques',this.value)" class="${inputCls(obs)} w-40"></td>
         <td class="px-3 py-2"><input type="date" value="${dcmd}" onchange="saveSuiviCell('${fid}','date_commande',this.value)" class="${inputCls(dcmd)}"></td>
-        <td class="px-3 py-2"><input type="date" value="${dliv}" onchange="saveSuiviCell('${fid}','date_livraison_prevue',this.value)" class="${inputCls(dliv)}"></td>
+        <td class="px-3 py-2"><input type="text" placeholder="ex : 4 à 6 semaines" value="${escHtml(dliv)}" onchange="saveSuiviCell('${fid}','date_livraison_prevue',this.value)" class="${inputCls(dliv)} w-32"></td>
         <td class="px-3 py-2"><input type="date" value="${drec}" onchange="saveSuiviCell('${fid}','date_recu',this.value)" class="${inputCls(drec)}"></td>
       </tr>`;
   }).filter(Boolean).join('');
@@ -10908,8 +10981,8 @@ function editSuivi(dafId) {
   if (!d) return;
   showModal(`
     <h2 class="text-lg font-bold mb-4">Modifier le suivi — ${d.numero}</h2>
-    <label class="block text-xs text-gray-500 mb-1">Date livraison prévue</label>
-    <input id="sv-livp" type="date" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${d.date_livraison_prevue || ''}">
+    <label class="block text-xs text-gray-500 mb-1">Délai indicatif</label>
+    <input id="sv-livp" type="text" placeholder="ex : 4 à 6 semaines" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${escHtml(d.date_livraison_prevue || '')}">
     <label class="block text-xs text-gray-500 mb-1">Date livraison réelle</label>
     <input id="sv-livr" type="date" class="w-full border rounded px-3 py-2 text-sm mb-3">
     <label class="flex items-center gap-2 mb-4">
