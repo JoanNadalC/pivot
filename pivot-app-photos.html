@@ -150,6 +150,9 @@
       <input type="password" id="login-pwd" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button class="btn-primary" id="login-btn" onclick="doLogin()">Se connecter</button>
+    <p style="text-align:center;margin-top:14px">
+      <a href="#" onclick="doForgotPassword(event)" style="font-size:13px;color:var(--gris);text-decoration:underline">Mot de passe oublié ?</a>
+    </p>
     <p class="err-msg hidden" id="login-err"></p>
   </div>
 </div>
@@ -288,6 +291,30 @@ async function doLogin() {
     return;
   }
   await lancerApp(data.user);
+}
+
+async function doForgotPassword(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const errEl = document.getElementById('login-err');
+  if (!email) {
+    errEl.style.color = '#dc2626';
+    errEl.textContent = 'Saisissez votre email dans le champ ci-dessus puis cliquez sur "Mot de passe oublié".';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const { error } = await db.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/pivot-reset-password.html'
+  });
+  if (error) {
+    errEl.style.color = '#dc2626';
+    errEl.textContent = 'Erreur : ' + error.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
+  errEl.style.color = '#166534';
+  errEl.innerHTML = 'Un email de réinitialisation a été envoyé à <strong>' + escHtml(email) + '</strong>.';
+  errEl.classList.remove('hidden');
 }
 
 async function lancerApp(user) {
