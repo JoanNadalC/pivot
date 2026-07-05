@@ -264,8 +264,6 @@
               <th class="px-3 py-2 text-left">Désignation</th>
               <th class="px-3 py-2 text-left">Famille</th>
               <th class="px-3 py-2 text-left">Statut DAF</th>
-              <th class="px-3 py-2 text-left">VISA</th>
-              <th class="px-3 py-2 text-center">PDF</th>
               <th class="px-3 py-2 text-left">Commandé</th>
               <th class="px-3 py-2 text-left">Délai indicatif</th>
               <th class="px-3 py-2 text-left">En stock</th>
@@ -3121,14 +3119,26 @@ document.addEventListener('click', e => {
 // ============================================================
 // SUIVI (lecture seule)
 // ============================================================
-// Dernière version de DAF connue pour une fourniture donnée
-function _suiviLatestDaf(fournitureId) {
-  let best = null;
-  for (const d of state.daf) {
-    if (d.fourniture_id !== fournitureId) continue;
-    if (!best || (d.version || 1) > (best.version || 1)) best = d;
-  }
-  return best;
+function _suiviRowHtml(f, fam, d) {
+  const pdfUrl = d?.pdf_visa_url || d?.pdf_url;
+  const statutHtml = !d
+    ? '<span class="text-xs text-gray-300 italic">Sans DAF</span>'
+    : pdfUrl
+      ? `<a href="${pdfUrl}" target="_blank" title="Télécharger la DAF" class="inline-block hover:opacity-80 cursor-pointer">${statutBadge(d.statut)}</a>`
+      : statutBadge(d.statut);
+  return `
+    <tr class="hover:bg-gray-50 border-b text-sm">
+      <td class="px-3 py-2 text-gray-400">${f.numero_poste || ''}</td>
+      <td class="px-3 py-2 font-medium">
+        ${d?.version > 1 ? `<span class="mr-1 text-xs text-orange-500 font-semibold">v${d.version}</span>` : ''}
+        ${d?.designation || f.designation || ''}
+      </td>
+      <td class="px-3 py-2">${fam ? fam.icone + ' ' + fam.nom : ''}</td>
+      <td class="px-3 py-2">${statutHtml}</td>
+      <td class="px-3 py-2">${d?.date_commande ? new Date(d.date_commande).toLocaleDateString('fr-FR') : '—'}</td>
+      <td class="px-3 py-2">${d?.date_livraison_prevue || '—'}</td>
+      <td class="px-3 py-2 text-center">${d?.en_stock ? '✅' : '—'}</td>
+    </tr>`;
 }
 
 function renderSuivi() {
@@ -3136,34 +3146,20 @@ function renderSuivi() {
   // Toutes les fournitures (même sans DAF) pour voir ce qu'il reste à faire
   const fournitures = state.fournitures.filter(f => !f.is_variante);
   if (!fournitures.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-400 text-sm">Aucune fourniture pour ce chantier.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-sm">Aucune fourniture pour ce chantier.</td></tr>';
     return;
   }
-  tbody.innerHTML = fournitures.map(f => {
-    const d = _suiviLatestDaf(f.id);
+  const rows = [];
+  fournitures.forEach(f => {
     const fam = state.familles.find(ff => ff.id === f.famille_id);
-    const pdfCell = d?.pdf_visa_url
-      ? `<a href="${d.pdf_visa_url}" target="_blank" class="text-purple-600 hover:underline text-xs">📥 Visée</a>`
-      : d?.pdf_url
-        ? `<a href="${d.pdf_url}" target="_blank" class="text-blue-500 hover:underline text-xs">📄 PDF</a>`
-        : '<span class="text-gray-300 text-xs">—</span>';
-    return `
-      <tr class="hover:bg-gray-50 border-b text-sm">
-        <td class="px-3 py-2 text-gray-400">${f.numero_poste || ''}</td>
-        <td class="px-3 py-2 font-medium">
-          ${d?.version > 1 ? `<span class="mr-1 text-xs text-orange-500 font-semibold">v${d.version}</span>` : ''}
-          ${d?.designation || f.designation || ''}
-        </td>
-        <td class="px-3 py-2">${fam ? fam.icone + ' ' + fam.nom : ''}</td>
-        <td class="px-3 py-2">${d ? statutBadge(d.statut) : '<span class="text-xs text-gray-300 italic">Sans DAF</span>'}</td>
-        <td class="px-3 py-2">${d?.statut === 'visa_ok' ? '✅ OK' : d?.statut === 'visa_remarques' ? '⚠️ Obs.' : d?.statut === 'refusee' ? '❌ Refus' : '—'}</td>
-        <td class="px-3 py-2 text-center">${pdfCell}</td>
-        <td class="px-3 py-2">${d?.date_commande ? new Date(d.date_commande).toLocaleDateString('fr-FR') : '—'}</td>
-        <td class="px-3 py-2">${d?.date_livraison_prevue || '—'}</td>
-        <td class="px-3 py-2 text-center">${d?.en_stock ? '✅' : '—'}</td>
-      </tr>
-    `;
-  }).join('');
+    // Le MOE ne voit jamais les DAF encore en brouillon chez l'entreprise ; on affiche toutes les autres versions
+    const versions = state.daf
+      .filter(d => d.fourniture_id === f.id && d.statut !== 'brouillon')
+      .sort((a, b) => (a.version || 1) - (b.version || 1));
+    if (!versions.length) rows.push(_suiviRowHtml(f, fam, null));
+    else versions.forEach(d => rows.push(_suiviRowHtml(f, fam, d)));
+  });
+  tbody.innerHTML = rows.join('');
 }
 
 // ============================================================
