@@ -7626,7 +7626,7 @@ async function loadComparatif() {
         : db.from('comparatif_selections').select('*').eq('consultation_id', consId).is('jeu_id', null),
       db.from('consultations').select('frais_port_etude, titre, familles').eq('id', consId).maybeSingle().then(r=>r,()=>({data:null})),
       db.from('demandes_modification').select('id, fournisseur_id, message, created_at').eq('consultation_id', consId).eq('statut', 'pending').then(r=>r,()=>({data:[]})),
-      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids').eq('consultation_id', consId).then(r=>r,()=>({data:[]}))
+      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids, statut, message, created_at').eq('consultation_id', consId).then(r=>r,()=>({data:[]}))
     ]);
 
     let foursList = cfRes.data || [];
@@ -7662,13 +7662,17 @@ async function loadComparatif() {
       demandes.forEach(d => { demandeById[d.id] = d; });
       demandes.forEach(d => {
         (d.fourniture_ids || []).forEach(fid => {
-          (photosMap[fid] ||= {})[d.fournisseur_id] = { statut: 'pending' };
+          (photosMap[fid] ||= {})[d.fournisseur_id] = {
+            statut: 'pending', demandeStatut: d.statut, message: d.message, demandeDate: d.created_at
+          };
         });
       });
       (photosData || []).forEach(p => {
         const d = demandeById[p.demande_id];
         if (!d || !p.url) return;
-        (photosMap[p.fourniture_id] ||= {})[d.fournisseur_id] = { statut: 'recue', url: p.url, valide: p.valide };
+        (photosMap[p.fourniture_id] ||= {})[d.fournisseur_id] = {
+          statut: 'recue', url: p.url, valide: p.valide, demandeDate: d.created_at
+        };
       });
     }
 
@@ -7686,6 +7690,32 @@ async function loadComparatif() {
   _renderFournisseurToggles();
   _renderPhotoBtns();
   _renderComparatif();
+}
+
+// Icône + bulle explicative pour le statut de demande de photo dans une cellule du comparatif
+function _compPhotoIconHtml(photoInfo) {
+  if (!photoInfo) return '';
+  const dateTxt = photoInfo.demandeDate ? new Date(photoInfo.demandeDate).toLocaleDateString('fr-FR') : '';
+  if (photoInfo.url) {
+    return `<div class="relative inline-block group">
+      <a href="${photoInfo.url}" target="_blank" onclick="event.stopPropagation()" class="text-xs">🖼️</a>
+      <div class="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-56 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-2 text-left text-xs text-gray-700 space-y-0.5 pointer-events-none">
+        <div class="font-semibold text-gray-800">🖼️ Photo reçue${photoInfo.valide ? ' <span class="text-green-600">· validée</span>' : ' <span class="text-amber-600">· non validée</span>'}</div>
+        ${dateTxt ? `<div class="text-gray-400">Demandée le ${dateTxt}</div>` : ''}
+        <div class="text-blue-500">Cliquer pour l'ouvrir</div>
+      </div>
+    </div>`;
+  }
+  const statutLbl = { en_attente: '⏳ En attente de réponse du fournisseur', en_cours: '🔄 En cours de traitement', annulee: '❌ Demande annulée' }[photoInfo.demandeStatut] || '⏳ En attente de réponse du fournisseur';
+  return `<div class="relative inline-block group">
+    <span class="text-xs text-amber-500 cursor-default">📷</span>
+    <div class="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-56 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-2 text-left text-xs text-gray-700 space-y-0.5 pointer-events-none">
+      <div class="font-semibold text-gray-800">📷 Photo demandée</div>
+      <div class="text-amber-600">${statutLbl}</div>
+      ${dateTxt ? `<div class="text-gray-400">Demandée le ${dateTxt}</div>` : ''}
+      ${photoInfo.message ? `<div class="text-gray-500 italic">« ${escHtml(photoInfo.message)} »</div>` : ''}
+    </div>
+  </div>`;
 }
 
 function _renderComparatif() {
@@ -7804,12 +7834,7 @@ function _renderComparatif() {
           const isSelected = selFournId === cf.fournisseur_id && !sel._variante;
           const effectivePrix = isSelected && sel.prix_unit_ht != null ? parseFloat(sel.prix_unit_ht) : prix;
           const total = effectivePrix != null && qteDisplay ? effectivePrix * qteDisplay : null;
-          const photoInfo = photosMap?.[f.id]?.[cf.fournisseur_id];
-          const photoIcon = photoInfo
-            ? (photoInfo.url
-                ? `<a href="${photoInfo.url}" target="_blank" onclick="event.stopPropagation()" class="text-xs" title="Photo reçue${photoInfo.valide ? ' (validée)' : ''}">🖼️</a>`
-                : `<span class="text-xs text-amber-500" title="Photo demandée, en attente">📷</span>`)
-            : '';
+          const photoIcon = _compPhotoIconHtml(photosMap?.[f.id]?.[cf.fournisseur_id]);
           if (prix === null) return `<td class="px-1 py-1 text-center text-gray-300 border-l text-xs">—${photoIcon ? `<div>${photoIcon}</div>` : ''}</td>`;
           const ficheUrl = r?.fiche_technique_url;
           const ficheIcon = ficheUrl ? `<a href="${ficheUrl}" target="_blank" onclick="event.stopPropagation()" class="text-blue-400 text-xs" title="Fiche">📄</a>` : '';
