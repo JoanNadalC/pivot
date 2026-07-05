@@ -417,10 +417,11 @@
               <p id="moe-none" class="text-sm text-gray-400 italic">Aucun MOE associé</p>
               <p id="moe-assigned" class="text-sm text-green-700 hidden"></p>
             </div>
-            <div class="mt-3 flex flex-col gap-2">
+            <div id="moe-invite-actions" class="mt-3 flex flex-col gap-2">
               <button onclick="openMoeModal()" class="text-sm text-green-600 hover:underline text-left">+ Associer via carnet</button>
               <button onclick="ouvrirInviterMoe(state.currentChantier?.id)" class="text-sm text-purple-600 hover:underline text-left">🔗 Envoyer un lien d'invitation</button>
             </div>
+            <p id="moe-invite-locked" class="hidden text-xs text-gray-400 italic mt-2">Ce chantier a été créé par le Maître d'œuvre — il gère lui-même les invitations.</p>
           </div>
           <div class="bg-white rounded-xl p-5 shadow-sm">
             <h3 class="font-semibold mb-3">Fournisseurs du chantier</h3>
@@ -3394,6 +3395,13 @@ function _fillParametrageMoe() {
   const c = state.currentChantier;
   const section = document.getElementById('moe-section');
   if (!section) return;
+  // Ce chantier a-t-il été créé par ce MOE lui-même (l'entrepreneur a seulement été invité) ?
+  // Dans ce cas, l'entrepreneur ne doit pas pouvoir associer/changer/retirer le MOE :
+  // c'est le MOE qui a l'initiative de la relation sur ses propres chantiers.
+  const isOwnedByThisEntrepreneur = c?.entrepreneur_id === state.user.id;
+  document.getElementById('moe-invite-actions')?.classList.toggle('hidden', !isOwnedByThisEntrepreneur);
+  document.getElementById('moe-invite-locked')?.classList.toggle('hidden', isOwnedByThisEntrepreneur);
+
   if (c?.moe_id) {
     const moe = (state.maitresOeuvre || []).find(m => m.compte_moe_id === c.moe_id);
     const nom = moe ? (moe.societe ? `${moe.nom} · ${moe.societe}` : moe.nom) : 'MOE associé';
@@ -3405,7 +3413,7 @@ function _fillParametrageMoe() {
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Portail</span>
-          <button onclick="unlinkMoe()" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+          ${isOwnedByThisEntrepreneur ? `<button onclick="unlinkMoe()" class="text-red-400 hover:text-red-600 text-xs">✕</button>` : ''}
         </div>
       </div>`;
   } else {
@@ -3444,6 +3452,9 @@ async function saveChantier() {
 }
 
 function openMoeModal() {
+  if (state.currentChantier && state.currentChantier.entrepreneur_id !== state.user.id) {
+    return toast('Ce chantier a été créé par le Maître d\'œuvre — il gère lui-même les invitations.', 'err');
+  }
   const carnet = state.maitresOeuvre || [];
   const carnetHtml = carnet.length
     ? carnet.map(m => {
@@ -3513,6 +3524,9 @@ async function linkMoeByEmail() {
 
 async function ouvrirInviterMoe(chantierId) {
   const ch = state.chantiers.find(c => c.id === chantierId) || state.currentChantier || {};
+  if (ch.entrepreneur_id !== state.user.id) {
+    return toast('Ce chantier a été créé par le Maître d\'œuvre — il gère lui-même les invitations.', 'err');
+  }
   const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
   const moeNom = moe ? (moe.societe ? `${moe.nom} · ${moe.societe}` : moe.nom) : null;
 
