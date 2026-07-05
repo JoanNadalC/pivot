@@ -2357,8 +2357,12 @@ function renderConsultations() {
   const ignorees = getIgnoreesSet();
   const envoyees = consultations.filter(c => c._source !== 'ouverte' && !ignorees.has(c.id));
   const ouvertes = consultations.filter(c => c._source === 'ouverte' && !ignorees.has(c.id));
-  const enCours   = envoyees.filter(c => !c._fournisseur_a_repondu);
-  const repondues = envoyees.filter(c =>  c._fournisseur_a_repondu);
+  // Une consultation déjà répondue mais avec une demande de photo en attente/en cours
+  // doit rester visible en haut de la liste : le panneau "Répondues" est replié par défaut,
+  // le fournisseur ne la verrait sinon jamais.
+  const aPhotoEnAttente = c => c._photo_statut === 'en_attente' || c._photo_statut === 'en_cours';
+  const enCours   = envoyees.filter(c => !c._fournisseur_a_repondu || aPhotoEnAttente(c));
+  const repondues = envoyees.filter(c =>  c._fournisseur_a_repondu && !aPhotoEnAttente(c));
 
   // Fonction de tri (photos en attente toujours en premier)
   const photoScore = (c) => (c._photo_statut === 'en_attente' || c._photo_statut === 'en_cours') ? 0 : 1;
