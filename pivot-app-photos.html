@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pivot Photos</title>
+  <link rel="manifest" href="manifest-photos.json">
+  <link rel="icon" type="image/svg+xml" href="favicon-entreprise.svg">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pivot Photos">
+  <meta name="theme-color" content="#1C3A2A">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --vert: #1C3A2A; --vert-md: #2D5940;
+      --ecru: #F5F0E8; --cuivre: #B87333;
+      --blanc: #FAFAF7; --gris: #6B7280; --gris-lt: #E8E4DC;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--ecru); color: var(--vert); }
+
+    .app-header {
+      background: var(--vert); padding: 14px 20px;
+      display: flex; align-items: center; gap: 12px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .app-logo { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 900; color: var(--ecru); }
+    .app-logo span { color: var(--cuivre); }
+    .app-badge { font-size: 11px; font-weight: 600; background: rgba(184,115,51,0.2); color: var(--cuivre); border: 1px solid rgba(184,115,51,0.3); border-radius: 20px; padding: 3px 10px; margin-left: auto; }
+    .btn-logout { background: none; border: none; color: rgba(245,240,232,0.5); font-size: 13px; cursor: pointer; padding: 4px 8px; }
+
+    .screen { min-height: calc(100vh - 56px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    .hidden { display: none !important; }
+
+    /* CARD */
+    .card { background: var(--blanc); border-radius: 16px; padding: 28px 24px; width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(28,58,42,0.08); }
+    .card h2 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .card p { font-size: 13px; color: var(--gris); margin-bottom: 20px; line-height: 1.5; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris); margin-bottom: 6px; }
+    .field input { width: 100%; border: 1px solid var(--gris-lt); border-radius: 8px; padding: 11px 14px; font-size: 15px; font-family: 'Inter', sans-serif; color: var(--vert); outline: none; background: var(--ecru); }
+    .field input:focus { border-color: var(--cuivre); }
+    .btn-primary { width: 100%; background: var(--vert); color: var(--ecru); border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; }
+    .btn-primary:active { background: var(--vert-md); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .err-msg { font-size: 13px; color: #dc2626; margin-top: 10px; text-align: center; }
+
+    /* DEMANDES LIST */
+    #screen-demandes { justify-content: flex-start; padding: 0; }
+    .demandes-header { width: 100%; padding: 20px 20px 12px; }
+    .demandes-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; }
+    .demandes-header p { font-size: 13px; color: var(--gris); margin-top: 4px; }
+    .demandes-list { width: 100%; padding: 8px 16px 100px; }
+    .demande-card {
+      background: var(--blanc); border-radius: 12px; margin-bottom: 12px;
+      padding: 16px; box-shadow: 0 2px 8px rgba(28,58,42,0.06); cursor: pointer;
+      border: 1.5px solid transparent; transition: border-color 0.15s;
+    }
+    .demande-card:active { border-color: var(--cuivre); }
+    .demande-card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .demande-card-sub { font-size: 12px; color: var(--gris); }
+    .demande-progress { margin-top: 10px; }
+    .progress-bar { width: 100%; height: 4px; background: var(--gris-lt); border-radius: 2px; }
+    .progress-fill { height: 100%; background: var(--cuivre); border-radius: 2px; transition: width 0.3s; }
+    .badge-statut { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-top: 8px; }
+    .badge-pending { background: #fef3c7; color: #92400e; }
+    .badge-en_cours { background: #dbeafe; color: #1e40af; }
+    .badge-complete { background: #dcfce7; color: #166534; }
+
+    /* LISTE FOURNITURES */
+    #screen-liste { justify-content: flex-start; padding: 0; }
+    .liste-header { width: 100%; padding: 20px 20px 12px; }
+    .liste-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; }
+    .liste-header p { font-size: 13px; color: var(--gris); margin-top: 4px; }
+    .btn-back-list { background: none; border: none; color: var(--cuivre); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 4px; font-family: 'Inter', sans-serif; }
+    .fourniture-list { width: 100%; padding: 0 16px 100px; }
+    .fourniture-item {
+      background: var(--blanc); border-radius: 12px; margin-bottom: 10px;
+      padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 2px 8px rgba(28,58,42,0.06);
+    }
+    .fourniture-item.done { opacity: 0.6; }
+    .fourniture-thumb {
+      width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
+      background: var(--gris-lt); flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 22px; overflow: hidden;
+    }
+    .fourniture-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .fourniture-info { flex: 1; min-width: 0; }
+    .fourniture-info .nom { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fourniture-info .detail { font-size: 12px; color: var(--gris); margin-top: 2px; }
+    .btn-photo { flex-shrink: 0; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; }
+    .btn-photo.todo { background: var(--cuivre); color: #fff; }
+    .btn-photo.done-btn { background: #dcfce7; color: #166534; }
+
+    /* CAMÉRA */
+    #screen-camera { padding: 0; justify-content: flex-start; }
+    .camera-top { width: 100%; padding: 16px 20px; background: var(--vert); display: flex; align-items: center; gap: 12px; }
+    .btn-back { background: none; border: none; color: var(--ecru); font-size: 20px; cursor: pointer; padding: 4px; }
+    .camera-top-title { font-size: 14px; font-weight: 600; color: var(--ecru); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #video-preview { width: 100%; max-height: 60vh; object-fit: cover; background: #000; display: block; }
+    .camera-controls { padding: 24px 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+    .btn-capture {
+      width: 72px; height: 72px; border-radius: 50%; background: var(--cuivre);
+      border: 4px solid var(--ecru); box-shadow: 0 0 0 3px var(--cuivre);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .btn-capture svg { width: 28px; height: 28px; stroke: #fff; }
+    .btn-upload-file { background: none; border: 1px solid var(--gris-lt); border-radius: 8px; padding: 10px 18px; font-size: 13px; color: var(--gris); font-family: 'Inter', sans-serif; cursor: pointer; }
+    #canvas-capture { display: none; }
+    .upload-status { font-size: 13px; color: var(--gris); text-align: center; }
+
+    /* DONE */
+    .done-icon { font-size: 64px; margin-bottom: 16px; }
+    .done-title { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; margin-bottom: 8px; text-align: center; }
+    .done-sub { font-size: 14px; color: var(--gris); text-align: center; line-height: 1.6; }
+    .btn-secondary { background: none; border: 1.5px solid var(--vert); color: var(--vert); border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; margin-top: 16px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--gris-lt); border-top-color: var(--cuivre); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  </style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-logo">Pivot<span>.</span></div>
+  <div class="app-badge" id="header-badge">Photos</div>
+  <button class="btn-logout hidden" id="btn-logout" onclick="logout()">Déconnexion</button>
+</div>
+
+<!-- LOADING -->
+<div class="screen" id="screen-loading">
+  <div class="spinner"></div>
+  <p style="margin-top:16px;font-size:14px;color:var(--gris)">Chargement…</p>
+</div>
+
+<!-- LOGIN -->
+<div class="screen hidden" id="screen-login">
+  <div class="card">
+    <h2>Connexion</h2>
+    <p>Accédez à vos demandes de photos assignées par votre fournisseur.</p>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="votre@email.fr" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Mot de passe</label>
+      <input type="password" id="login-pwd" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Se connecter</button>
+    <p class="err-msg hidden" id="login-err"></p>
+  </div>
+</div>
+
+<!-- ERREUR -->
+<div class="screen hidden" id="screen-error">
+  <div class="card" style="text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">⚠️</div>
+    <h2 style="margin-bottom:8px">Accès refusé</h2>
+    <p id="error-msg">Compte introuvable ou non autorisé.</p>
+    <button class="btn-secondary" onclick="logout()">Retour à la connexion</button>
+  </div>
+</div>
+
+<!-- LISTE DEMANDES -->
+<div class="screen hidden" id="screen-demandes">
+  <div class="demandes-header">
+    <h2>Mes demandes</h2>
+    <p id="demandes-sous-titre">Photos à effectuer sur chantier</p>
+  </div>
+  <div class="demandes-list" id="demandes-list"></div>
+</div>
+
+<!-- LISTE FOURNITURES -->
+<div class="screen hidden" id="screen-liste">
+  <div class="liste-header">
+    <button class="btn-back-list" onclick="retourDemandes()">← Retour</button>
+    <h2 id="liste-titre">Photos à prendre</h2>
+    <p id="liste-sous-titre"></p>
+    <div class="progress-bar" style="margin-top:10px"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  </div>
+  <div class="fourniture-list" id="fourniture-list"></div>
+</div>
+
+<!-- CAMÉRA -->
+<div class="screen hidden" id="screen-camera" style="min-height:calc(100vh - 56px);justify-content:flex-start;padding:0">
+  <div class="camera-top">
+    <button class="btn-back" onclick="retourListe()">←</button>
+    <div class="camera-top-title" id="camera-title">Prendre une photo</div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px 24px">
+    <div style="font-size:64px">📷</div>
+    <p style="font-size:14px;color:var(--gris);text-align:center;line-height:1.6;max-width:280px">
+      Ouvrez l'appareil photo pour prendre la photo, ou choisissez une image existante.
+    </p>
+    <!-- Input caméra natif — beaucoup plus fiable sur mobile -->
+    <label style="display:block;width:100%;max-width:300px">
+      <input type="file" accept="image/*" capture="environment" style="display:none" id="input-camera" onchange="uploadFichier(this)">
+      <span style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:var(--vert);color:var(--ecru);border-radius:12px;padding:16px;font-size:16px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer">
+        📷 Prendre une photo
+      </span>
+    </label>
+    <label style="display:block;width:100%;max-width:300px">
+      <input type="file" accept="image/*" style="display:none" onchange="uploadFichier(this)">
+      <span style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;background:var(--ecru);color:var(--vert);border:1.5px solid var(--gris-lt);border-radius:12px;padding:14px;font-size:15px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer">
+        🖼 Choisir depuis la galerie
+      </span>
+    </label>
+    <p class="upload-status" id="upload-status" style="font-size:13px;color:var(--gris);text-align:center;min-height:20px"></p>
+  </div>
+  <canvas id="canvas-capture" style="display:none"></canvas>
+</div>
+
+<!-- TERMINÉ -->
+<div class="screen hidden" id="screen-done">
+  <div class="done-icon">✅</div>
+  <div class="done-title">Toutes les photos sont envoyées !</div>
+  <p class="done-sub">Merci. Les photos sont maintenant visibles dans le comparatif.</p>
+  <button class="btn-secondary" onclick="retourDemandes()">Voir mes autres demandes</button>
+</div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+const { createClient } = supabase;
+const SUPABASE_URL  = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let state = {
+  user: null,
+  collaborateur: null,
+  demandes: [],
+  currentDemande: null,
+  fournitures: [],
+  photosPrises: {},
+  currentFournitureId: null,
+  stream: null,
+};
+
+function show(id) {
+  ['screen-loading','screen-login','screen-error','screen-demandes','screen-liste','screen-camera','screen-done']
+    .forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  show('screen-error');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── AUTH ──────────────────────────────────────────────────────
+async function init() {
+  const hash = window.location.hash;
+
+  // Token d'invitation ou de récupération → page de création de mot de passe
+  if (hash.includes('access_token') && (hash.includes('type=invite') || hash.includes('type=recovery'))) {
+    window.location.href = '/pivot-setup-password.html' + hash;
+    return;
+  }
+
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    await lancerApp(session.user);
+  } else {
+    show('screen-login');
+  }
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pwd   = document.getElementById('login-pwd').value;
+  const errEl = document.getElementById('login-err');
+  const btn   = document.getElementById('login-btn');
+  errEl.classList.add('hidden');
+  if (!email || !pwd) { errEl.textContent = 'Email et mot de passe requis.'; errEl.classList.remove('hidden'); return; }
+
+  btn.disabled = true; btn.textContent = 'Connexion…';
+  const { data, error } = await db.auth.signInWithPassword({ email, password: pwd });
+  if (error) {
+    errEl.textContent = 'Email ou mot de passe incorrect.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = 'Se connecter';
+    return;
+  }
+  await lancerApp(data.user);
+}
+
+async function lancerApp(user) {
+  state.user = user;
+
+  // Chercher le collaborateur lié à cet utilisateur
+  const { data: collab } = await db.from('collaborateurs')
+    .select('id, nom, fournisseur_id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (!collab) {
+    // Tentative de liaison par email (première connexion via lien d'invitation)
+    const { data: collabByEmail } = await db.from('collaborateurs')
+      .select('id, nom, fournisseur_id')
+      .eq('email', user.email)
+      .maybeSingle();
+
+    if (collabByEmail) {
+      await db.from('collaborateurs').update({ auth_user_id: user.id }).eq('id', collabByEmail.id);
+      state.collaborateur = collabByEmail;
+    } else {
+      // Vérifier si c'est un fournisseur qui se connecte directement
+      const { data: fournisseur } = await db.from('compte_fournisseur')
+        .select('id, nom_entreprise')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (fournisseur) {
+        state.isFournisseur = true;
+        state.collaborateur = { id: user.id, nom: fournisseur.nom_entreprise, fournisseur_id: user.id };
+      } else {
+        showError('Votre compte n\'est pas associé à un collaborateur. Contactez votre fournisseur.');
+        return;
+      }
+    }
+  } else {
+    state.collaborateur = collab;
+  }
+
+  document.getElementById('btn-logout').classList.remove('hidden');
+  await chargerDemandes();
+}
+
+async function logout() {
+  await db.auth.signOut();
+  state = { user: null, collaborateur: null, demandes: [], currentDemande: null, fournitures: [], photosPrises: {}, currentFournitureId: null, stream: null };
+  document.getElementById('btn-logout').classList.add('hidden');
+  show('screen-login');
+}
+
+// ── DEMANDES ──────────────────────────────────────────────────
+async function chargerDemandes() {
+  show('screen-loading');
+
+  let query = db.from('demandes_photos')
+    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, consultations(nom_chantier, entrepreneur_id, compte_entrepreneur(nom_entreprise))')
+    .neq('statut', 'terminé')
+    .order('created_at', { ascending: false });
+
+  if (state.isFournisseur) {
+    query = query.eq('fournisseur_id', state.collaborateur.fournisseur_id);
+  } else {
+    query = query.contains('assignee_ids', [state.collaborateur.id]);
+  }
+
+  const { data, error } = await query;
+
+  if (error) { showError('Erreur de chargement : ' + error.message); return; }
+
+  state.demandes = data || [];
+  renderDemandes();
+  show('screen-demandes');
+}
+
+function renderDemandes() {
+  const nom = state.collaborateur?.nom || '';
+  document.getElementById('demandes-sous-titre').textContent = nom ? `Bonjour ${nom} 👋` : 'Photos à effectuer sur chantier';
+
+  const el = document.getElementById('demandes-list');
+  if (!state.demandes.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--gris)"><div style="font-size:40px;margin-bottom:12px">📭</div><p style="font-size:14px">Aucune demande assignée pour le moment.</p></div>';
+    return;
+  }
+
+  el.innerHTML = state.demandes.map((d, i) => {
+    const isCatalogue = !!d.catalogue_ref;
+    const total = isCatalogue ? 1 : (d.fourniture_ids || []).length;
+    const statutClass = d.statut === 'complete' ? 'badge-complete' : d.statut === 'en_cours' ? 'badge-en_cours' : 'badge-pending';
+    const statutLabel = d.statut === 'complete' ? 'Terminé' : d.statut === 'en_cours' ? 'En cours' : 'En attente';
+    const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+    const nomChantier = isCatalogue ? 'Catalogue' : (d.consultations?.nom_chantier || '');
+    const nomClient = d.consultations?.compte_entrepreneur?.nom_entreprise || '';
+    const sousTitre = isCatalogue ? d.catalogue_ref : `${total} fourniture${total > 1 ? 's' : ''} à photographier`;
+    return `<div class="demande-card" onclick="ouvrirDemande(${i})">
+      <div style="font-size:11px;font-weight:600;color:var(--cuivre);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">${escHtml(nomChantier)}</div>
+      ${nomClient ? `<div style="font-size:11px;color:var(--gris);margin-bottom:4px">${escHtml(nomClient)}</div>` : ''}
+      <div class="demande-card-title">Demande du ${date}</div>
+      <div class="demande-card-sub">${escHtml(sousTitre)}</div>
+      ${!isCatalogue && d.message ? `<div style="font-size:12px;color:var(--gris);font-style:italic;margin-top:4px">"${escHtml(d.message)}"</div>` : ''}
+      <span class="badge-statut ${statutClass}">${statutLabel}</span>
+    </div>`;
+  }).join('');
+}
+
+async function ouvrirDemande(index) {
+  state.currentDemande = state.demandes[index];
+  state.photosPrises = {};
+  show('screen-loading');
+
+  const d = state.currentDemande;
+
+  if (d.catalogue_ref) {
+    // Demande catalogue : un seul item virtuel
+    state.fournitures = [{ id: '__catalogue__', designation: d.catalogue_ref }];
+    const { data: photos } = await db.from('photos_fournitures')
+      .select('url').eq('demande_id', d.id).limit(1);
+    if (photos?.length) state.photosPrises['__catalogue__'] = photos[0].url;
+  } else {
+    // Fournitures standard
+    const { data: fours } = await db.from('fournitures')
+      .select('id, designation, taille, contenant, unite')
+      .in('id', d.fourniture_ids || []);
+    state.fournitures = fours || [];
+    const { data: photos } = await db.from('photos_fournitures')
+      .select('fourniture_id, url').eq('demande_id', d.id);
+    (photos || []).forEach(p => { state.photosPrises[p.fourniture_id] = p.url; });
+  }
+
+  renderListe();
+  show('screen-liste');
+}
+
+function retourDemandes() {
+  stopCamera();
+  chargerDemandes();
+}
+
+// ── LISTE FOURNITURES ─────────────────────────────────────────
+function renderListe() {
+  const d = state.currentDemande;
+  const total = state.fournitures.length;
+  const done = Object.keys(state.photosPrises).length;
+  const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+
+  const isCatalogue = !!d.catalogue_ref;
+  const nomChantier = isCatalogue ? 'Catalogue' : (d.consultations?.nom_chantier || '');
+  const nomClient = d.consultations?.compte_entrepreneur?.nom_entreprise || '';
+  document.getElementById('liste-titre').textContent = nomChantier || `Photos (${done}/${total})`;
+  document.getElementById('liste-sous-titre').textContent = isCatalogue
+    ? d.catalogue_ref
+    : [nomClient, `${done}/${total} photos · ${date}`].filter(Boolean).join(' · ');
+  document.getElementById('progress-fill').style.width = total ? `${(done/total)*100}%` : '0%';
+
+  const list = document.getElementById('fourniture-list');
+  list.innerHTML = state.fournitures.map(f => {
+    const isDone = !!state.photosPrises[f.id];
+    const detail = [f.taille, f.contenant, f.unite].filter(Boolean).join(' · ');
+    const thumb = isDone
+      ? `<div class="fourniture-thumb"><img src="${state.photosPrises[f.id]}" alt=""></div>`
+      : `<div class="fourniture-thumb">🌿</div>`;
+    return `<div class="fourniture-item ${isDone ? 'done' : ''}" id="item-${f.id}">
+      ${thumb}
+      <div class="fourniture-info">
+        <div class="nom">${escHtml(f.designation)}</div>
+        ${detail ? `<div class="detail">${escHtml(detail)}</div>` : ''}
+        ${(state.currentDemande?.fourniture_commentaires?.[f.id]) ? `<div class="detail" style="color:var(--cuivre);font-style:italic">💬 ${escHtml(state.currentDemande.fourniture_commentaires[f.id])}</div>` : ''}
+      </div>
+      <button class="btn-photo ${isDone ? 'done-btn' : 'todo'}" onclick="ouvrirCamera('${f.id}')">
+        ${isDone ? '✓ Fait' : '📷'}
+      </button>
+    </div>`;
+  }).join('');
+
+  if (done === total && total > 0) {
+    setTimeout(() => show('screen-done'), 600);
+  }
+}
+
+// ── CAMÉRA ────────────────────────────────────────────────────
+function ouvrirCamera(fournitureId) {
+  state.currentFournitureId = fournitureId;
+  const f = state.fournitures.find(x => x.id === fournitureId);
+  document.getElementById('camera-title').textContent = f?.designation || 'Photo';
+  document.getElementById('upload-status').textContent = '';
+  // Réinitialiser les inputs fichier pour permettre de re-sélectionner le même fichier
+  document.querySelectorAll('#screen-camera input[type=file]').forEach(i => i.value = '');
+  show('screen-camera');
+}
+
+function retourListe() { show('screen-liste'); }
+
+async function uploadFichier(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const compressed = await compresserImage(file);
+  await uploadBlob(compressed, 'jpg');
+}
+
+async function compresserImage(file, maxPx = 1920, qualite = 0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width > height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else { width = Math.round(width * maxPx / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', qualite);
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function uploadBlob(blob, ext) {
+  const status = document.getElementById('upload-status');
+  status.textContent = 'Envoi en cours…';
+  const d = state.currentDemande;
+
+  const path = `${d.id}/${state.currentFournitureId}/${Date.now()}.${ext}`;
+  const { error: upErr } = await db.storage.from('photos-fournitures').upload(path, blob, {
+    contentType: blob.type || 'image/jpeg', upsert: true,
+  });
+  if (upErr) { status.textContent = 'Erreur upload : ' + upErr.message; return; }
+
+  const { data: urlData } = db.storage.from('photos-fournitures').getPublicUrl(path);
+
+  const isCatalogueItem = state.currentFournitureId === '__catalogue__';
+  let dbErr;
+  if (isCatalogueItem) {
+    ({ error: dbErr } = await db.from('photos_fournitures').insert({
+      demande_id: d.id,
+      fourniture_id: null,
+      consultation_id: d.consultation_id,
+      fournisseur_id: d.fournisseur_id,
+      url: urlData.publicUrl,
+      uploaded_by: state.collaborateur?.nom || '',
+    }));
+  } else {
+    ({ error: dbErr } = await db.from('photos_fournitures').upsert({
+      demande_id: d.id,
+      fourniture_id: state.currentFournitureId,
+      consultation_id: d.consultation_id,
+      fournisseur_id: d.fournisseur_id,
+      url: urlData.publicUrl,
+      uploaded_by: state.collaborateur?.nom || '',
+    }, { onConflict: 'demande_id,fourniture_id' }));
+  }
+  if (dbErr) { status.textContent = 'Erreur enregistrement : ' + dbErr.message; return; }
+
+  state.photosPrises[state.currentFournitureId] = urlData.publicUrl;
+
+  // Vérifier si toutes les fournitures sont photographiées
+  const toutTermine = isCatalogueItem ? true : (() => {
+    const toutesIds = d.fourniture_ids || [];
+    return toutesIds.every(id => id in state.photosPrises);
+  })();
+
+  await db.from('demandes_photos')
+    .update({ statut: toutTermine ? 'terminé' : 'en_cours' })
+    .eq('id', d.id);
+
+  status.textContent = toutTermine ? '✅ Toutes les photos envoyées !' : '✅ Photo envoyée !';
+
+  if (toutTermine) {
+    setTimeout(() => retourDemandes(), 1500);
+  } else {
+    renderListe();
+    show('screen-liste');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

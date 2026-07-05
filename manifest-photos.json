@@ -1,0 +1,18 @@
+{
+  "name": "Pivot Photos",
+  "short_name": "Pivot Photos",
+  "description": "Photographiez les fournitures pour vos consultations Pivot La Racine",
+  "start_url": "/pivot-app-photos.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1C3A2A",
+  "background_color": "#F5F0E8",
+  "icons": [
+    {
+      "src": "favicon-entreprise.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
