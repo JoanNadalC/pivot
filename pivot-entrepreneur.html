@@ -7629,7 +7629,7 @@ async function loadComparatif() {
         : db.from('comparatif_selections').select('*').eq('consultation_id', consId).is('jeu_id', null),
       db.from('consultations').select('frais_port_etude, titre, familles').eq('id', consId).maybeSingle().then(r=>r,()=>({data:null})),
       db.from('demandes_modification').select('id, fournisseur_id, message, created_at').eq('consultation_id', consId).eq('statut', 'pending').then(r=>r,()=>({data:[]})),
-      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids, statut, message, created_at').eq('consultation_id', consId).then(r=>r,()=>({data:[]}))
+      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids, statut, message, created_at, assignee_ids').eq('consultation_id', consId).then(r=>r,()=>({data:[]}))
     ]);
 
     let foursList = cfRes.data || [];
@@ -7666,7 +7666,8 @@ async function loadComparatif() {
       demandes.forEach(d => {
         (d.fourniture_ids || []).forEach(fid => {
           (photosMap[fid] ||= {})[d.fournisseur_id] = {
-            statut: 'pending', demandeStatut: d.statut, message: d.message, demandeDate: d.created_at
+            statut: 'pending', demandeStatut: d.statut, message: d.message, demandeDate: d.created_at,
+            assignee: (d.assignee_ids || []).length > 0
           };
         });
       });
@@ -7710,11 +7711,13 @@ function _compPhotoIconHtml(photoInfo) {
     </div>`;
   }
   const statutLbl = { en_attente: '⏳ En attente de réponse du fournisseur', en_cours: '🔄 En cours de traitement', annulee: '❌ Demande annulée' }[photoInfo.demandeStatut] || '⏳ En attente de réponse du fournisseur';
+  const iconColor = photoInfo.assignee ? 'text-blue-500' : 'text-amber-500';
   return `<div class="relative inline-block group">
-    <span class="text-xs text-amber-500 cursor-default">📷</span>
+    <span class="text-xs ${iconColor} cursor-default">📷</span>
     <div class="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-56 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-2 text-left text-xs text-gray-700 space-y-0.5 pointer-events-none">
       <div class="font-semibold text-gray-800">📷 Photo demandée</div>
       <div class="text-amber-600">${statutLbl}</div>
+      ${photoInfo.assignee ? `<div class="text-blue-600">🔧 Assignée à un collaborateur</div>` : ''}
       ${dateTxt ? `<div class="text-gray-400">Demandée le ${dateTxt}</div>` : ''}
       ${photoInfo.message ? `<div class="text-gray-500 italic">« ${escHtml(photoInfo.message)} »</div>` : ''}
     </div>
