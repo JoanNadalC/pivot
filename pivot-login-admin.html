@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connexion · Admin · Pivot La Racine</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-admin.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: #0f172a; }
+
+    .page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+
+    .logo-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 700; color: #fff;
+    }
+
+    .logo-text { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+    .logo-badge {
+      margin-left: auto;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #818cf8; background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.2);
+      padding: 3px 8px; border-radius: 20px;
+    }
+
+    h2 { font-size: 20px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: #475569; margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%; background: #0f172a;
+      border: 1px solid #334155; border-radius: 8px;
+      padding: 10px 14px; font-size: 14px; font-family: 'Inter', sans-serif;
+      color: #f1f5f9; outline: none; transition: border-color 0.15s;
+    }
+    .field input:focus { border-color: #6366f1; }
+    .field input::placeholder { color: #334155; }
+
+    .error-msg {
+      display: none; font-size: 13px; color: #f87171;
+      background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2);
+      border-radius: 8px; padding: 10px 12px; margin-bottom: 16px;
+    }
+    .error-msg.visible { display: block; }
+
+    .btn-main {
+      width: 100%; background: #6366f1;
+      border: none; border-radius: 8px; padding: 12px;
+      font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif;
+      color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.15s; margin-top: 4px;
+    }
+    .btn-main:hover { background: #4f46e5; }
+    .btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .footer-note {
+      margin-top: 24px; padding-top: 20px;
+      border-top: 1px solid #1e293b;
+      font-size: 11px; color: #334155; text-align: center; line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <div class="logo-row">
+      <div class="logo-icon">A</div>
+      <span class="logo-text">Pivot</span>
+      <span class="logo-badge">Admin</span>
+    </div>
+
+    <h2>Accès backoffice</h2>
+    <p class="subtitle">Réservé aux administrateurs de la plateforme</p>
+
+    <div class="error-msg" id="error-msg"></div>
+
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="admin@pivotlaracine.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Mot de passe</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="btn-main" id="btn-login" onclick="handleLogin()">
+      Accéder au backoffice
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+      </svg>
+    </button>
+
+    <p class="footer-note">Le rôle admin est attribué exclusivement<br>via Supabase SQL — jamais depuis l'interface.</p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  async function handleLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('btn-login');
+    document.getElementById('error-msg').classList.remove('visible');
+
+    if (!email || !password) { showError('Veuillez renseigner votre email et mot de passe.'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Vérification…';
+
+    try {
+      const { data: authData, error: authErr } = await db.auth.signInWithPassword({ email, password });
+      if (authErr) { showError('Email ou mot de passe incorrect.'); return; }
+
+      const { data: profil } = await db.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
+
+      if (!profil || profil.role !== 'admin') {
+        await db.auth.signOut();
+        showError('Accès refusé — ce compte n\'a pas le rôle administrateur.');
+        return;
+      }
+
+      window.location.href = 'pivot-admin.html';
+
+    } catch (err) {
+      showError('Erreur réseau. Vérifiez votre connexion.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Accéder au backoffice <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+</script>
+</body>
+</html>

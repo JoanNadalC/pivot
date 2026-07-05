@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S'inscrire · Portail Fournisseur · Pivot La Racine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --vert: #12261C; --vert-md: #1E3D2C; --vert-lt: #2D6645;
+      --ecru: #F5F0E8; --menthe: #7EC8A0; --cuivre: #B87333;
+      --blanc: #FAFAF7; --gris: #6B7280; --gris-lt: #E8E4DC;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--vert); color: var(--vert); }
+    .page { display: flex; min-height: 100vh; }
+
+    .left { flex: 1; background: var(--vert); padding: 48px 52px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
+    .left-glow { position: absolute; bottom: -100px; right: -80px; width: 420px; height: 420px; background: radial-gradient(circle, rgba(45,102,69,0.35) 0%, transparent 70%); pointer-events: none; }
+    .left-glow2 { position: absolute; top: -60px; left: -60px; width: 280px; height: 280px; background: radial-gradient(circle, rgba(184,115,51,0.07) 0%, transparent 70%); pointer-events: none; }
+    .grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(245,240,232,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(245,240,232,0.03) 1px, transparent 1px); background-size: 32px 32px; pointer-events: none; }
+    .logo-text { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 900; color: var(--ecru); letter-spacing: -0.02em; }
+    .logo-dot { color: var(--cuivre); }
+    .logo-racine { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 400; font-style: italic; color: rgba(245,240,232,0.35); margin-left: 7px; }
+    .portal-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(126,200,160,0.12); border: 0.5px solid rgba(126,200,160,0.3); color: var(--menthe); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; margin-top: 48px; width: fit-content; }
+    .badge-dot { width: 5px; height: 5px; background: var(--menthe); border-radius: 50%; animation: blink 2.2s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+    .headline { margin-top: 20px; }
+    .headline h1 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 2.8vw, 2.4rem); font-weight: 900; color: var(--ecru); line-height: 1.15; letter-spacing: -0.02em; }
+    .headline h1 em { font-style: italic; color: var(--menthe); }
+    .headline p { font-size: 0.9rem; color: rgba(245,240,232,0.5); margin-top: 14px; line-height: 1.75; max-width: 340px; }
+    .left-footer { padding-top: 24px; border-top: 0.5px solid rgba(245,240,232,0.08); display: flex; justify-content: space-between; }
+    .left-footer span { font-size: 0.68rem; color: rgba(245,240,232,0.18); letter-spacing: 0.04em; }
+
+    .right { flex: 0 0 460px; background: var(--blanc); padding: 44px 36px; display: flex; flex-direction: column; justify-content: center; border-left: 0.5px solid var(--gris-lt); overflow-y: auto; }
+    .right-header { margin-bottom: 20px; }
+    .right-header h2 { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; color: var(--vert); margin-bottom: 5px; }
+    .right-header p { font-size: 0.82rem; color: var(--gris); }
+
+    /* Plans */
+    .plans-label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #9CA3AF; margin-bottom: 10px; display: block; }
+    .plans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+    .plan-card { border: 1.5px solid var(--gris-lt); border-radius: 10px; padding: 14px 12px; cursor: pointer; transition: all 0.15s; background: #fff; text-align: left; font-family: 'Inter', sans-serif; }
+    .lic-btn { flex:1; min-width:48px; padding:9px 6px; border:1.5px solid var(--gris-lt); border-radius:8px; background:#fff; font-size:0.82rem; font-weight:600; color:var(--gris); cursor:pointer; text-align:center; transition:all 0.15s; font-family:'Inter',sans-serif; }
+    .lic-btn:hover { border-color:var(--vert-lt); color:var(--vert); }
+    .lic-btn.active { border-color:var(--vert); background:var(--vert); color:var(--ecru); }
+    .plan-card:hover { border-color: var(--vert-lt); }
+    .plan-card.active { border-color: var(--vert); background: rgba(18,38,28,0.04); }
+    .plan-card.active .plan-name { color: var(--vert); }
+    .plan-emoji { font-size: 1.1rem; margin-bottom: 6px; display: block; }
+    .plan-name { font-size: 0.82rem; font-weight: 700; color: #374151; display: block; margin-bottom: 2px; }
+    .plan-prix { font-size: 1rem; font-weight: 700; color: var(--vert); display: block; margin-bottom: 4px; }
+    .plan-desc { font-size: 0.68rem; color: var(--gris); line-height: 1.4; }
+    .plan-gratuit { color: var(--vert-lt) !important; }
+
+    .prix-box { background: rgba(18,38,28,0.04); border: 1px solid rgba(18,38,28,0.1); border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; }
+    .prix-val { font-size: 1.4rem; font-weight: 700; color: var(--vert); }
+    .prix-val span { font-size: 0.75rem; font-weight: 400; color: var(--gris); }
+    .prix-note { font-size: 0.72rem; color: var(--gris); }
+
+    .field { margin-bottom: 11px; }
+    .field label { display: block; font-size: 0.65rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #9CA3AF; margin-bottom: 5px; }
+    .row { display: flex; gap: 10px; }
+    .row .field { flex: 1; }
+    .field input { width: 100%; background: #fff; border: 0.5px solid var(--gris-lt); border-radius: 4px; padding: 10px 14px; font-size: 0.88rem; font-family: 'Inter', sans-serif; color: var(--vert); outline: none; transition: border-color 0.15s; }
+    .field input:focus { border-color: var(--vert-md); }
+    .field input::placeholder { color: #D1D5DB; }
+
+    .error-msg { display: none; font-size: 0.78rem; color: #B91C1C; background: #FEF2F2; border: 0.5px solid #FECACA; border-radius: 4px; padding: 9px 12px; margin-bottom: 12px; }
+    .error-msg.visible { display: block; }
+
+    .btn-main { width: 100%; background: var(--vert); border: none; border-radius: 4px; padding: 12px 16px; font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif; color: var(--ecru); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
+    .btn-main:hover { background: var(--vert-md); }
+    .btn-main:disabled { opacity: 0.6; cursor: not-allowed; }
+    .mention { font-size: 0.7rem; color: #9CA3AF; text-align: center; margin-top: 10px; line-height: 1.5; }
+    .mention a { color: var(--cuivre); text-decoration: none; }
+    .form-footer { margin-top: 16px; text-align: center; border-top: 0.5px solid #F0EDE6; padding-top: 14px; font-size: 0.75rem; color: #D1D5DB; }
+    .form-footer a { color: var(--cuivre); text-decoration: none; }
+
+    @media (max-width: 820px) {
+      .page { flex-direction: column; }
+      .left { padding: 36px 28px 40px; flex: none; }
+      .right { flex: none; border-left: none; border-top: 0.5px solid var(--gris-lt); padding: 36px 24px; }
+      .plans-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="left">
+    <div class="grid-lines"></div>
+    <div class="left-glow"></div>
+    <div class="left-glow2"></div>
+    <div><span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">la racine</span></span></div>
+    <div>
+      <div class="portal-badge"><span class="badge-dot"></span>Portail Fournisseur</div>
+      <div class="headline">
+        <h1>Répondez aux<br>consultations en <em>direct.</em></h1>
+        <p>Accédez aux demandes de paysagistes, publiez votre catalogue et gérez vos réponses depuis un seul endroit.</p>
+      </div>
+    </div>
+    <div class="left-footer">
+      <span>© 2025 Pivot La Racine</span>
+      <span>Inscription gratuite possible</span>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="right-header">
+      <h2>Créer votre compte</h2>
+      <p>Choisissez votre formule, puis renseignez vos informations.</p>
+    </div>
+
+    <span class="plans-label">Votre formule</span>
+    <div class="plans-grid">
+      <button class="plan-card active" onclick="selectPlan('decouverte', this)">
+        <span class="plan-emoji">🌱</span>
+        <span class="plan-name">Découverte</span>
+        <span class="plan-prix plan-gratuit">Gratuit</span>
+        <span class="plan-desc">Répondre aux consultations sans historique</span>
+      </button>
+      <button class="plan-card" onclick="selectPlan('essentiel', this)">
+        <span class="plan-emoji">🌿</span>
+        <span class="plan-name">Essentiel</span>
+        <span class="plan-prix">10 € / mois</span>
+        <span class="plan-desc">Réponses + accès à l'historique</span>
+      </button>
+      <button class="plan-card" onclick="selectPlan('studio', this)">
+        <span class="plan-emoji">🪴</span>
+        <span class="plan-name">Studio</span>
+        <span class="plan-prix">30 € / mois</span>
+        <span class="plan-desc">Historique + catalogue + photos mobile</span>
+      </button>
+      <button class="plan-card" onclick="selectPlan('marche', this)">
+        <span class="plan-emoji">🌳</span>
+        <span class="plan-name">Marché</span>
+        <span class="plan-prix">50 € / mois</span>
+        <span class="plan-desc">Tout + visualisation des consultations ouvertes</span>
+      </button>
+    </div>
+
+    <!-- Sélecteur de licences (masqué pour Découverte) -->
+    <div id="licences-section" style="display:none;margin-bottom:14px;">
+      <label class="plans-label">Nombre d'utilisateurs</label>
+      <div class="licences-btns" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="lic-btn active" onclick="setLicences(1,this)">1</button>
+        <button class="lic-btn" onclick="setLicences(2,this)">2</button>
+        <button class="lic-btn" onclick="setLicences(3,this)">3</button>
+        <button class="lic-btn" onclick="setLicences(5,this)">5</button>
+        <button class="lic-btn" onclick="setLicences(10,this)">10</button>
+        <button class="lic-btn" onclick="setLicences('custom',this)">Autre</button>
+      </div>
+      <div id="lic-custom-wrap" style="display:none;margin-top:8px;">
+        <input type="number" id="lic-custom" min="1" max="100" placeholder="Nombre d'utilisateurs"
+          style="width:100%;border:1.5px solid var(--gris-lt);border-radius:8px;padding:9px 14px;font-size:0.88rem;font-family:'Inter',sans-serif;outline:none;"
+          oninput="updatePrix()">
+      </div>
+    </div>
+
+    <div class="prix-box">
+      <div>
+        <div class="prix-note" id="prix-detail">Sans engagement · Résiliable à tout moment</div>
+      </div>
+      <div class="prix-val" id="prix-val">Gratuit</div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>Prénom *</label>
+        <input id="prenom" type="text" placeholder="Marie" autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label>Nom *</label>
+        <input id="nom" type="text" placeholder="Martin" autocomplete="family-name">
+      </div>
+    </div>
+    <div class="field">
+      <label>Pépinière / Entreprise *</label>
+      <input id="societe" type="text" placeholder="Pépinières Martin" autocomplete="organization">
+    </div>
+    <div class="field">
+      <label>Email professionnel *</label>
+      <input id="email" type="email" placeholder="marie@pepinieres-martin.fr" autocomplete="email">
+    </div>
+
+    <div id="error-msg" class="error-msg"></div>
+
+    <button class="btn-main" id="btn-submit" onclick="demarrerInscription()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+      <span id="btn-label">Créer mon compte gratuit</span>
+    </button>
+
+    <p class="mention">En continuant, vous acceptez nos <a href="#">CGU</a>.<br>
+      <span id="mention-paiement" style="display:none">Paiement sécurisé par Stripe. Email de définition du mot de passe envoyé après paiement.</span>
+      <span id="mention-gratuit">Votre compte sera créé immédiatement. Vous recevrez un email pour définir votre mot de passe.</span>
+    </p>
+
+    <div class="form-footer">
+      Déjà un compte ? <a id="lien-connexion" href="pivot-login-fournisseur.html">Se connecter</a>
+      &nbsp;·&nbsp; <a href="pivot-tarifs-fournisseur.html">Voir les tarifs</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
+
+  const PRIX = {
+    decouverte: () => 0,
+    essentiel:  () => 10,
+    studio:     (n) => n <= 1 ? 30 : n <= 5 ? 25 : 20,
+    marche:     (n) => n <= 1 ? 50 : n <= 5 ? 40 : 30,
+  };
+
+  let planActif = 'decouverte';
+  let nbLicences = 1;
+  let customMode = false;
+
+  function getPu() { return PRIX[planActif] ? PRIX[planActif](nbLicences) : 0; }
+  function getTotal() { return getPu() * (planActif === 'decouverte' ? 1 : nbLicences); }
+
+  function selectPlan(plan, btn) {
+    document.querySelectorAll('.plan-card').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    planActif = plan;
+    const gratuit = plan === 'decouverte';
+    document.getElementById('licences-section').style.display = gratuit ? 'none' : 'block';
+    updatePrix();
+    document.getElementById('mention-paiement').style.display = gratuit ? 'none' : 'inline';
+    document.getElementById('mention-gratuit').style.display = gratuit ? 'inline' : 'none';
+  }
+
+  function setLicences(val, btn) {
+    document.querySelectorAll('.lic-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const wrap = document.getElementById('lic-custom-wrap');
+    if (val === 'custom') {
+      customMode = true;
+      wrap.style.display = 'block';
+      nbLicences = parseInt(document.getElementById('lic-custom').value) || 1;
+    } else {
+      customMode = false;
+      wrap.style.display = 'none';
+      nbLicences = val;
+    }
+    updatePrix();
+  }
+
+  function updatePrix() {
+    if (customMode) nbLicences = parseInt(document.getElementById('lic-custom').value) || 1;
+    const pu = getPu();
+    const total = getTotal();
+    const gratuit = planActif === 'decouverte';
+    if (gratuit) {
+      document.getElementById('prix-val').innerHTML = 'Gratuit';
+      document.getElementById('prix-detail').textContent = 'Sans engagement';
+      document.getElementById('btn-label').textContent = 'Créer mon compte gratuit';
+    } else {
+      const detail = nbLicences === 1 ? `1 utilisateur · ${pu} € / utilisateur` : `${nbLicences} utilisateurs · ${pu} € / utilisateur`;
+      document.getElementById('prix-detail').textContent = detail;
+      document.getElementById('prix-val').innerHTML = `${total} <span>€ / mois</span>`;
+      document.getElementById('btn-label').textContent = 'Continuer vers le paiement';
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  async function demarrerInscription() {
+    document.getElementById('error-msg').classList.remove('visible');
+    const prenom  = document.getElementById('prenom').value.trim();
+    const nom     = document.getElementById('nom').value.trim();
+    const societe = document.getElementById('societe').value.trim();
+    const email   = document.getElementById('email').value.trim();
+
+    if (!prenom || !nom || !societe || !email) return showError('Veuillez remplir tous les champs obligatoires.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Adresse email invalide.');
+
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    const gratuit = planActif === 'decouverte';
+    btn.querySelector('#btn-label').textContent = gratuit ? 'Création du compte…' : 'Redirection vers le paiement…';
+
+    try {
+      const endpoint = gratuit ? `${WORKER_URL}/register-free` : `${WORKER_URL}/create-checkout-session`;
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prenom, nom, societe, email, plan: planActif, portail: 'fournisseur', licences: nbLicences, inviteToken: window._inviteToken || null }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        window.location.href = 'pivot-inscription-succes.html';
+      }
+    } catch (err) {
+      showError('Erreur : ' + err.message);
+      btn.disabled = false;
+      document.getElementById('btn-label').textContent = PLANS[planActif].prix === 0 ? 'Créer mon compte gratuit' : 'Continuer vers le paiement';
+    }
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') demarrerInscription(); });
+
+  // Pré-remplir email depuis token d'invitation
+  (async function initInvite() {
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get('invite');
+    if (!inviteToken) return;
+
+    const SUPABASE_URL = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/invitations?token=eq.${inviteToken}&select=email_fournisseur,expires_at`, {
+      headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` }
+    });
+    const data = await r.json();
+    if (!data?.length) return;
+    const inv = data[0];
+    if (inv.expires_at && new Date(inv.expires_at) < new Date()) return showError('Ce lien d\'invitation a expiré.');
+    if (inv.email_fournisseur) {
+      const emailField = document.getElementById('email');
+      emailField.value = inv.email_fournisseur;
+      emailField.readOnly = true;
+      emailField.style.background = '#f3f4f6';
+    }
+    // Stocker le token pour l'envoyer au worker
+    window._inviteToken = inviteToken;
+    // Passer le token au lien "Se connecter" pour que le login puisse ouvrir la consultation
+    const lienConnexion = document.getElementById('lien-connexion');
+    if (lienConnexion) lienConnexion.href = `pivot-login-fournisseur.html?invite=${inviteToken}`;
+  })();
+</script>
+</body>
+</html>

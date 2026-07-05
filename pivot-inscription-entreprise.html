@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S'inscrire · Portail Entreprise · Pivot La Racine</title>
+  <script>
+    // Bêta fermée — redirection vers la liste d'attente
+    const p = new URLSearchParams(window.location.search);
+    if (!p.get('beta')) window.location.replace('index.html#waitlist');
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --vert: #1C3A2A; --vert-md: #2D5940; --vert-lt: #3E7A58;
+      --ecru: #F5F0E8; --cuivre: #B87333; --blanc: #FAFAF7;
+      --gris: #6B7280; --gris-lt: #E8E4DC;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--vert); color: var(--vert); }
+    .page { display: flex; min-height: 100vh; }
+
+    /* GAUCHE */
+    .left { flex: 1; background: var(--vert); padding: 48px 52px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
+    .left-glow { position: absolute; bottom: -100px; right: -80px; width: 420px; height: 420px; background: radial-gradient(circle, rgba(62,122,88,0.3) 0%, transparent 70%); pointer-events: none; }
+    .left-glow2 { position: absolute; top: -60px; left: -60px; width: 280px; height: 280px; background: radial-gradient(circle, rgba(184,115,51,0.07) 0%, transparent 70%); pointer-events: none; }
+    .grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(245,240,232,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(245,240,232,0.03) 1px, transparent 1px); background-size: 32px 32px; pointer-events: none; }
+    .logo-text { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 900; color: var(--ecru); letter-spacing: -0.02em; }
+    .logo-dot { color: var(--cuivre); }
+    .logo-racine { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 400; font-style: italic; color: rgba(245,240,232,0.35); margin-left: 7px; }
+    .portal-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(184,115,51,0.1); border: 0.5px solid rgba(184,115,51,0.25); color: var(--cuivre); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; padding: 5px 12px; border-radius: 20px; margin-top: 48px; width: fit-content; }
+    .badge-dot { width: 5px; height: 5px; background: var(--cuivre); border-radius: 50%; animation: blink 2.2s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+    .headline { margin-top: 20px; }
+    .headline h1 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 2.8vw, 2.4rem); font-weight: 900; color: var(--ecru); line-height: 1.15; letter-spacing: -0.02em; }
+    .headline h1 em { font-style: italic; color: var(--cuivre); }
+    .headline p { font-size: 0.9rem; color: rgba(245,240,232,0.5); margin-top: 14px; line-height: 1.75; max-width: 340px; }
+    .left-footer { padding-top: 24px; border-top: 0.5px solid rgba(245,240,232,0.08); display: flex; justify-content: space-between; }
+    .left-footer span { font-size: 0.68rem; color: rgba(245,240,232,0.18); letter-spacing: 0.04em; }
+
+    /* DROITE */
+    .right { flex: 0 0 420px; background: var(--blanc); padding: 48px 36px; display: flex; flex-direction: column; justify-content: center; border-left: 0.5px solid var(--gris-lt); overflow-y: auto; }
+    .right-header { margin-bottom: 24px; }
+    .right-header h2 { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; color: var(--vert); margin-bottom: 5px; }
+    .right-header p { font-size: 0.82rem; color: var(--gris); }
+
+    /* Sélecteur de licences */
+    .licences-section { margin-bottom: 20px; }
+    .licences-section label { display: block; font-size: 0.65rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #9CA3AF; margin-bottom: 10px; }
+    .licences-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .lic-btn { flex: 1; min-width: 60px; padding: 10px 6px; border: 1.5px solid var(--gris-lt); border-radius: 8px; background: #fff; font-size: 0.82rem; font-weight: 600; color: var(--gris); cursor: pointer; text-align: center; transition: all 0.15s; font-family: 'Inter', sans-serif; }
+    .lic-btn:hover { border-color: var(--vert); color: var(--vert); }
+    .lic-btn.active { border-color: var(--vert); background: var(--vert); color: var(--ecru); }
+    .lic-custom { display: none; margin-top: 10px; }
+    .lic-custom input { width: 100%; border: 1.5px solid var(--gris-lt); border-radius: 8px; padding: 10px 14px; font-size: 0.88rem; font-family: 'Inter', sans-serif; outline: none; }
+    .lic-custom input:focus { border-color: var(--vert); }
+
+    /* Prix dynamique */
+    .prix-box { background: rgba(28,58,42,0.04); border: 1px solid rgba(28,58,42,0.1); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+    .prix-detail { font-size: 0.75rem; color: var(--gris); }
+    .prix-val { font-size: 1.5rem; font-weight: 700; color: var(--vert); white-space: nowrap; }
+    .prix-val span { font-size: 0.78rem; font-weight: 400; color: var(--gris); }
+
+    /* Champs */
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.65rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #9CA3AF; margin-bottom: 5px; }
+    .row { display: flex; gap: 10px; }
+    .row .field { flex: 1; }
+    .field input { width: 100%; background: #fff; border: 0.5px solid var(--gris-lt); border-radius: 4px; padding: 10px 14px; font-size: 0.88rem; font-family: 'Inter', sans-serif; color: var(--vert); outline: none; transition: border-color 0.15s; }
+    .field input:focus { border-color: var(--vert-md); }
+    .field input::placeholder { color: #D1D5DB; }
+
+    .error-msg { display: none; font-size: 0.78rem; color: #B91C1C; background: #FEF2F2; border: 0.5px solid #FECACA; border-radius: 4px; padding: 9px 12px; margin-bottom: 12px; }
+    .error-msg.visible { display: block; }
+
+    .btn-main { width: 100%; background: var(--vert); border: none; border-radius: 4px; padding: 12px 16px; font-size: 0.88rem; font-weight: 600; font-family: 'Inter', sans-serif; color: var(--ecru); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; margin-top: 4px; }
+    .btn-main:hover { background: var(--vert-md); }
+    .btn-main:disabled { opacity: 0.6; cursor: not-allowed; }
+    .mention { font-size: 0.7rem; color: #9CA3AF; text-align: center; margin-top: 12px; line-height: 1.5; }
+    .mention a { color: var(--cuivre); text-decoration: none; }
+    .form-footer { margin-top: 20px; text-align: center; border-top: 0.5px solid #F0EDE6; padding-top: 16px; font-size: 0.75rem; color: #D1D5DB; }
+    .form-footer a { color: var(--cuivre); text-decoration: none; }
+
+    @media (max-width: 820px) {
+      .page { flex-direction: column; }
+      .left { padding: 36px 28px 40px; flex: none; }
+      .headline h1 { font-size: 1.7rem; }
+      .right { flex: none; border-left: none; border-top: 0.5px solid var(--gris-lt); padding: 36px 28px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="left">
+    <div class="grid-lines"></div>
+    <div class="left-glow"></div>
+    <div class="left-glow2"></div>
+    <div><span class="logo-text">Pivot<span class="logo-dot">.</span><span class="logo-racine">la racine</span></span></div>
+    <div>
+      <div class="portal-badge"><span class="badge-dot"></span>Portail Entreprise</div>
+      <div class="headline">
+        <h1>Gérez vos chantiers<br>avec moins de <em>paperasse.</em></h1>
+        <p>DAF, DOE, consultations fournisseurs et visa MOE centralisés. Choisissez le nombre de licences pour votre équipe.</p>
+      </div>
+    </div>
+    <div class="left-footer">
+      <span>© 2025 Pivot La Racine</span>
+      <span>Paiement sécurisé · Stripe</span>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="right-header">
+      <h2>Créer votre compte</h2>
+      <p>Choisissez vos licences, puis continuez vers le paiement.</p>
+    </div>
+
+    <!-- Sélecteur de licences -->
+    <div class="licences-section">
+      <label>Nombre de licences</label>
+      <div class="licences-btns">
+        <button class="lic-btn active" onclick="setLicences(1, this)">1</button>
+        <button class="lic-btn" onclick="setLicences(2, this)">2</button>
+        <button class="lic-btn" onclick="setLicences(3, this)">3</button>
+        <button class="lic-btn" onclick="setLicences(5, this)">5</button>
+        <button class="lic-btn" onclick="setLicences(10, this)">10</button>
+        <button class="lic-btn" onclick="setLicences('custom', this)">Autre</button>
+      </div>
+      <div class="lic-custom" id="lic-custom-wrap">
+        <input type="number" id="lic-custom" min="1" max="100" placeholder="Nombre de licences" oninput="updatePrix()">
+      </div>
+    </div>
+
+    <!-- Prix -->
+    <div class="prix-box">
+      <div>
+        <div class="prix-detail" id="prix-detail">1 licence · 30 € / licence</div>
+        <div style="font-size:0.7rem;color:#9CA3AF;margin-top:2px">Sans engagement · Résiliable à tout moment</div>
+      </div>
+      <div class="prix-val" id="prix-val">30 <span>€ / mois</span></div>
+    </div>
+
+    <!-- Formulaire -->
+    <div class="row">
+      <div class="field">
+        <label>Prénom *</label>
+        <input id="prenom" type="text" placeholder="Jean" autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label>Nom *</label>
+        <input id="nom" type="text" placeholder="Dupont" autocomplete="family-name">
+      </div>
+    </div>
+    <div class="field">
+      <label>Entreprise *</label>
+      <input id="societe" type="text" placeholder="Espaces Verts Dupont" autocomplete="organization">
+    </div>
+    <div class="field">
+      <label>Email professionnel *</label>
+      <input id="email" type="email" placeholder="jean@entreprise.fr" autocomplete="email">
+    </div>
+
+    <div id="error-msg" class="error-msg"></div>
+
+    <button class="btn-main" id="btn-payer" onclick="demarrerPaiement()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      Continuer vers le paiement
+    </button>
+
+    <p class="mention">En continuant, vous acceptez nos <a href="#">CGU</a>. Vous recevrez un email pour définir votre mot de passe après paiement.</p>
+
+    <div class="form-footer">
+      Déjà un compte ? <a href="pivot-login-entreprise.html">Se connecter</a>
+      &nbsp;·&nbsp; <a href="pivot-tarifs-entreprise.html">Voir les tarifs</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
+
+  const PRIX = [
+    { max: 1, pu: 30 },
+    { max: 5, pu: 25 },
+    { max: Infinity, pu: 20 }
+  ];
+
+  let nbLicences = 1;
+  let customMode = false;
+
+  function getPrixUnitaire(n) {
+    return PRIX.find(p => n <= p.max).pu;
+  }
+
+  function setLicences(val, btn) {
+    document.querySelectorAll('.lic-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const wrap = document.getElementById('lic-custom-wrap');
+    if (val === 'custom') {
+      customMode = true;
+      wrap.style.display = 'block';
+      const input = document.getElementById('lic-custom');
+      nbLicences = parseInt(input.value) || 1;
+    } else {
+      customMode = false;
+      wrap.style.display = 'none';
+      nbLicences = val;
+    }
+    updatePrix();
+  }
+
+  function updatePrix() {
+    if (customMode) {
+      nbLicences = parseInt(document.getElementById('lic-custom').value) || 1;
+    }
+    const pu = getPrixUnitaire(nbLicences);
+    const total = nbLicences * pu;
+    const label = nbLicences === 1
+      ? `1 licence · ${pu} € / licence`
+      : `${nbLicences} licences · ${pu} € / licence`;
+    document.getElementById('prix-detail').textContent = label;
+    document.getElementById('prix-val').innerHTML = `${total} <span>€ / mois</span>`;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  async function demarrerPaiement() {
+    document.getElementById('error-msg').classList.remove('visible');
+    const prenom  = document.getElementById('prenom').value.trim();
+    const nom     = document.getElementById('nom').value.trim();
+    const societe = document.getElementById('societe').value.trim();
+    const email   = document.getElementById('email').value.trim();
+
+    if (!prenom || !nom || !societe || !email) return showError('Veuillez remplir tous les champs obligatoires.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Adresse email invalide.');
+
+    const btn = document.getElementById('btn-payer');
+    btn.disabled = true;
+    btn.textContent = 'Redirection vers le paiement…';
+
+    try {
+      const resp = await fetch(`${WORKER_URL}/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prenom, nom, societe, email, licences: nbLicences, portail: 'entreprise' }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      window.location.href = data.url;
+    } catch (err) {
+      showError('Erreur : ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Continuer vers le paiement`;
+    }
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') demarrerPaiement(); });
+  updatePrix();
+</script>
+</body>
+</html>

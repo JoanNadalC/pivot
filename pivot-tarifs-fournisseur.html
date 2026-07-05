@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarifs · Portail Fournisseur · Pivot La Racine</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-fournisseur.svg">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --vert:    #12261C;
+      --vert-md: #1E3D2C;
+      --vert-lt: #2D6645;
+      --ecru:    #F5F0E8;
+      --menthe:  #7EC8A0;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+      --cuivre:  #B87333;
+    }
+
+    html, body { min-height: 100%; font-family: 'Inter', sans-serif; background: var(--ecru); color: var(--vert); }
+
+    /* ── HEADER ── */
+    .header { background: var(--vert); padding: 40px 52px 48px; position: relative; overflow: hidden; }
+    .grid-lines {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(245,240,232,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,240,232,0.025) 1px, transparent 1px);
+      background-size: 32px 32px; pointer-events: none;
+    }
+    .header-glow {
+      position: absolute; top: -60px; right: -80px;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle, rgba(45,102,69,0.35) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .header-inner { max-width: 1040px; margin: 0 auto; position: relative; }
+
+    .logo-row { display: flex; align-items: baseline; margin-bottom: 36px; }
+    .logo-text { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 900; color: var(--ecru); letter-spacing: -0.02em; }
+    .logo-dot { color: var(--menthe); }
+    .logo-racine { font-family: 'Playfair Display', serif; font-size: 13px; font-style: italic; color: rgba(245,240,232,0.28); margin-left: 7px; }
+
+    .portal-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(126,200,160,0.12); border: 0.5px solid rgba(126,200,160,0.25);
+      color: var(--menthe); font-size: 10px; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: 20px; margin-bottom: 20px; width: fit-content;
+    }
+    .badge-dot { width: 5px; height: 5px; background: var(--menthe); border-radius: 50%; animation: blink 2.2s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.7rem, 2.5vw, 2.2rem); font-weight: 900;
+      color: var(--ecru); line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 10px;
+    }
+    .header h1 em { font-style: italic; color: var(--menthe); }
+    .header p { font-size: 0.88rem; color: rgba(245,240,232,0.45); max-width: 520px; line-height: 1.7; }
+
+    /* ── BODY ── */
+    .body { padding: 56px 52px 72px; max-width: 1040px; margin: 0 auto; }
+
+    /* ── PLANS GRID ── */
+    .plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: start; }
+
+    .plan-card {
+      background: var(--blanc); border: 0.5px solid var(--gris-lt); border-radius: 4px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .plan-card.featured {
+      border: 1px solid var(--cuivre);
+      box-shadow: 0 4px 24px rgba(184,115,51,0.1);
+    }
+
+    .plan-card-top {
+      padding: 28px 24px 20px;
+      border-bottom: 0.5px solid var(--gris-lt);
+    }
+    .plan-card.featured .plan-card-top { background: var(--vert); }
+
+    .featured-badge {
+      display: inline-block; font-size: 9px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      background: rgba(184,115,51,0.12); color: var(--cuivre);
+      border: 0.5px solid rgba(184,115,51,0.3);
+      padding: 3px 9px; border-radius: 20px; margin-bottom: 14px;
+    }
+
+    .plan-name {
+      font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--gris); margin-bottom: 12px;
+    }
+    .plan-card.featured .plan-name { color: rgba(245,240,232,0.45); }
+
+    .plan-price {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.6rem; font-weight: 900; color: var(--vert);
+      line-height: 1; letter-spacing: -0.02em;
+    }
+    .plan-card.featured .plan-price { color: var(--ecru); }
+    .plan-price sup { font-size: 1rem; vertical-align: top; margin-top: 6px; margin-right: 1px; }
+    .plan-price-free {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem; font-weight: 700; color: var(--vert); letter-spacing: -0.01em;
+    }
+    .plan-period { font-size: 0.72rem; color: var(--gris); margin-top: 6px; }
+    .plan-card.featured .plan-period { color: rgba(245,240,232,0.4); }
+    .plan-desc { font-size: 0.78rem; color: var(--gris); margin-top: 10px; line-height: 1.5; }
+    .plan-card.featured .plan-desc { color: rgba(245,240,232,0.5); }
+
+    /* ── FEATURES ── */
+    .plan-features { padding: 20px 24px 28px; flex: 1; }
+
+    .feat-item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; }
+    .feat-check {
+      width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px;
+      background: rgba(18,38,28,0.07); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .plan-card.featured .feat-check { background: rgba(184,115,51,0.12); }
+    .feat-check svg { width: 8px; height: 8px; stroke: var(--vert-lt); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .plan-card.featured .feat-check svg { stroke: var(--cuivre); }
+    .feat-item span { font-size: 0.8rem; color: #374151; line-height: 1.45; }
+
+    .feat-separator {
+      font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--menthe); margin: 12px 0 4px;
+    }
+
+    /* ── CTA ── */
+    .plan-cta { padding: 0 24px 28px; }
+    .btn-plan {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; border-radius: 4px; padding: 11px 16px;
+      font-size: 0.82rem; font-weight: 600; font-family: 'Inter', sans-serif;
+      cursor: pointer; text-decoration: none; transition: opacity 0.15s;
+    }
+    .btn-plan.secondary {
+      background: transparent; border: 0.5px solid var(--gris-lt); color: var(--vert);
+    }
+    .btn-plan.secondary:hover { border-color: var(--vert-lt); }
+    .btn-plan.primary {
+      background: var(--cuivre); border: none; color: var(--ecru);
+    }
+    .btn-plan.primary:hover { opacity: 0.88; }
+
+    /* ── FOOTER NOTE ── */
+    .footer-note {
+      margin-top: 32px; padding-top: 24px; border-top: 0.5px solid var(--gris-lt);
+      font-size: 0.72rem; color: var(--gris); line-height: 1.7;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .footer-note svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; stroke: var(--gris); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+    .page-footer {
+      text-align: center; padding: 24px 52px; border-top: 0.5px solid var(--gris-lt);
+      font-size: 0.68rem; color: rgba(107,114,128,0.6); letter-spacing: 0.04em;
+    }
+
+    @media (max-width: 900px) {
+      .plans { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .header { padding: 32px 24px 40px; }
+      .body { padding: 36px 24px 56px; }
+      .plans { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="grid-lines"></div>
+  <div class="header-glow"></div>
+  <div class="header-inner">
+    <div class="logo-row">
+      <a href="index.html" style="display:flex;align-items:baseline;text-decoration:none">
+        <span class="logo-text">Pivot<span class="logo-dot">.</span></span>
+        <span class="logo-racine">la racine</span>
+      </a>
+    </div>
+    <div class="portal-badge">
+      <span class="badge-dot"></span>
+      Portail Fournisseur
+    </div>
+    <h1>Répondez aux appels d'offres,<br><em>développez votre catalogue.</em></h1>
+    <p>Du simple accès aux consultations à la prospection active sur le marché. Choisissez le niveau qui correspond à votre activité.</p>
+  </div>
+</header>
+
+<main class="body">
+  <div class="plans">
+
+    <!-- Plan 1 : Découverte -->
+    <div class="plan-card">
+      <div class="plan-card-top">
+        <p class="plan-name">Découverte</p>
+        <div class="plan-price-free">Gratuit</div>
+        <p class="plan-period">sans engagement</p>
+        <p class="plan-desc">Pour répondre à des consultations ponctuelles.</p>
+      </div>
+      <div class="plan-features">
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Réception des consultations de prix</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Soumission d'offres de prix</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Sans conservation de l'historique</span>
+        </div>
+      </div>
+      <div class="plan-cta">
+        <a href="pivot-login-fournisseur.html" class="btn-plan secondary">
+          Démarrer gratuitement
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Plan 2 : Essentiel -->
+    <div class="plan-card">
+      <div class="plan-card-top">
+        <p class="plan-name">Essentiel</p>
+        <div class="plan-price"><sup>€</sup>10</div>
+        <p class="plan-period">par mois · sans engagement</p>
+        <p class="plan-desc">Pour suivre vos offres et commandes dans la durée.</p>
+      </div>
+      <div class="plan-features">
+        <div class="feat-separator">Tout Découverte, plus :</div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Historique complet de vos réponses</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Historique des commandes reçues</span>
+        </div>
+      </div>
+      <div class="plan-cta">
+        <a href="pivot-login-fournisseur.html" class="btn-plan secondary">
+          Choisir Essentiel
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Plan 3 : Studio — FEATURED -->
+    <div class="plan-card featured">
+      <div class="plan-card-top">
+        <div class="featured-badge">Recommandé</div>
+        <p class="plan-name">Studio</p>
+        <div class="plan-price"><sup>€</sup>30</div>
+        <p class="plan-period">par mois · sans engagement</p>
+        <p class="plan-desc">Pour valoriser et documenter votre catalogue végétal.</p>
+      </div>
+      <div class="plan-features">
+        <div class="feat-separator">Tout Essentiel, plus :</div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Pré-remplissage des prix unitaires à partir de vos réponses précédentes</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Bibliothèque de références végétales</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Application mobile photo des fournitures</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Fiches techniques liées aux fournitures</span>
+        </div>
+      </div>
+      <div class="plan-cta">
+        <a href="pivot-login-fournisseur.html" class="btn-plan primary">
+          Choisir Studio
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Plan 4 : Marché -->
+    <div class="plan-card">
+      <div class="plan-card-top">
+        <p class="plan-name">Marché</p>
+        <div class="plan-price"><sup>€</sup>50</div>
+        <p class="plan-period">par mois · sans engagement</p>
+        <p class="plan-desc">Pour prospecter et répondre en avance sur le marché.</p>
+      </div>
+      <div class="plan-features">
+        <div class="feat-separator">Tout Studio, plus :</div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Visualisation des consultations ouvertes sur le marché</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-check"><svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg></div>
+          <span>Prospection active sans attendre d'être sollicité</span>
+        </div>
+      </div>
+      <div class="plan-cta">
+        <a href="pivot-login-fournisseur.html" class="btn-plan secondary">
+          Choisir Marché
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>Chaque plan inclut les fonctionnalités des plans inférieurs. Abonnements mensuels sans engagement. Résiliation possible à tout moment. TVA non applicable, art. 293 B du CGI.</span>
+  </div>
+</main>
+
+<footer class="page-footer">
+  Pivot La Racine · pivotlaracine.fr · &copy; 2025
+</footer>
+
+</body>
+</html>

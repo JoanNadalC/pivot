@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inscription confirmée · Pivot La Racine</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #1C3A2A; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #FAFAF7; border-radius: 20px; padding: 52px 44px; width: 100%; max-width: 460px; text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,0.25); }
+    .icon { width: 72px; height: 72px; background: #d4ede0; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; }
+    h1 { font-family: 'Playfair Display', serif; font-size: 26px; color: #1C3A2A; margin-bottom: 12px; }
+    p { font-size: 14px; color: #6B7280; line-height: 1.6; margin-bottom: 10px; }
+    .email-box { background: rgba(28,58,42,0.06); border: 1px solid rgba(28,58,42,0.12); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #374151; margin: 20px 0 28px; }
+    .steps { text-align: left; background: #F5F0E8; border-radius: 12px; padding: 20px; margin-bottom: 28px; }
+    .step { display: flex; gap: 12px; margin-bottom: 14px; }
+    .step:last-child { margin-bottom: 0; }
+    .step-num { width: 24px; height: 24px; background: #1C3A2A; color: #F5F0E8; border-radius: 50%; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .step-text { font-size: 13px; color: #374151; line-height: 1.5; }
+    .btn { display: block; background: #1C3A2A; color: #F5F0E8; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
+    .btn:hover { background: #2D5940; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1C3A2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    </div>
+    <h1>Paiement confirmé !</h1>
+    <p>Votre abonnement Pivot La Racine est actif. Un email vous a été envoyé pour finaliser votre compte.</p>
+    <div class="email-box" id="email-display">Vérifiez votre boîte mail</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text"><strong>Ouvrez l'email</strong> envoyé par Pivot La Racine et cliquez sur le lien pour définir votre mot de passe.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text"><strong>Connectez-vous</strong> sur le portail Entrepreneur avec votre email et votre nouveau mot de passe.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text"><strong>Créez votre premier chantier</strong> et invitez vos collègues depuis "Mon équipe".</div>
+      </div>
+    </div>
+    <a href="pivot-login-entreprise.html" class="btn">Accéder au portail</a>
+  </div>
+  <script>
+    // Récupérer l'email depuis les params si disponible
+    const params = new URLSearchParams(location.search);
+    const email = params.get('email');
+    if (email) document.getElementById('email-display').textContent = `Email envoyé à : ${email}`;
+  </script>
+</body>
+</html>

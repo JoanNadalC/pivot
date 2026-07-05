@@ -1,0 +1,18 @@
+{
+  "name": "Pivot Fournisseur",
+  "short_name": "Pivot",
+  "description": "Répondez aux consultations et gérez vos offres · Pivot La Racine",
+  "start_url": "/pivot-fournisseur.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1C3A2A",
+  "background_color": "#F5F0E8",
+  "icons": [
+    {
+      "src": "favicon-fournisseur.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

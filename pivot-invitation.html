@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitation · Pivot La Racine</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-entreprise.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --vert:    #1C3A2A;
+      --vert-md: #2D5940;
+      --vert-lt: #3E7A58;
+      --ecru:    #F5F0E8;
+      --cuivre:  #B87333;
+      --blanc:   #FAFAF7;
+      --gris:    #6B7280;
+      --gris-lt: #E8E4DC;
+    }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--vert); color: var(--vert); }
+    .page { display: flex; min-height: 100vh; }
+    .left {
+      flex: 1; background: var(--vert); padding: 48px 52px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      position: relative; overflow: hidden;
+    }
+    .left-glow { position: absolute; bottom: -100px; right: -80px; width: 420px; height: 420px;
+      background: radial-gradient(circle, rgba(62,122,88,0.3) 0%, transparent 70%); pointer-events: none; }
+    .grid-lines { position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(245,240,232,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,240,232,0.03) 1px, transparent 1px);
+      background-size: 32px 32px; pointer-events: none; }
+    .logo-row { display: flex; align-items: baseline; position: relative; }
+    .logo-pivot { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 900; color: var(--ecru); letter-spacing: -0.02em; }
+    .logo-sub { font-size: 0.7rem; font-weight: 500; color: var(--vert-lt); letter-spacing: 0.12em; text-transform: uppercase; margin-left: 12px; }
+    .left-tagline { position: relative; }
+    .left-tagline h2 { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 700; color: var(--ecru); line-height: 1.25; margin-bottom: 12px; }
+    .left-tagline p { color: var(--vert-lt); font-size: 0.9rem; line-height: 1.6; }
+    .left-footer { position: relative; color: rgba(245,240,232,0.3); font-size: 0.72rem; }
+    .right { width: 460px; background: var(--blanc); display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .card { width: 100%; max-width: 380px; }
+    .card-title { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; color: var(--vert); margin-bottom: 6px; }
+    .card-sub { color: var(--gris); font-size: 0.85rem; margin-bottom: 28px; line-height: 1.5; }
+    .invite-box { background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
+    .invite-box .org { font-weight: 600; color: var(--vert); font-size: 1rem; }
+    .invite-box .meta { color: var(--gris); font-size: 0.8rem; margin-top: 4px; }
+    label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--vert); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+    .field { margin-bottom: 16px; }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%; padding: 11px 14px; border: 1.5px solid var(--gris-lt); border-radius: 8px;
+      font-size: 0.92rem; color: var(--vert); background: white; outline: none; transition: border-color .2s;
+      font-family: 'Inter', sans-serif;
+    }
+    input:focus { border-color: var(--vert-md); }
+    .pwd-wrap { position: relative; }
+    .pwd-wrap input { padding-right: 42px; }
+    .pwd-eye { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #9CA3AF; }
+    .btn-primary {
+      width: 100%; padding: 13px; background: var(--vert); color: var(--ecru);
+      border: none; border-radius: 10px; font-size: 0.92rem; font-weight: 600;
+      cursor: pointer; transition: background .2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: 'Inter', sans-serif;
+    }
+    .btn-primary:hover { background: var(--vert-md); }
+    .btn-primary:disabled { opacity: .5; cursor: default; }
+    .btn-secondary {
+      width: 100%; padding: 11px; background: white; color: var(--vert);
+      border: 1.5px solid var(--gris-lt); border-radius: 10px; font-size: 0.88rem; font-weight: 500;
+      cursor: pointer; transition: border-color .2s; font-family: 'Inter', sans-serif; margin-top: 10px;
+    }
+    .btn-secondary:hover { border-color: var(--vert); }
+    .error-msg { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 16px; display: none; }
+    .error-msg.visible { display: block; }
+    .success-msg { background: #F0FDF4; border: 1px solid #BBF7D0; color: #15803D; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 16px; display: none; }
+    .success-msg.visible { display: block; }
+    .tab-row { display: flex; gap: 0; margin-bottom: 24px; border: 1.5px solid var(--gris-lt); border-radius: 10px; overflow: hidden; }
+    .tab-btn { flex: 1; padding: 9px; font-size: 0.82rem; font-weight: 500; cursor: pointer; border: none; background: white; color: var(--gris); transition: background .15s, color .15s; font-family: 'Inter', sans-serif; }
+    .tab-btn.active { background: var(--vert); color: var(--ecru); }
+    .form-section { display: none; }
+    .form-section.active { display: block; }
+    .loading-box { text-align: center; padding: 32px 0; color: var(--gris); font-size: 0.9rem; }
+    .expired-box { text-align: center; padding: 24px 0; }
+    .expired-box .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .expired-box p { color: var(--gris); font-size: 0.9rem; }
+    @media (max-width: 700px) { .left { display: none; } .right { width: 100%; } }
+  </style>
+</head>
+<body>
+<div class="page">
+  <!-- Panneau gauche -->
+  <div class="left">
+    <div class="grid-lines"></div>
+    <div class="left-glow"></div>
+    <div class="logo-row">
+      <span class="logo-pivot">Pivot</span>
+      <span class="logo-sub">la racine</span>
+    </div>
+    <div class="left-tagline">
+      <h2>Rejoignez votre équipe</h2>
+      <p>Vous avez été invité à rejoindre une structure sur Pivot La Racine, la plateforme de gestion du végétal pour les professionnels.</p>
+    </div>
+    <div class="left-footer">© 2025 Pivot La Racine</div>
+  </div>
+
+  <!-- Panneau droit -->
+  <div class="right">
+    <div class="card">
+
+      <!-- Chargement -->
+      <div id="state-loading" class="loading-box">Vérification de l'invitation…</div>
+
+      <!-- Invitation expirée / invalide -->
+      <div id="state-invalid" style="display:none">
+        <div class="expired-box">
+          <div class="icon">⚠️</div>
+          <p class="font-semibold" style="color:var(--vert);margin-bottom:8px">Invitation invalide</p>
+          <p id="invalid-msg">Ce lien d'invitation est invalide ou a expiré.</p>
+        </div>
+      </div>
+
+      <!-- Déjà acceptée (utilisateur connecté et déjà membre) -->
+      <div id="state-already" style="display:none">
+        <div class="expired-box">
+          <div class="icon">✅</div>
+          <p style="color:var(--vert);font-weight:600;margin-bottom:8px">Invitation déjà acceptée</p>
+          <p style="color:var(--gris);font-size:.9rem">Vous êtes déjà membre de cette structure.</p>
+          <button class="btn-primary" style="margin-top:20px" id="btn-go-portal">Accéder au portail →</button>
+        </div>
+      </div>
+
+      <!-- Formulaire principal -->
+      <div id="state-form" style="display:none">
+        <p class="card-title">Invitation reçue</p>
+        <p class="card-sub">Vous avez été invité à rejoindre :</p>
+
+        <div class="invite-box">
+          <div class="org" id="inv-org-name">—</div>
+          <div class="meta" id="inv-org-meta">—</div>
+        </div>
+
+        <!-- Utilisateur déjà connecté -->
+        <div id="section-logged-in" style="display:none">
+          <p style="font-size:.88rem;color:var(--gris);margin-bottom:16px">
+            Connecté en tant que <strong id="logged-email"></strong>.
+          </p>
+          <div class="error-msg" id="err-loggedin"></div>
+          <button class="btn-primary" id="btn-accept-loggedin" onclick="acceptInvitation()">
+            Rejoindre la structure →
+          </button>
+          <button class="btn-secondary" onclick="db.auth.signOut().then(()=>location.reload())">
+            Changer de compte
+          </button>
+        </div>
+
+        <!-- Utilisateur non connecté -->
+        <div id="section-auth" style="display:none">
+          <div class="tab-row">
+            <button class="tab-btn active" id="tab-signup" onclick="switchTab('signup')">Créer un compte</button>
+            <button class="tab-btn" id="tab-signin" onclick="switchTab('signin')">Se connecter</button>
+          </div>
+
+          <div id="error-auth" class="error-msg"></div>
+          <div id="success-auth" class="success-msg"></div>
+
+          <!-- Création compte -->
+          <div id="form-signup" class="form-section active">
+            <div class="field">
+              <label>Prénom et nom</label>
+              <input type="text" id="signup-nom" placeholder="Jean Dupont">
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input type="email" id="signup-email" placeholder="jean@exemple.fr">
+            </div>
+            <div class="field">
+              <label>Mot de passe</label>
+              <div class="pwd-wrap">
+                <input type="password" id="signup-pwd" placeholder="8 caractères minimum">
+                <button type="button" class="pwd-eye" onclick="togglePwd('signup-pwd',this)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <button class="btn-primary" id="btn-signup" onclick="handleSignup()">
+              Créer mon compte et rejoindre →
+            </button>
+          </div>
+
+          <!-- Connexion -->
+          <div id="form-signin" class="form-section">
+            <div class="field">
+              <label>Email</label>
+              <input type="email" id="signin-email" placeholder="jean@exemple.fr">
+            </div>
+            <div class="field">
+              <label>Mot de passe</label>
+              <div class="pwd-wrap">
+                <input type="password" id="signin-pwd" placeholder="Votre mot de passe">
+                <button type="button" class="pwd-eye" onclick="togglePwd('signin-pwd',this)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <button class="btn-primary" id="btn-signin" onclick="handleSignin()">
+              Se connecter et rejoindre →
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+  const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const PORTAL_REDIRECT = {
+    entrepreneur: 'pivot-entrepreneur.html',
+    fournisseur:  'pivot-fournisseur.html',
+    moe:          'pivot-moe.html',
+  };
+  const TYPE_LABEL = { entrepreneur: 'Société', fournisseur: 'Établissement', moe: 'Agence' };
+
+  let _inv = null; // invitation courante
+
+  function show(id) {
+    ['state-loading','state-invalid','state-already','state-form'].forEach(s =>
+      document.getElementById(s).style.display = s === id ? '' : 'none');
+  }
+
+  function showErr(elId, msg) {
+    const el = document.getElementById(elId);
+    el.textContent = msg; el.classList.add('visible');
+  }
+  function hideErr(elId) { document.getElementById(elId)?.classList.remove('visible'); }
+
+  function switchTab(tab) {
+    ['signup','signin'].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+      document.getElementById(`form-${t}`).classList.toggle('active', t === tab);
+    });
+    document.getElementById('error-auth').classList.remove('visible');
+    document.getElementById('success-auth').classList.remove('visible');
+  }
+
+  function togglePwd(id, btn) {
+    const input = document.getElementById(id);
+    input.type = input.type === 'password' ? 'text' : 'password';
+    btn.style.color = input.type === 'text' ? 'var(--vert)' : '#9CA3AF';
+  }
+
+  async function init() {
+    const params = new URLSearchParams(location.search);
+    const token  = params.get('token');
+
+    if (!token) { show('state-invalid'); document.getElementById('invalid-msg').textContent = 'Aucun token d\'invitation trouvé dans l\'URL.'; return; }
+
+    // Charger l'invitation
+    const { data: inv, error } = await db.from('structure_invitations')
+      .select('*, structures(id, nom, type)')
+      .eq('token', token)
+      .maybeSingle();
+
+    if (error || !inv) { show('state-invalid'); return; }
+
+    // Vérifier expiration
+    if (new Date(inv.expires_at) < new Date()) {
+      show('state-invalid');
+      document.getElementById('invalid-msg').textContent = 'Ce lien d\'invitation a expiré (validité 7 jours). Demandez un nouveau lien à votre administrateur.';
+      return;
+    }
+
+    // Vérifier si déjà acceptée
+    if (inv.accepted_at) {
+      show('state-invalid');
+      document.getElementById('invalid-msg').textContent = 'Cette invitation a déjà été utilisée.';
+      return;
+    }
+
+    _inv = inv;
+
+    // Afficher le nom de la structure
+    const struct = inv.structures;
+    const typeLabel = TYPE_LABEL[struct?.type] || 'Structure';
+    const roleLabel = inv.role === 'admin_compte' ? '★ Admin compte' : 'Membre';
+    document.getElementById('inv-org-name').textContent = struct?.nom || '—';
+    document.getElementById('inv-org-meta').textContent =
+      `${typeLabel} · ${roleLabel}${inv.has_licence ? ' · Licence portail incluse' : ''}`;
+
+    show('state-form');
+
+    // Vérifier si l'utilisateur est déjà connecté
+    const { data: { session } } = await db.auth.getSession();
+    if (session?.user) {
+      // Vérifier s'il est déjà membre
+      const { data: existing } = await db.from('structure_membres')
+        .select('id').eq('user_id', session.user.id).eq('structure_id', struct.id).maybeSingle();
+      if (existing) { show('state-already'); setupPortalBtn(struct.type); return; }
+
+      document.getElementById('logged-email').textContent = session.user.email;
+      document.getElementById('section-logged-in').style.display = '';
+    } else {
+      // Pré-remplir l'email invité si disponible
+      if (inv.email) {
+        document.getElementById('signup-email').value = inv.email;
+        document.getElementById('signin-email').value = inv.email;
+      }
+      document.getElementById('section-auth').style.display = '';
+    }
+  }
+
+  function setupPortalBtn(type) {
+    const btn = document.getElementById('btn-go-portal');
+    if (btn) btn.onclick = () => { window.location.href = PORTAL_REDIRECT[type] || 'index.html'; };
+  }
+
+  async function acceptInvitation(userId) {
+    const { data: { session } } = await db.auth.getSession();
+    const uid = userId || session?.user?.id;
+    if (!uid || !_inv) return false;
+
+    const struct = _inv.structures;
+
+    // 1. Ajouter dans structure_membres
+    const { error: e1 } = await db.from('structure_membres').insert({
+      user_id:      uid,
+      structure_id: struct.id,
+      role:         _inv.role,
+      has_licence:  _inv.has_licence,
+    });
+    if (e1 && e1.code !== '23505') { // 23505 = unique violation (déjà membre)
+      showErr('err-loggedin', 'Erreur : ' + e1.message);
+      return false;
+    }
+
+    // 2. Mettre à jour le profil (structure_id + rôle portail)
+    const portailRole = { entrepreneur: 'entreprise', fournisseur: 'fournisseur', moe: 'moe' }[struct.type] || null;
+    await db.from('profiles').upsert({
+      id:           uid,
+      structure_id: struct.id,
+      role:         portailRole,
+    }, { onConflict: 'id' });
+
+    // 3. Marquer l'invitation comme acceptée
+    await db.from('structure_invitations').update({ accepted_at: new Date().toISOString() }).eq('id', _inv.id);
+
+    return true;
+  }
+
+  async function handleSignup() {
+    const nom   = document.getElementById('signup-nom').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const pwd   = document.getElementById('signup-pwd').value;
+    const btn   = document.getElementById('btn-signup');
+
+    hideErr('error-auth');
+    if (!nom || !email || !pwd) { showErr('error-auth', 'Remplissez tous les champs.'); return; }
+    if (pwd.length < 8)         { showErr('error-auth', 'Le mot de passe doit contenir au moins 8 caractères.'); return; }
+
+    btn.disabled = true; btn.textContent = 'Création en cours…';
+
+    const { data: authData, error } = await db.auth.signUp({ email, password: pwd, options: { data: { nom } } });
+    if (error) { showErr('error-auth', error.message); btn.disabled = false; btn.textContent = 'Créer mon compte et rejoindre →'; return; }
+
+    // Créer le profil dans profiles (nom)
+    if (authData.user) {
+      await db.from('profiles').upsert({ id: authData.user.id, nom }, { onConflict: 'id' });
+      const ok = await acceptInvitation(authData.user.id);
+      if (ok) {
+        const struct = _inv.structures;
+        document.getElementById('success-auth').textContent = 'Compte créé ! Redirection en cours…';
+        document.getElementById('success-auth').classList.add('visible');
+        setTimeout(() => { window.location.href = PORTAL_REDIRECT[struct.type] || 'index.html'; }, 1500);
+      }
+    }
+    btn.disabled = false; btn.textContent = 'Créer mon compte et rejoindre →';
+  }
+
+  async function handleSignin() {
+    const email = document.getElementById('signin-email').value.trim();
+    const pwd   = document.getElementById('signin-pwd').value;
+    const btn   = document.getElementById('btn-signin');
+
+    hideErr('error-auth');
+    if (!email || !pwd) { showErr('error-auth', 'Remplissez email et mot de passe.'); return; }
+
+    btn.disabled = true; btn.textContent = 'Connexion en cours…';
+
+    const { data: authData, error } = await db.auth.signInWithPassword({ email, password: pwd });
+    if (error) { showErr('error-auth', 'Email ou mot de passe incorrect.'); btn.disabled = false; btn.textContent = 'Se connecter et rejoindre →'; return; }
+
+    const ok = await acceptInvitation(authData.user.id);
+    if (ok) {
+      const struct = _inv.structures;
+      document.getElementById('success-auth').textContent = 'Connecté ! Redirection en cours…';
+      document.getElementById('success-auth').classList.add('visible');
+      setTimeout(() => { window.location.href = PORTAL_REDIRECT[struct.type] || 'index.html'; }, 1500);
+    }
+    btn.disabled = false; btn.textContent = 'Se connecter et rejoindre →';
+  }
+
+  init();
+</script>
+</body>
+</html>
