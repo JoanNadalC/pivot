@@ -8376,18 +8376,20 @@ function renderDaf() {
   }
   const redacteurNom = [state.profile?.prenom, state.profile?.nom].filter(Boolean).join(' ') || state.user?.email || '—';
   let html = `
-    <div class="flex items-center gap-3 mb-2 flex-wrap">
-      <label class="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
-        <input type="checkbox" id="daf-select-all" onchange="dafSelectAll(this.checked)" class="rounded"> Tout sélectionner
-      </label>
-      <button onclick="dafExportFiches()" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-green-700">📄 Export fiches sélectionnées</button>
-      <button onclick="ouvrirParametresDAF()" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700">⚙️ Paramètres DAF</button>
-      <button onclick="openDafLibrary()" class="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-amber-700">📚 Bibliothèque DAF</button>
-      ${window._dafClipboard ? `<span class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">📋 Copié : <em>${escHtml(window._dafClipboard.sourceDesig)}</em> — cliquez 📥 pour coller</span>` : ''}
-    </div>
-    <div class="flex items-center gap-2 mb-3 text-xs text-gray-500">
-      <span class="font-medium text-gray-600">Rédacteur :</span>
-      <span>${escHtml(redacteurNom)}</span>
+    <div class="sticky z-20 pt-2 pb-2 -mx-1 px-1" style="top:100px;background:var(--ecru)">
+      <div class="flex items-center gap-3 mb-2 flex-wrap">
+        <label class="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+          <input type="checkbox" id="daf-select-all" onchange="dafSelectAll(this.checked)" class="rounded"> Tout sélectionner
+        </label>
+        <button onclick="dafExportFiches()" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-green-700">📄 Export fiches sélectionnées</button>
+        <button onclick="ouvrirParametresDAF()" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700">⚙️ Paramètres DAF</button>
+        <button onclick="openDafLibrary()" class="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-amber-700">📚 Bibliothèque DAF</button>
+        ${window._dafClipboard ? `<span class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">📋 Copié : <em>${escHtml(window._dafClipboard.sourceDesig)}</em> — cliquez 📥 pour coller</span>` : ''}
+      </div>
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span class="font-medium text-gray-600">Rédacteur :</span>
+        <span>${escHtml(redacteurNom)}</span>
+      </div>
     </div>`;
   for (const [famId, items] of Object.entries(famMap)) {
     const fam = state.familles.find(f => f.id === famId) || { nom: 'Autres', icone: '📦', couleur: '#6b7280' };
@@ -8667,8 +8669,48 @@ async function openDafLibrary(targetFId = null) {
     window._dafLibAllData = deduped;
     window._dafLibTarget = targetFId;
     window._dafLibScope = 'all'; // 'own' ou 'all'
+    window._dafLibFam = null;
     _renderDafLibrary('');
   } catch (err) { showModal(`<p class="text-red-500">${err.message}</p>`); }
+}
+
+function _dafLibRowHtml(d) {
+  const fam = d._fam;
+  const famChip = fam ? `<span class="text-xs px-1.5 py-0.5 rounded-full" style="background:${fam.couleur}20;color:${fam.couleur}">${fam.icone} ${escHtml(fam.nom)}</span>` : '';
+  const dupBadge = d._dupCount > 0
+    ? `<span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded" title="${escHtml((d._dupChantiers||[]).join(', '))}">×${d._dupCount + 1} chantiers</span>`
+    : '';
+  const fichesHtml = (d.fiches || []).length
+    ? (d.fiches || []).map(ft => {
+        const icon = ft.type === 'file' ? '📎' : '🔗';
+        const url = ft.url || '';
+        return url
+          ? `<a href="${escHtml(url)}" target="_blank" download class="text-xs text-blue-500 hover:underline">${icon} ${escHtml(ft.nom || 'Fichier')}</a>`
+          : `<span class="text-xs text-gray-400">${icon} ${escHtml(ft.nom || 'Fichier')}</span>`;
+      }).join('<span class="text-gray-200 mx-1">|</span>')
+    : '<span class="text-xs text-gray-300 italic">Aucune fiche</span>';
+  const caractHtml = (d.caract || []).length
+    ? `<div class="mt-1.5 bg-amber-50 rounded px-2 py-1.5 space-y-0.5">
+        ${d.caract.map(c => `<div class="flex gap-1 text-xs"><span class="text-amber-700 font-medium min-w-24 shrink-0">${escHtml(c.cle)} :</span><span class="text-gray-700">${escHtml(String(c.valeur))}</span></div>`).join('')}
+      </div>`
+    : '';
+  return `
+    <div class="border rounded-lg p-3 mb-2 hover:border-amber-300 transition-colors">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            ${famChip}
+            <span class="text-sm font-medium">${escHtml(d._designation || '—')}</span>
+            ${d._fourn?.numero_poste ? `<span class="text-xs text-gray-400 font-mono">${escHtml(d._fourn.numero_poste)}</span>` : ''}
+            ${dupBadge}
+          </div>
+          <p class="text-xs text-gray-400 mb-1.5">📁 ${escHtml(d._chantier?.affaire || '—')}</p>
+          <div class="flex flex-wrap gap-2 mb-1">${fichesHtml}</div>
+          ${caractHtml}
+        </div>
+        <button onclick="_dafLibImport('${d.id}')" class="shrink-0 bg-amber-600 text-white px-3 py-1.5 rounded text-xs hover:bg-amber-700 whitespace-nowrap mt-1">📥 Importer</button>
+      </div>
+    </div>`;
 }
 
 function _renderDafLibrary(q) {
@@ -8677,7 +8719,9 @@ function _renderDafLibrary(q) {
   const allData = window._dafLibAllData || [];
   let scopeData = scope === 'own' ? allData.filter(d => d._isOwn) : allData;
   if (year) scopeData = scopeData.filter(d => d.created_at && new Date(d.created_at).getFullYear() === parseInt(year));
-  const results = q.trim()
+
+  const isSearch = q.trim().length > 0;
+  const results = isSearch
     ? scopeData.filter(d => {
         const caractTxt = (d.caract || []).map(c => `${c.cle} ${c.valeur}`).join(' ');
         const txt = [d._designation, d._fourn?.numero_poste, d.notes_entrepreneur, d._chantier?.affaire, caractTxt].join(' ').toLowerCase();
@@ -8685,44 +8729,36 @@ function _renderDafLibrary(q) {
       })
     : scopeData;
 
-  const rowsHtml = results.length ? results.map(d => {
-    const fam = d._fam;
-    const famChip = fam ? `<span class="text-xs px-1.5 py-0.5 rounded-full" style="background:${fam.couleur}20;color:${fam.couleur}">${fam.icone} ${escHtml(fam.nom)}</span>` : '';
-    const dupBadge = d._dupCount > 0
-      ? `<span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded" title="${escHtml((d._dupChantiers||[]).join(', '))}">×${d._dupCount + 1} chantiers</span>`
-      : '';
-    const fichesHtml = (d.fiches || []).length
-      ? (d.fiches || []).map(ft => {
-          const icon = ft.type === 'file' ? '📎' : '🔗';
-          const url = ft.url || '';
-          return url
-            ? `<a href="${escHtml(url)}" target="_blank" download class="text-xs text-blue-500 hover:underline">${icon} ${escHtml(ft.nom || 'Fichier')}</a>`
-            : `<span class="text-xs text-gray-400">${icon} ${escHtml(ft.nom || 'Fichier')}</span>`;
-        }).join('<span class="text-gray-200 mx-1">|</span>')
-      : '<span class="text-xs text-gray-300 italic">Aucune fiche</span>';
-    const caractHtml = (d.caract || []).length
-      ? `<div class="mt-1.5 bg-amber-50 rounded px-2 py-1.5 space-y-0.5">
-          ${d.caract.map(c => `<div class="flex gap-1 text-xs"><span class="text-amber-700 font-medium min-w-24 shrink-0">${escHtml(c.cle)} :</span><span class="text-gray-700">${escHtml(String(c.valeur))}</span></div>`).join('')}
-        </div>`
-      : '';
-    return `
-      <div class="border rounded-lg p-3 mb-2 hover:border-amber-300 transition-colors">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 flex-wrap mb-1">
-              ${famChip}
-              <span class="text-sm font-medium">${escHtml(d._designation || '—')}</span>
-              ${d._fourn?.numero_poste ? `<span class="text-xs text-gray-400 font-mono">${escHtml(d._fourn.numero_poste)}</span>` : ''}
-              ${dupBadge}
-            </div>
-            <p class="text-xs text-gray-400 mb-1.5">📁 ${escHtml(d._chantier?.affaire || '—')}</p>
-            <div class="flex flex-wrap gap-2 mb-1">${fichesHtml}</div>
-            ${caractHtml}
-          </div>
-          <button onclick="_dafLibImport('${d.id}')" class="shrink-0 bg-amber-600 text-white px-3 py-1.5 rounded text-xs hover:bg-amber-700 whitespace-nowrap mt-1">📥 Importer</button>
-        </div>
-      </div>`;
-  }).join('') : '<p class="text-sm text-gray-400 italic text-center py-4">Aucune DAF trouvée.</p>';
+  // Contenu : recherche → liste plate ; sinon familles → clic → DAF de la famille
+  let rowsHtml, countText;
+  if (isSearch) {
+    rowsHtml = results.length ? results.map(_dafLibRowHtml).join('') : '<p class="text-sm text-gray-400 italic text-center py-4">Aucune DAF trouvée.</p>';
+    countText = `${results.length} résultat(s)`;
+  } else if (!window._dafLibFam) {
+    const byFam = {};
+    scopeData.forEach(d => { const k = d._fam?.id || '_none'; (byFam[k] ||= { fam: d._fam, items: [] }).items.push(d); });
+    const groups = Object.values(byFam).sort((a, b) => (a.fam?.nom || 'zzz').localeCompare(b.fam?.nom || 'zzz'));
+    rowsHtml = groups.length ? groups.map(g => {
+      const fam = g.fam;
+      const chip = fam
+        ? `<span style="background:${fam.couleur}20;color:${fam.couleur}" class="text-sm px-2 py-0.5 rounded-full font-medium">${fam.icone} ${escHtml(fam.nom)}</span>`
+        : '<span class="text-sm text-gray-500 font-medium">📦 Sans famille</span>';
+      return `<button onclick="_dafLibSetFam('${fam?.id || '_none'}')" class="w-full flex items-center justify-between px-3 py-3 border rounded-lg mb-2 hover:border-amber-300 hover:bg-amber-50 text-left">
+        ${chip}
+        <span class="text-xs text-gray-400 shrink-0">${g.items.length} DAF ›</span>
+      </button>`;
+    }).join('') : '<p class="text-sm text-gray-400 italic text-center py-4">Aucune DAF.</p>';
+    countText = `${groups.length} famille(s)`;
+  } else {
+    const fk = window._dafLibFam;
+    const items = scopeData.filter(d => (d._fam?.id || '_none') === fk);
+    const fam0 = items[0]?._fam;
+    const famName = fam0 ? `${fam0.icone} ${fam0.nom}` : '📦 Sans famille';
+    rowsHtml = `<button onclick="_dafLibSetFam(null)" class="text-xs text-amber-700 hover:underline mb-2">← Toutes les familles</button>
+      <p class="text-sm font-semibold text-gray-700 mb-2">${escHtml(famName)}</p>`
+      + (items.length ? items.map(_dafLibRowHtml).join('') : '<p class="text-sm text-gray-400 italic text-center py-4">Aucune DAF.</p>');
+    countText = `${items.length} DAF`;
+  }
 
   // Premier rendu
   if (!document.getElementById('daf-lib-results')) {
@@ -8760,22 +8796,32 @@ function _renderDafLibrary(q) {
   const resEl = document.getElementById('daf-lib-results');
   const countEl = document.getElementById('daf-lib-count');
   if (resEl) resEl.innerHTML = rowsHtml;
-  if (countEl) countEl.textContent = `${results.length} résultat(s)${results.length < scopeData.length ? ` sur ${scopeData.length}` : ''}`;
-  // Sync boutons scope
+  if (countEl) countEl.textContent = countText;
+  // Sync boutons scope (remplacement complet des classes pour éviter les restes de hover)
+  const _scopeActive = 'px-3 py-1.5 rounded text-xs font-medium border border-amber-400 bg-amber-600 text-white';
+  const _scopeIdle   = 'px-3 py-1.5 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:bg-gray-50';
   const btnAll = document.getElementById('daf-lib-btn-all');
   const btnOwn = document.getElementById('daf-lib-btn-own');
-  if (btnAll) { btnAll.classList.toggle('bg-amber-600', scope === 'all'); btnAll.classList.toggle('text-white', scope === 'all'); btnAll.classList.toggle('border-amber-400', scope === 'all'); btnAll.classList.toggle('border-gray-300', scope !== 'all'); }
-  if (btnOwn) { btnOwn.classList.toggle('bg-amber-600', scope === 'own'); btnOwn.classList.toggle('text-white', scope === 'own'); btnOwn.classList.toggle('border-amber-400', scope === 'own'); btnOwn.classList.toggle('border-gray-300', scope !== 'own'); }
+  if (btnAll) btnAll.className = scope === 'all' ? _scopeActive : _scopeIdle;
+  if (btnOwn) btnOwn.className = scope === 'own' ? _scopeActive : _scopeIdle;
 }
 
 function _dafLibSetScope(scope) {
   window._dafLibScope = scope;
+  window._dafLibFam = null;
   const q = document.getElementById('daf-lib-search')?.value || '';
   _renderDafLibrary(q);
 }
 
 function _dafLibSetYear(year) {
   window._dafLibYear = year || '';
+  window._dafLibFam = null;
+  const q = document.getElementById('daf-lib-search')?.value || '';
+  _renderDafLibrary(q);
+}
+
+function _dafLibSetFam(famId) {
+  window._dafLibFam = famId; // null = liste des familles ; '_none' = sans famille
   const q = document.getElementById('daf-lib-search')?.value || '';
   _renderDafLibrary(q);
 }
