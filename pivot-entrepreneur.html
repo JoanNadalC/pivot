@@ -1487,16 +1487,19 @@ async function openEquipeModal() {
     const nbMax = structure.nb_licences_max || '∞';
     const nbUsed = membres.length;
 
-    const membresHtml = membres.map(m => {
+    // Le responsable Pivot (référent) apparaît toujours en premier, clairement distingué des membres
+    const membresTries = [...membres].sort((a, b) => (a.role === 'referent' ? -1 : 0) - (b.role === 'referent' ? -1 : 0));
+    const membresHtml = membresTries.map(m => {
       const u = userMap[m.user_id] || {};
       const isSelf = m.user_id === state.user.id;
-      const canRemove = !isSelf && m.role !== 'referent';
+      const isReferent = m.role === 'referent';
+      const canRemove = !isSelf && !isReferent;
       return `<div class="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-800">${escHtml([u.prenom, u.nom].filter(Boolean).join(' ') || '—')}</p>
+          <p class="text-sm font-medium text-gray-800">${escHtml([u.prenom, u.nom].filter(Boolean).join(' ') || '—')}${isSelf ? ' <span class="text-gray-400 font-normal">(vous)</span>' : ''}</p>
           <p class="text-xs text-gray-500">${escHtml(u.email || m.user_id)}</p>
         </div>
-        <span class="text-xs px-2 py-0.5 rounded-full ${m.role === 'referent' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">${m.role}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium ${isReferent ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">${isReferent ? '👑 Responsable Pivot' : 'Membre'}</span>
         ${canRemove ? `<button onclick="retirerMembre('${m.user_id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">Retirer</button>` : ''}
       </div>`;
     }).join('');
@@ -8100,6 +8103,26 @@ async function saveCompFraisPort(consId, fournisseurId, input) {
   await db.from('consultation_fournisseurs').update({ frais_port: val }).eq('consultation_id', consId).eq('fournisseur_id', fournisseurId);
 }
 
+// Persiste immédiatement une sélection du comparatif (sans attendre un clic sur 💾)
+// pour qu'elle survive d'une session à l'autre. Fire-and-forget : ne bloque pas l'UI.
+async function _autosaveCompSelection(fId, consId) {
+  const jeuId = window._compCurrentJeuId || null;
+  const sel = state.compSelections[fId];
+  try {
+    if (!sel) {
+      let q = db.from('comparatif_selections').delete().eq('fourniture_id', fId).eq('consultation_id', consId);
+      q = jeuId ? q.eq('jeu_id', jeuId) : q.is('jeu_id', null);
+      await q;
+    } else {
+      await db.from('comparatif_selections').upsert({
+        jeu_id: jeuId, consultation_id: sel.consultation_id || consId, fourniture_id: fId,
+        fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'consultation_id,fourniture_id' });
+    }
+  } catch (err) { console.warn('autosave comparatif:', err); }
+}
+
 function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
   const cur = state.compSelections[fournitureId];
   if (cur?._variante && cur?.fournisseur_id === fournisseurId && cur?.prix_unit_ht != null && Math.abs(parseFloat(cur.prix_unit_ht)-prix) < 0.001) {
@@ -8108,6 +8131,7 @@ function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prix, qte: cur?.qte??null, _variante: true, consultation_id: consId };
   }
   _renderComparatif();
+  _autosaveCompSelection(fournitureId, consId);
 }
 
 function selectComp(fournitureId, fournisseurId, consId) {
@@ -8119,6 +8143,7 @@ function selectComp(fournitureId, fournisseurId, consId) {
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prev.prix_unit_ht??null, qte: prev.qte??null, consultation_id: consId };
   }
   _renderComparatif();
+  _autosaveCompSelection(fournitureId, consId);
 }
 
 function autoSelectCheapest() {
@@ -8139,6 +8164,7 @@ function autoSelectCheapest() {
     });
   }
   _renderComparatif();
+  saveCurrentJeu();
   toast(`🎯 ${count} ligne(s) — meilleur prix`);
 }
 
@@ -8146,12 +8172,14 @@ function updateCompPrix(fournitureId, value) {
   if (!state.compSelections[fournitureId]) return;
   state.compSelections[fournitureId].prix_unit_ht = parseFloat(value) || null;
   _renderComparatif();
+  _autosaveCompSelection(fournitureId, state.compSelections[fournitureId].consultation_id);
 }
 
 function updateCompQte(fournitureId, value, consId) {
   if (!state.compSelections[fournitureId]) state.compSelections[fournitureId] = { consultation_id: consId };
   state.compSelections[fournitureId].qte = parseFloat(value) || null;
   _renderComparatif();
+  _autosaveCompSelection(fournitureId, consId || state.compSelections[fournitureId].consultation_id);
 }
 
 // saveCompSelections kept as alias for backward compat (commande tab may call it)
