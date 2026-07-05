@@ -10786,7 +10786,20 @@ function dafCreateV2(fId) {
   const row = window._dafRows[fId];
   if (!row) return;
   const ver = (row.version || 1) + 1;
-  if (!confirm(`Créer une version v${ver} de cette DAF ? La version actuelle (v${row.version || 1}) sera conservée.`)) return;
+  showModal(`
+    <h2 class="text-lg font-bold mb-2">Nouvelle version</h2>
+    <p class="text-sm text-gray-600 mb-5">Créer une version v${ver} de cette DAF ? La version actuelle (v${row.version || 1}) sera conservée.</p>
+    <div class="flex gap-3">
+      <button onclick="closeModal();_dafCreateV2Confirmed('${fId}')" class="flex-1 bg-orange-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-orange-600">Créer v${ver}</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+}
+
+function _dafCreateV2Confirmed(fId) {
+  const row = window._dafRows[fId];
+  if (!row) return;
+  const ver = (row.version || 1) + 1;
   // Incrémenter le numéro de version dans le numéro DAF
   const newNumero = row.numero
     ? row.numero.replace(/-v(\d+)$/, (_, n) => `-v${parseInt(n) + 1}`)
