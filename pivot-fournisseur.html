@@ -671,8 +671,8 @@
             <button onclick="_dcatSetType('renseignement')" id="dcat-btn-rens" class="flex-1 border rounded-lg py-2 text-sm font-medium">❓ Renseignement</button>
           </div>
 
-          <div id="dcat-collab-wrap" class="hidden">
-            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Collaborateur</label>
+          <div id="dcat-collab-wrap">
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1" id="dcat-collab-label">Collaborateur</label>
             <div id="dcat-collab-list" class="space-y-1"></div>
           </div>
 
@@ -4750,9 +4750,12 @@ async function ouvrirModalDemandeCatalogue(source) {
   await loadCollaborateurs();
   const collabList = document.getElementById('dcat-collab-list');
   collabList.innerHTML = state.collaborateurs.length
-    ? state.collaborateurs.map((c, i) => `
+    ? `<label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+        <input type="radio" name="dcat-collab" value="" checked class="accent-blue-700">
+        <span class="text-sm text-gray-500 italic">Non assigné (assigner plus tard)</span>
+      </label>` + state.collaborateurs.map(c => `
       <label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
-        <input type="radio" name="dcat-collab" value="${c.id}" ${i === 0 ? 'checked' : ''} class="accent-blue-700">
+        <input type="radio" name="dcat-collab" value="${c.id}" class="accent-blue-700">
         <span class="text-sm">${escHtml(c.nom)}</span>
       </label>`).join('')
     : '<p class="text-xs text-gray-400 italic">Aucun collaborateur — ajoutez-en un depuis l\'onglet Équipe.</p>';
@@ -4770,7 +4773,7 @@ function _dcatSetType(type) {
   const isRens = type === 'renseignement';
   document.getElementById('dcat-btn-photo').className = 'flex-1 border rounded-lg py-2 text-sm font-medium ' + (isRens ? 'border-gray-200 text-gray-500' : 'border-green-600 bg-green-50 text-green-700');
   document.getElementById('dcat-btn-rens').className = 'flex-1 border rounded-lg py-2 text-sm font-medium ' + (isRens ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500');
-  document.getElementById('dcat-collab-wrap').classList.toggle('hidden', !isRens);
+  document.getElementById('dcat-collab-label').textContent = isRens ? 'Collaborateur' : 'Collaborateur (optionnel)';
   document.getElementById('dcat-message-label').textContent = isRens ? 'Votre question' : 'Message (optionnel)';
   document.getElementById('dcat-message').placeholder = isRens ? 'ex : quelle est la quantité disponible en stock ?' : 'ex : photos de face avec étiquette visible';
   document.getElementById('dcat-submit').className = 'w-full text-white py-3 rounded-xl text-sm font-semibold ' + (isRens ? 'bg-blue-700 hover:bg-blue-800' : 'bg-green-800 hover:bg-green-900');
@@ -4804,11 +4807,8 @@ async function confirmerDemandeCatalogue() {
   if (!checked.length) { err.textContent = 'Sélectionnez au moins un végétal.'; err.classList.remove('hidden'); return; }
 
   const isRens = _dcatType === 'renseignement';
-  let collabId = null;
-  if (isRens) {
-    collabId = document.querySelector('input[name="dcat-collab"]:checked')?.value;
-    if (!collabId) { err.textContent = 'Sélectionnez un collaborateur.'; err.classList.remove('hidden'); return; }
-  }
+  const collabId = document.querySelector('input[name="dcat-collab"]:checked')?.value || null;
+  if (isRens && !collabId) { err.textContent = 'Sélectionnez un collaborateur.'; err.classList.remove('hidden'); return; }
   const message = document.getElementById('dcat-message').value.trim();
   if (isRens && !message) { err.textContent = 'Précisez votre question.'; err.classList.remove('hidden'); return; }
 
@@ -4819,25 +4819,25 @@ async function confirmerDemandeCatalogue() {
     type: isRens ? 'renseignement' : 'photo',
     catalogue_ref: c.dataset.nom,
     fourniture_ids: [],
-    assignee_ids: isRens ? [collabId] : [],
+    assignee_ids: collabId ? [collabId] : [],
     message: message || (isRens ? null : `Photo catalogue : ${c.dataset.nom}`),
   }));
 
   const { error } = await db.from('demandes_photos').insert(rows);
   if (error) { err.textContent = 'Erreur : ' + error.message; err.classList.remove('hidden'); return; }
 
-  if (isRens) {
+  if (collabId) {
     const collab = state.collaborateurs.find(c => c.id === collabId);
     if (collab?.auth_user_id) {
       fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: collab.auth_user_id, portail: 'photos', title: 'Demande de renseignement', message: `${checked.length} article(s) catalogue : ${message}` })
+        body: JSON.stringify({ user_id: collab.auth_user_id, portail: 'photos', title: isRens ? 'Demande de renseignement' : 'Demande de photo', message: `${checked.length} article(s) catalogue${message ? ' : ' + message : ''}` })
       }).catch(() => {});
     }
   }
 
   fermerModalDemandeCatalogue();
-  toast(`${checked.length} demande(s) créée(s) ✓${isRens ? '' : ' — assignez-les depuis l\'onglet Photos'}`);
+  toast(`${checked.length} demande(s) créée(s) ✓${collabId ? '' : ' — assignez-les depuis l\'onglet Photos'}`);
   _checkPhotosBadge();
 }
 
