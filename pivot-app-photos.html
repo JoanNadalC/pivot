@@ -185,6 +185,11 @@
     <div class="progress-bar" style="margin-top:10px"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
   </div>
   <div class="fourniture-list" id="fourniture-list"></div>
+  <div style="padding:0 16px 24px">
+    <button onclick="marquerDemandeTerminee()" style="width:100%;background:var(--vert);color:var(--ecru);border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer">
+      ✓ Marquer comme terminé
+    </button>
+  </div>
 </div>
 
 <!-- CAMÉRA -->
@@ -527,6 +532,14 @@ function renderListe() {
   if (done === total && total > 0) {
     setTimeout(() => show('screen-done'), 600);
   }
+}
+
+async function marquerDemandeTerminee() {
+  const d = state.currentDemande;
+  const { error } = await db.from('demandes_photos').update({ statut: 'terminé' }).eq('id', d.id);
+  if (error) { showError('Erreur : ' + error.message); return; }
+  d.statut = 'terminé';
+  show('screen-done');
 }
 
 async function enregistrerReponseCollab(fournitureId, valeur) {
