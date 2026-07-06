@@ -4207,7 +4207,7 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
     : (isCatalogue
       ? Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0)
       : (d.fourniture_ids || []).filter(fid => dPhotos[fid] || termineMap[fid]).length);
-  const validCount = isRenseignement ? doneCount : Object.values(dPhotos).filter(p => p.valide).length;
+  const validCount = isRenseignement ? doneCount : Object.values(dPhotos).flat().filter(p => p.valide).length;
   const pct = total ? Math.round(Math.min(doneCount, total) / total * 100) : 0;
   const assigneeIds = d.assignee_ids || [];
   const isAssigned = assigneeIds.length > 0;
@@ -4241,9 +4241,9 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
         </div>`;
       }).join('');
   } else if (isCatalogue) {
-    const photo = Object.values(dPhotos)[0];
-    lignes = photo
-      ? `<div class="flex items-center gap-3 py-2 border-b last:border-0" id="ligne-${photo.id}">
+    const photos = Object.values(dPhotos)[0] || [];
+    lignes = photos.length
+      ? photos.map(photo => `<div class="flex items-center gap-3 py-2 border-b last:border-0" id="ligne-${photo.id}">
           <img src="${photo.url}" class="w-10 h-10 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
           <div class="flex-1 min-w-0 text-sm font-medium">${escHtml(d.catalogue_ref)}</div>
           <div class="flex gap-1 flex-shrink-0">
@@ -4251,7 +4251,7 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
               ? `<span class="text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-lg">✅ Validée</span>`
               : `<button onclick="validerPhoto('${photo.id}', '${d.id}')" class="text-xs text-green-800 bg-green-50 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-100">✅ Valider</button>`}
           </div>
-        </div>`
+        </div>`).join('')
       : `<div class="flex items-center gap-2 py-2 text-sm">
           <span class="text-gray-400">📷</span>
           <span class="text-gray-600 flex-1">${escHtml(d.catalogue_ref)}</span>
@@ -4260,31 +4260,36 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
   } else {
     lignes = (d.fourniture_ids || []).map(fid => {
       const f = fourMap[fid] || {};
-      const photo = dPhotos[fid];
+      const photos = dPhotos[fid] || [];
       const commentaire = d.fourniture_commentaires?.[fid] || '';
       const details = [f.taille, f.contenant].filter(Boolean).map(escHtml).join(' · ');
       const detailsHtml = details ? ` <span class="text-xs text-gray-400">· ${details}</span>` : '';
       const termineSansPhoto = !!(d.fourniture_termine || {})[fid];
-      if (!photo) {
+      if (!photos.length) {
         return `<div class="flex items-center gap-2 py-1.5 border-b last:border-0">
           <span class="text-base flex-shrink-0">${termineSansPhoto ? '✅' : '🌿'}</span>
           <div class="flex-1 min-w-0 text-sm truncate">${escHtml(f.designation || fid)}${detailsHtml}${commentaire ? ` <span class="text-xs text-amber-600 italic">· ${escHtml(commentaire)}</span>` : ''}</div>
           ${termineSansPhoto ? `<span class="text-xs text-green-700 flex-shrink-0">Terminé (sans photo)</span>` : (!isAssigned ? `<span class="text-xs text-gray-300 flex-shrink-0">En attente</span>` : '')}
         </div>`;
       }
-      return `<div class="flex items-center gap-2 py-1.5 border-b last:border-0" id="ligne-${photo.id}">
-        <img src="${photo.url}" class="w-10 h-10 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
-        <div class="flex-1 min-w-0">
-          <div class="text-sm truncate">${escHtml(f.designation || fid)}${detailsHtml}</div>
-          ${commentaire ? `<div class="text-xs text-amber-600 italic truncate">💬 ${escHtml(commentaire)}</div>` : ''}
-          <div class="text-xs text-gray-400">par ${escHtml(photo.uploaded_by || '—')}</div>
+      return `<div class="py-1.5 border-b last:border-0">
+        <div class="flex items-center gap-2 mb-1">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm truncate">${escHtml(f.designation || fid)}${detailsHtml} <span class="text-xs text-gray-400">· ${photos.length} photo${photos.length > 1 ? 's' : ''}</span></div>
+            ${commentaire ? `<div class="text-xs text-amber-600 italic truncate">💬 ${escHtml(commentaire)}</div>` : ''}
+          </div>
         </div>
-        <div class="flex flex-col gap-1 flex-shrink-0">
-          ${photo.valide
-            ? `<span class="text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-lg">✅</span>`
-            : `<button onclick="validerPhoto('${photo.id}', '${d.id}')" class="text-xs text-green-800 bg-green-50 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-100">✅</button>`}
-          <button onclick="ouvrirModalRenvoyer('${photo.id}', '${d.id}', '${fid}', ${JSON.stringify(commentaire)})"
-            class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg hover:bg-amber-100">↩</button>
+        <div class="flex flex-wrap gap-2">
+          ${photos.map(photo => `<div class="flex items-center gap-1.5 bg-white border border-gray-100 rounded-lg p-1" id="ligne-${photo.id}">
+            <img src="${photo.url}" class="w-9 h-9 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
+            <div class="flex flex-col gap-0.5">
+              ${photo.valide
+                ? `<span class="text-xs font-semibold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">✅</span>`
+                : `<button onclick="validerPhoto('${photo.id}', '${d.id}')" class="text-xs text-green-800 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-100">✅</button>`}
+              <button onclick="ouvrirModalRenvoyer('${photo.id}', '${d.id}', '${fid}', ${JSON.stringify(commentaire)})"
+                class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100">↩</button>
+            </div>
+          </div>`).join('')}
         </div>
       </div>`;
     }).join('');
@@ -4348,12 +4353,13 @@ async function loadDemandesPhotosForConsultation() {
     state._fourMap = { ...(state._fourMap || {}), ...fourMap };
 
     const { data: photos } = await db.from('photos_fournitures')
-      .select('id, demande_id, fourniture_id, url, uploaded_by, valide')
-      .in('demande_id', data.map(d => d.id));
+      .select('id, demande_id, fourniture_id, url, uploaded_by, valide, created_at')
+      .in('demande_id', data.map(d => d.id))
+      .order('created_at', { ascending: true });
     const photosMap = {};
     (photos || []).forEach(p => {
       if (!photosMap[p.demande_id]) photosMap[p.demande_id] = {};
-      photosMap[p.demande_id][p.fourniture_id] = p;
+      (photosMap[p.demande_id][p.fourniture_id] ||= []).push(p);
     });
 
     const collabMap = {};
@@ -4400,12 +4406,13 @@ async function loadReponsesPhotos() {
   state._fourMap = { ...(state._fourMap || {}), ...fourMap };
 
   const { data: photos } = await db.from('photos_fournitures')
-    .select('id, demande_id, fourniture_id, url, uploaded_by, valide')
-    .in('demande_id', data.map(d => d.id));
+    .select('id, demande_id, fourniture_id, url, uploaded_by, valide, created_at')
+    .in('demande_id', data.map(d => d.id))
+    .order('created_at', { ascending: true });
   const photosMap = {};
   (photos || []).forEach(p => {
     if (!photosMap[p.demande_id]) photosMap[p.demande_id] = {};
-    photosMap[p.demande_id][p.fourniture_id] = p;
+    (photosMap[p.demande_id][p.fourniture_id] ||= []).push(p);
   });
 
   const consultIds = [...new Set(data.map(d => d.consultation_id).filter(Boolean))];
@@ -4562,12 +4569,13 @@ async function loadDemandesPhotos() {
 
   // Photos (avec statut valide)
   const { data: photos } = await db.from('photos_fournitures')
-    .select('id, demande_id, fourniture_id, url, uploaded_by, valide')
-    .in('demande_id', data.map(d => d.id));
+    .select('id, demande_id, fourniture_id, url, uploaded_by, valide, created_at')
+    .in('demande_id', data.map(d => d.id))
+    .order('created_at', { ascending: true });
   const photosMap = {};
   (photos || []).forEach(p => {
     if (!photosMap[p.demande_id]) photosMap[p.demande_id] = {};
-    photosMap[p.demande_id][p.fourniture_id] = p;
+    (photosMap[p.demande_id][p.fourniture_id] ||= []).push(p);
   });
 
   // Consultations pour noms des chantiers + clients
@@ -4644,11 +4652,36 @@ function ouvrirPhoto(url) {
   document.body.appendChild(overlay);
 }
 
+// Recharge la vue des demandes actuellement affichée (elles ne vivent pas toutes dans le même écran)
+async function _refreshDemandesActiveView() {
+  if (state.currentConsultation) await loadDemandesPhotosForConsultation();
+  else if (state._dashMode === 'reponses-photos') await loadReponsesPhotos();
+  else await loadDemandesPhotos();
+}
+
 async function validerPhoto(photoId, demandeId) {
   const { error } = await db.from('photos_fournitures').update({ valide: true }).eq('id', photoId);
   if (error) { toast('Erreur : ' + error.message); return; }
   toast('Photo validée ✓');
-  await loadDemandesPhotos();
+
+  // La photo n'est visible côté portail entreprise qu'une fois validée : on notifie l'entrepreneur à ce moment-là
+  try {
+    const { data: d } = await db.from('demandes_photos').select('consultation_id').eq('id', demandeId).maybeSingle();
+    if (d?.consultation_id) {
+      const { data: cons } = await db.from('consultations').select('entrepreneur_id, titre, chantiers(affaire)').eq('id', d.consultation_id).maybeSingle();
+      if (cons?.entrepreneur_id) {
+        const nomChantier = cons.chantiers?.affaire || cons.titre || '';
+        const msg = `Photo reçue${nomChantier ? ' — ' + nomChantier : ''}`;
+        await db.from('notifications').insert({ type: 'photo_validee', user_id: cons.entrepreneur_id, message: msg, consultation_id: d.consultation_id, read: false });
+        fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: cons.entrepreneur_id, portail: 'entrepreneur', title: 'Photo reçue', message: msg })
+        }).catch(() => {});
+      }
+    }
+  } catch (err) { console.warn('notif photo validee:', err); }
+
+  await _refreshDemandesActiveView();
 }
 
 async function enregistrerReponseRenseignement(demandeId, fournitureId, valeur) {
@@ -4883,14 +4916,14 @@ async function confirmerRenvoyer() {
 
   toast('Demande renvoyée aux collaborateurs ↩');
   fermerModalRenvoyer();
-  await loadDemandesPhotos();
+  await _refreshDemandesActiveView();
 }
 
 async function utiliserPhotoExistante(fournitureId, url) {
   if (!_assignDemandeId) return;
   // Copier la photo dans cette demande et la marquer comme validée
   const d = await db.from('demandes_photos').select('consultation_id, fournisseur_id').eq('id', _assignDemandeId).maybeSingle();
-  await db.from('photos_fournitures').upsert({
+  await db.from('photos_fournitures').insert({
     demande_id: _assignDemandeId,
     fourniture_id: fournitureId,
     consultation_id: d.data?.consultation_id,
@@ -4898,7 +4931,7 @@ async function utiliserPhotoExistante(fournitureId, url) {
     url,
     uploaded_by: 'Réutilisée',
     valide: true,
-  }, { onConflict: 'demande_id,fourniture_id' });
+  });
   toast('Photo existante utilisée pour cette demande ✓');
   // Retirer visuellement le bloc suggestion
   const btn = event.target;

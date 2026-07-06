@@ -7709,7 +7709,8 @@ async function loadComparatif() {
       });
       (photosData || []).forEach(p => {
         const d = demandeById[p.demande_id];
-        if (!d || !p.url) return;
+        // La photo n'est montrée à l'entrepreneur qu'une fois validée par le fournisseur
+        if (!d || !p.url || !p.valide) return;
         (photosMap[p.fourniture_id] ||= {})[d.fournisseur_id] = {
           statut: 'recue', url: p.url, valide: p.valide, demandeDate: d.created_at
         };
