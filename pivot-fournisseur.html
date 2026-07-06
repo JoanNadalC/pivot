@@ -419,6 +419,7 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-bold text-gray-800">Mon catalogue</h2>
         <div class="flex gap-2">
+          <button onclick="ouvrirModalDemandeCatalogue()" class="border border-amber-500 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
           <button onclick="openAddCatalogueModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ Ajouter article</button>
           <button onclick="document.getElementById('cat-import').click()" class="border border-blue-600 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">📂 Import CSV</button>
           <input id="cat-import" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
@@ -623,6 +624,49 @@
         <div class="flex gap-2">
           <button onclick="fermerModalDemandeRenseignement()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Annuler</button>
           <button onclick="confirmerDemandeRenseignement()" class="flex-1 bg-blue-700 text-white text-sm py-2 rounded-lg hover:bg-blue-800 font-semibold">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DEMANDE CATALOGUE (PHOTO OU RENSEIGNEMENT, MULTI-SÉLECTION) -->
+    <div id="modal-demande-catalogue" class="hidden fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
+          <h3 class="text-base font-bold text-gray-800">📷 Demande de photo / renseignement</h3>
+          <button onclick="fermerModalDemandeCatalogue()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-5 space-y-4">
+          <div class="flex gap-2">
+            <button onclick="_dcatSetType('photo')" id="dcat-btn-photo" class="flex-1 border rounded-lg py-2 text-sm font-medium">📷 Photo</button>
+            <button onclick="_dcatSetType('renseignement')" id="dcat-btn-rens" class="flex-1 border rounded-lg py-2 text-sm font-medium">❓ Renseignement</button>
+          </div>
+
+          <div id="dcat-collab-wrap" class="hidden">
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Collaborateur</label>
+            <div id="dcat-collab-list" class="space-y-1"></div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1" id="dcat-message-label">Message (optionnel)</label>
+            <textarea id="dcat-message" rows="2" placeholder="ex : photos de face avec étiquette visible" class="w-full border rounded-lg px-3 py-2 text-sm resize-none"></textarea>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Végétaux du catalogue</label>
+              <div class="flex gap-2">
+                <button onclick="_dcatCocheTout(true)" class="text-xs border rounded px-2 py-0.5 hover:bg-gray-50">Tout cocher</button>
+                <button onclick="_dcatCocheTout(false)" class="text-xs border rounded px-2 py-0.5 hover:bg-gray-50">Tout décocher</button>
+              </div>
+            </div>
+            <input id="dcat-search" type="text" placeholder="Rechercher un article…" oninput="_dcatRenderListe()" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:border-amber-400">
+            <div id="dcat-liste" class="space-y-1 max-h-56 overflow-y-auto border rounded-lg p-2"></div>
+          </div>
+
+          <p id="dcat-err" class="text-xs text-red-500 hidden"></p>
+        </div>
+        <div class="px-5 py-4 border-t flex-shrink-0">
+          <button onclick="confirmerDemandeCatalogue()" id="dcat-submit" class="w-full bg-green-800 text-white py-3 rounded-xl text-sm font-semibold hover:bg-green-900">Envoyer la demande</button>
         </div>
       </div>
     </div>
@@ -4128,7 +4172,7 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
   const reponses = d.fourniture_reponses || {};
   const termineMap = d.fourniture_termine || {};
   const doneCount = isRenseignement
-    ? (d.fourniture_ids || []).filter(fid => reponses[fid]).length
+    ? (isCatalogue ? (reponses['__catalogue__'] ? 1 : 0) : (d.fourniture_ids || []).filter(fid => reponses[fid]).length)
     : (isCatalogue
       ? Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0)
       : (d.fourniture_ids || []).filter(fid => dPhotos[fid] || termineMap[fid]).length);
@@ -4144,7 +4188,15 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
     : '<span class="text-xs text-gray-400 italic">Non assigné</span>';
 
   let lignes = '';
-  if (isRenseignement) {
+  if (isRenseignement && isCatalogue) {
+    const reponse = reponses['__catalogue__'] || '';
+    lignes = `${d.message ? `<div class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-2">❓ ${escHtml(d.message)}</div>` : ''}
+      <div class="flex items-center gap-2 py-1.5 border-b last:border-0">
+        <span class="text-base flex-shrink-0">🌿</span>
+        <div class="flex-1 min-w-0 text-sm truncate">${escHtml(d.catalogue_ref)}</div>
+        <input type="text" value="${escHtml(reponse)}" placeholder="Votre réponse..." onchange="enregistrerReponseRenseignement('${d.id}','__catalogue__', this.value)" class="text-xs border rounded-lg px-2 py-1 w-40 flex-shrink-0">
+      </div>`;
+  } else if (isRenseignement) {
     lignes = `${d.message ? `<div class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-2">❓ ${escHtml(d.message)}</div>` : ''}` +
       (d.fourniture_ids || []).map(fid => {
         const f = fourMap[fid] || {};
@@ -4419,12 +4471,12 @@ async function validerPhoto(photoId, demandeId) {
 }
 
 async function enregistrerReponseRenseignement(demandeId, fournitureId, valeur) {
-  const { data: d } = await db.from('demandes_photos').select('fourniture_ids, fourniture_reponses').eq('id', demandeId).single();
+  const { data: d } = await db.from('demandes_photos').select('fourniture_ids, fourniture_reponses, catalogue_ref').eq('id', demandeId).single();
   if (!d) return;
   const reponses = { ...(d.fourniture_reponses || {}) };
   if (valeur.trim()) reponses[fournitureId] = valeur.trim();
   else delete reponses[fournitureId];
-  const allAnswered = (d.fourniture_ids || []).every(fid => reponses[fid]);
+  const allAnswered = d.catalogue_ref ? !!reponses['__catalogue__'] : (d.fourniture_ids || []).every(fid => reponses[fid]);
   const { error } = await db.from('demandes_photos').update({
     fourniture_reponses: reponses,
     statut: allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente')
@@ -4493,6 +4545,109 @@ async function confirmerDemandeRenseignement() {
 
   fermerModalDemandeRenseignement();
   toast('Demande de renseignement envoyée ✓');
+}
+
+// ─── Demande catalogue (photo ou renseignement, multi-sélection) ──────────
+let _dcatType = 'photo';
+
+async function ouvrirModalDemandeCatalogue() {
+  _dcatType = 'photo';
+  document.getElementById('dcat-message').value = '';
+  document.getElementById('dcat-search').value = '';
+  document.getElementById('dcat-err').classList.add('hidden');
+  _dcatSetType('photo');
+
+  await loadCollaborateurs();
+  const collabList = document.getElementById('dcat-collab-list');
+  collabList.innerHTML = state.collaborateurs.length
+    ? state.collaborateurs.map((c, i) => `
+      <label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+        <input type="radio" name="dcat-collab" value="${c.id}" ${i === 0 ? 'checked' : ''} class="accent-blue-700">
+        <span class="text-sm">${escHtml(c.nom)}</span>
+      </label>`).join('')
+    : '<p class="text-xs text-gray-400 italic">Aucun collaborateur — ajoutez-en un depuis l\'onglet Équipe.</p>';
+
+  _dcatRenderListe();
+  document.getElementById('modal-demande-catalogue').classList.remove('hidden');
+}
+
+function fermerModalDemandeCatalogue() {
+  document.getElementById('modal-demande-catalogue').classList.add('hidden');
+}
+
+function _dcatSetType(type) {
+  _dcatType = type;
+  const isRens = type === 'renseignement';
+  document.getElementById('dcat-btn-photo').className = 'flex-1 border rounded-lg py-2 text-sm font-medium ' + (isRens ? 'border-gray-200 text-gray-500' : 'border-green-600 bg-green-50 text-green-700');
+  document.getElementById('dcat-btn-rens').className = 'flex-1 border rounded-lg py-2 text-sm font-medium ' + (isRens ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500');
+  document.getElementById('dcat-collab-wrap').classList.toggle('hidden', !isRens);
+  document.getElementById('dcat-message-label').textContent = isRens ? 'Votre question' : 'Message (optionnel)';
+  document.getElementById('dcat-message').placeholder = isRens ? 'ex : quelle est la quantité disponible en stock ?' : 'ex : photos de face avec étiquette visible';
+  document.getElementById('dcat-submit').className = 'w-full text-white py-3 rounded-xl text-sm font-semibold ' + (isRens ? 'bg-blue-700 hover:bg-blue-800' : 'bg-green-800 hover:bg-green-900');
+}
+
+function _dcatRenderListe() {
+  const el = document.getElementById('dcat-liste');
+  const q = (document.getElementById('dcat-search')?.value || '').toLowerCase().trim();
+  const checked = new Set([...el.querySelectorAll('.dcat-check:checked')].map(c => c.value));
+  const items = q
+    ? state.catalogue.filter(c => c.designation?.toLowerCase().includes(q) || c.famille?.toLowerCase().includes(q))
+    : state.catalogue;
+  if (!items.length) { el.innerHTML = '<p class="text-xs text-gray-400 italic py-2 text-center">Aucun article dans le catalogue.</p>'; return; }
+  el.innerHTML = items.map(c => `
+    <label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+      <input type="checkbox" class="dcat-check accent-green-700" value="${c.id}" data-nom="${escHtml(c.designation || '')}" ${checked.has(c.id) ? 'checked' : ''}>
+      <span class="text-sm">${escHtml(c.designation || '')}</span>${c.famille ? ` <span class="text-xs text-gray-400">· ${escHtml(c.famille)}</span>` : ''}
+    </label>`).join('');
+}
+
+function _dcatCocheTout(val) {
+  document.querySelectorAll('.dcat-check').forEach(c => c.checked = val);
+}
+
+async function confirmerDemandeCatalogue() {
+  const err = document.getElementById('dcat-err');
+  err.classList.add('hidden');
+
+  const checked = [...document.querySelectorAll('.dcat-check:checked')];
+  if (!checked.length) { err.textContent = 'Sélectionnez au moins un végétal.'; err.classList.remove('hidden'); return; }
+
+  const isRens = _dcatType === 'renseignement';
+  let collabId = null;
+  if (isRens) {
+    collabId = document.querySelector('input[name="dcat-collab"]:checked')?.value;
+    if (!collabId) { err.textContent = 'Sélectionnez un collaborateur.'; err.classList.remove('hidden'); return; }
+  }
+  const message = document.getElementById('dcat-message').value.trim();
+  if (isRens && !message) { err.textContent = 'Précisez votre question.'; err.classList.remove('hidden'); return; }
+
+  const fId = state.fournisseurId || state.user.id;
+  const rows = checked.map(c => ({
+    fournisseur_id: fId,
+    statut: 'en_attente',
+    type: isRens ? 'renseignement' : 'photo',
+    catalogue_ref: c.dataset.nom,
+    fourniture_ids: [],
+    assignee_ids: isRens ? [collabId] : [],
+    message: message || (isRens ? null : `Photo catalogue : ${c.dataset.nom}`),
+  }));
+
+  const { error } = await db.from('demandes_photos').insert(rows);
+  if (error) { err.textContent = 'Erreur : ' + error.message; err.classList.remove('hidden'); return; }
+
+  if (isRens) {
+    const collab = state.collaborateurs.find(c => c.id === collabId);
+    if (collab?.auth_user_id) {
+      fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: collab.auth_user_id, portail: 'photos', title: 'Demande de renseignement', message: `${checked.length} article(s) catalogue : ${message}` })
+      }).catch(() => {});
+    }
+  }
+
+  fermerModalDemandeCatalogue();
+  toast(`${checked.length} demande(s) créée(s) ✓${isRens ? '' : ' — assignez-les depuis l\'onglet Photos'}`);
+  _checkPhotosBadge();
 }
 
 let _renvoyerPhotoId = null, _renvoyerDemandeId = null, _renvoyerFournitureId = null;

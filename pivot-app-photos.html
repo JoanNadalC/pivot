@@ -571,7 +571,7 @@ async function enregistrerReponseCollab(fournitureId, valeur) {
   const reponses = { ...(d.fourniture_reponses || {}) };
   if (valeur.trim()) reponses[fournitureId] = valeur.trim();
   else delete reponses[fournitureId];
-  const allAnswered = (d.fourniture_ids || []).every(fid => reponses[fid]);
+  const allAnswered = d.catalogue_ref ? !!reponses['__catalogue__'] : (d.fourniture_ids || []).every(fid => reponses[fid]);
   const { error } = await db.from('demandes_photos').update({
     fourniture_reponses: reponses,
     statut: allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente')
