@@ -353,6 +353,7 @@
             📂 Import CSV
             <input type="file" accept=".csv,.txt" class="hidden" onchange="importVegetauxCSV(event)">
           </label>
+          <button onclick="ouvrirModalDemandeCatalogue('vegetaux')" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
           <span id="veg-count-badge" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"></span>
         </div>
 
@@ -382,7 +383,7 @@
             oninput="_renderFullCatalogue()"
             class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700 w-52">
           <span id="cat-count-badge" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"></span>
-          <button onclick="ouvrirModalDemandeCatalogue()" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
+          <button onclick="ouvrirModalDemandeCatalogue('fournitures')" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
           <button onclick="openAddCatalogueModal()" class="bg-green-800 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-900">+ Ajouter</button>
           <button onclick="document.getElementById('cat-import2').click()" class="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">📂 Import CSV</button>
           <input id="cat-import2" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
@@ -4729,8 +4730,17 @@ async function confirmerDemandeRenseignement() {
 
 // ─── Demande catalogue (photo ou renseignement, multi-sélection) ──────────
 let _dcatType = 'photo';
+let _dcatSource = 'fournitures';
 
-async function ouvrirModalDemandeCatalogue() {
+function _dcatItems() {
+  if (_dcatSource === 'vegetaux') {
+    return (_vegState.items || []).map(x => ({ id: x.vegetal.id, designation: x.vegetal.nom_affiche, famille: null }));
+  }
+  return state.catalogue;
+}
+
+async function ouvrirModalDemandeCatalogue(source) {
+  _dcatSource = source || 'fournitures';
   _dcatType = 'photo';
   document.getElementById('dcat-message').value = '';
   document.getElementById('dcat-search').value = '';
@@ -4770,9 +4780,10 @@ function _dcatRenderListe() {
   const el = document.getElementById('dcat-liste');
   const q = (document.getElementById('dcat-search')?.value || '').toLowerCase().trim();
   const checked = new Set([...el.querySelectorAll('.dcat-check:checked')].map(c => c.value));
+  const all = _dcatItems();
   const items = q
-    ? state.catalogue.filter(c => c.designation?.toLowerCase().includes(q) || c.famille?.toLowerCase().includes(q))
-    : state.catalogue;
+    ? all.filter(c => c.designation?.toLowerCase().includes(q) || c.famille?.toLowerCase().includes(q))
+    : all;
   if (!items.length) { el.innerHTML = '<p class="text-xs text-gray-400 italic py-2 text-center">Aucun article dans le catalogue.</p>'; return; }
   el.innerHTML = items.map(c => `
     <label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
