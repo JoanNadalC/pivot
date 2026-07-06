@@ -126,7 +126,7 @@
 
 <div class="app-header">
   <div class="app-logo">Pivot<span>.</span></div>
-  <div class="app-badge" id="header-badge">Photos</div>
+  <div class="app-badge" id="header-badge">Photos / Renseignements</div>
   <button class="btn-logout hidden" id="btn-logout" onclick="logout()">Déconnexion</button>
 </div>
 
@@ -370,7 +370,7 @@ async function chargerDemandes() {
   show('screen-loading');
 
   let query = db.from('demandes_photos')
-    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, consultations(titre, entrepreneur_id, chantiers(affaire))')
+    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, type, fourniture_reponses, consultations(titre, entrepreneur_id, chantiers(affaire))')
     .neq('statut', 'terminé')
     .order('created_at', { ascending: false });
 
@@ -414,6 +414,7 @@ function renderDemandes() {
   }
 
   el.innerHTML = state.demandes.map((d, i) => {
+    const isRenseignement = d.type === 'renseignement';
     const isCatalogue = !!d.catalogue_ref;
     const total = isCatalogue ? 1 : (d.fourniture_ids || []).length;
     const statutClass = d.statut === 'complete' ? 'badge-complete' : d.statut === 'en_cours' ? 'badge-en_cours' : 'badge-pending';
@@ -421,9 +422,11 @@ function renderDemandes() {
     const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
     const nomChantier = isCatalogue ? 'Catalogue' : (d._nomChantier || '');
     const nomClient = d._nomClient || '';
-    const sousTitre = isCatalogue ? d.catalogue_ref : `${total} fourniture${total > 1 ? 's' : ''} à photographier`;
+    const sousTitre = isRenseignement
+      ? `${total} renseignement${total > 1 ? 's' : ''} demandé${total > 1 ? 's' : ''}`
+      : (isCatalogue ? d.catalogue_ref : `${total} fourniture${total > 1 ? 's' : ''} à photographier`);
     return `<div class="demande-card" onclick="ouvrirDemande(${i})">
-      <div style="font-size:11px;font-weight:600;color:var(--cuivre);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">${escHtml(nomChantier)}</div>
+      <div style="font-size:11px;font-weight:600;color:var(--cuivre);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:2px">${isRenseignement ? '❓ ' : ''}${escHtml(nomChantier)}</div>
       ${nomClient ? `<div style="font-size:11px;color:var(--gris);margin-bottom:4px">${escHtml(nomClient)}</div>` : ''}
       <div class="demande-card-title">Demande du ${date}</div>
       <div class="demande-card-sub">${escHtml(sousTitre)}</div>
@@ -469,20 +472,39 @@ function retourDemandes() {
 // ── LISTE FOURNITURES ─────────────────────────────────────────
 function renderListe() {
   const d = state.currentDemande;
+  const isRenseignement = d.type === 'renseignement';
   const total = state.fournitures.length;
-  const done = Object.keys(state.photosPrises).length;
+  const reponses = d.fourniture_reponses || {};
+  const done = isRenseignement ? Object.keys(reponses).filter(k => reponses[k]).length : Object.keys(state.photosPrises).length;
   const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
   const isCatalogue = !!d.catalogue_ref;
   const nomChantier = isCatalogue ? 'Catalogue' : (d._nomChantier || '');
   const nomClient = d._nomClient || '';
-  document.getElementById('liste-titre').textContent = nomChantier || `Photos (${done}/${total})`;
+  document.getElementById('liste-titre').textContent = nomChantier || (isRenseignement ? `Renseignements (${done}/${total})` : `Photos (${done}/${total})`);
   document.getElementById('liste-sous-titre').textContent = isCatalogue
     ? d.catalogue_ref
-    : [nomClient, `${done}/${total} photos · ${date}`].filter(Boolean).join(' · ');
+    : [nomClient, isRenseignement ? `${done}/${total} renseignements · ${date}` : `${done}/${total} photos · ${date}`].filter(Boolean).join(' · ');
   document.getElementById('progress-fill').style.width = total ? `${(done/total)*100}%` : '0%';
 
   const list = document.getElementById('fourniture-list');
+
+  if (isRenseignement) {
+    list.innerHTML = (d.message ? `<div class="detail" style="color:var(--cuivre);font-style:italic;margin-bottom:10px">❓ ${escHtml(d.message)}</div>` : '') +
+      state.fournitures.map(f => {
+        const detail = [f.taille, f.contenant, f.unite].filter(Boolean).join(' · ');
+        const reponse = reponses[f.id] || '';
+        return `<div class="fourniture-item" id="item-${f.id}">
+          <div class="fourniture-info">
+            <div class="nom">${escHtml(f.designation)}</div>
+            ${detail ? `<div class="detail">${escHtml(detail)}</div>` : ''}
+            <input type="text" value="${escHtml(reponse)}" placeholder="Votre réponse..." onchange="enregistrerReponseCollab('${f.id}', this.value)" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--gris-lt);border-radius:8px;font-size:14px">
+          </div>
+        </div>`;
+      }).join('');
+    return;
+  }
+
   list.innerHTML = state.fournitures.map(f => {
     const isDone = !!state.photosPrises[f.id];
     const detail = [f.taille, f.contenant, f.unite].filter(Boolean).join(' · ');
@@ -505,6 +527,23 @@ function renderListe() {
   if (done === total && total > 0) {
     setTimeout(() => show('screen-done'), 600);
   }
+}
+
+async function enregistrerReponseCollab(fournitureId, valeur) {
+  const d = state.currentDemande;
+  const reponses = { ...(d.fourniture_reponses || {}) };
+  if (valeur.trim()) reponses[fournitureId] = valeur.trim();
+  else delete reponses[fournitureId];
+  const allAnswered = (d.fourniture_ids || []).every(fid => reponses[fid]);
+  const { error } = await db.from('demandes_photos').update({
+    fourniture_reponses: reponses,
+    statut: allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente')
+  }).eq('id', d.id);
+  if (error) { showError('Erreur : ' + error.message); return; }
+  d.fourniture_reponses = reponses;
+  d.statut = allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente');
+  if (allAnswered) { setTimeout(() => show('screen-done'), 400); return; }
+  renderListe();
 }
 
 // ── CAMÉRA ────────────────────────────────────────────────────

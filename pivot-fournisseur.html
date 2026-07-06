@@ -162,7 +162,7 @@
       <div id="cons-context-inner" class="flex-1 min-w-0 text-sm text-gray-500 truncate"></div>
       <div class="flex gap-0 shrink-0">
         <button onclick="setTab('saisie')" id="ot-saisie" class="tab-btn cons-tab px-4 text-sm whitespace-nowrap text-gray-500" style="height:44px">Saisie des prix<span class="tab-dot" id="badge-saisie"></span></button>
-        <button onclick="setTab('photos-cons')" id="ot-photos-cons" class="tab-btn cons-tab px-4 text-sm whitespace-nowrap text-gray-500" style="height:44px">Photos<span class="tab-dot hidden" id="badge-photos-cons"></span></button>
+        <button onclick="setTab('photos-cons')" id="ot-photos-cons" class="tab-btn cons-tab px-4 text-sm whitespace-nowrap text-gray-500" style="height:44px">Photos / Renseignements<span class="tab-dot hidden" id="badge-photos-cons"></span></button>
       </div>
     </div>
   </div>
@@ -452,7 +452,7 @@
     <!-- TAB: PHOTOS (par consultation) -->
     <div id="tab-photos-cons" class="tab-content hidden">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-bold text-gray-800">📷 Photos du chantier</h2>
+        <h2 class="text-lg font-bold text-gray-800">📷 Photos / Renseignements du chantier</h2>
         <div id="photos-cons-status" class="text-xs text-gray-400"></div>
       </div>
       <div id="photos-cons-content" class="space-y-3">
@@ -475,7 +475,7 @@
 
     <!-- TAB: PHOTOS -->
     <div id="tab-photos" class="tab-content hidden">
-      <h2 class="text-lg font-bold text-gray-800 mb-1">Chantiers & photos</h2>
+      <h2 class="text-lg font-bold text-gray-800 mb-1">Chantiers & photos / renseignements</h2>
       <p class="text-sm text-gray-500 mb-4">Validez les photos avant qu'elles soient visibles par le client. Renvoyez une demande si la photo n'est pas satisfaisante.</p>
       <div id="photos-chantiers" class="space-y-3">
         <p class="text-xs text-gray-400 italic">Chargement…</p>
@@ -4103,11 +4103,15 @@ async function renderProspection() {
 // Rendu d'une demande de photo (fournitures + statut + assignation collaborateur) —
 // utilisé à la fois par la vue globale "Chantiers & photos" et par la vue par consultation.
 function renderDemande(d, collabMap, fourMap, photosMap) {
+  const isRenseignement = d.type === 'renseignement';
   const isCatalogue = !!d.catalogue_ref;
   const total = isCatalogue ? 1 : (d.fourniture_ids || []).length;
   const dPhotos = photosMap[d.id] || {};
-  const doneCount = Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0);
-  const validCount = Object.values(dPhotos).filter(p => p.valide).length;
+  const reponses = d.fourniture_reponses || {};
+  const doneCount = isRenseignement
+    ? (d.fourniture_ids || []).filter(fid => reponses[fid]).length
+    : Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0);
+  const validCount = isRenseignement ? doneCount : Object.values(dPhotos).filter(p => p.valide).length;
   const pct = total ? Math.round(Math.min(doneCount, total) / total * 100) : 0;
   const assigneeIds = d.assignee_ids || [];
   const isAssigned = assigneeIds.length > 0;
@@ -4119,7 +4123,20 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
     : '<span class="text-xs text-gray-400 italic">Non assigné</span>';
 
   let lignes = '';
-  if (isCatalogue) {
+  if (isRenseignement) {
+    lignes = `${d.message ? `<div class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-2 mb-2">❓ ${escHtml(d.message)}</div>` : ''}` +
+      (d.fourniture_ids || []).map(fid => {
+        const f = fourMap[fid] || {};
+        const details = [f.taille, f.contenant].filter(Boolean).map(escHtml).join(' · ');
+        const detailsHtml = details ? ` <span class="text-xs text-gray-400">· ${details}</span>` : '';
+        const reponse = reponses[fid] || '';
+        return `<div class="flex items-center gap-2 py-1.5 border-b last:border-0">
+          <span class="text-base flex-shrink-0">🌿</span>
+          <div class="flex-1 min-w-0 text-sm truncate">${escHtml(f.designation || fid)}${detailsHtml}</div>
+          <input type="text" value="${escHtml(reponse)}" placeholder="Votre réponse..." onchange="enregistrerReponseRenseignement('${d.id}','${fid}', this.value)" class="text-xs border rounded-lg px-2 py-1 w-40 flex-shrink-0">
+        </div>`;
+      }).join('');
+  } else if (isCatalogue) {
     const photo = Object.values(dPhotos)[0];
     lignes = photo
       ? `<div class="flex items-center gap-3 py-2 border-b last:border-0" id="ligne-${photo.id}">
@@ -4200,7 +4217,7 @@ async function loadDemandesPhotosForConsultation() {
     await loadCollaborateurs();
 
     const { data, error } = await db.from('demandes_photos')
-      .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref')
+      .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses')
       .eq('fournisseur_id', fId)
       .eq('consultation_id', cons.id)
       .order('created_at', { ascending: false });
@@ -4266,7 +4283,7 @@ async function loadDemandesPhotos() {
   await loadCollaborateurs();
 
   const { data, error } = await db.from('demandes_photos')
-    .select('id, statut, message, created_at, consultation_id, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref')
+    .select('id, statut, message, created_at, consultation_id, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses')
     .eq('fournisseur_id', fId)
     .order('created_at', { ascending: false });
 
@@ -4377,6 +4394,23 @@ async function validerPhoto(photoId, demandeId) {
   if (error) { toast('Erreur : ' + error.message); return; }
   toast('Photo validée ✓');
   await loadDemandesPhotos();
+}
+
+async function enregistrerReponseRenseignement(demandeId, fournitureId, valeur) {
+  const { data: d } = await db.from('demandes_photos').select('fourniture_ids, fourniture_reponses').eq('id', demandeId).single();
+  if (!d) return;
+  const reponses = { ...(d.fourniture_reponses || {}) };
+  if (valeur.trim()) reponses[fournitureId] = valeur.trim();
+  else delete reponses[fournitureId];
+  const allAnswered = (d.fourniture_ids || []).every(fid => reponses[fid]);
+  const { error } = await db.from('demandes_photos').update({
+    fourniture_reponses: reponses,
+    statut: allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente')
+  }).eq('id', demandeId);
+  if (error) { toast('Erreur : ' + error.message); return; }
+  toast('Réponse enregistrée ✓');
+  if (state.currentConsultation) await loadDemandesPhotosForConsultation();
+  else await loadDemandesPhotos();
 }
 
 let _renvoyerPhotoId = null, _renvoyerDemandeId = null, _renvoyerFournitureId = null;
