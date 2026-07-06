@@ -172,6 +172,7 @@
   <div class="demandes-header">
     <h2>Mes demandes</h2>
     <p id="demandes-sous-titre">Photos à effectuer sur chantier</p>
+    <p id="demandes-compteur" class="hidden" style="margin-top:6px;font-size:13px;color:var(--cuivre);font-weight:600"></p>
   </div>
   <div class="demandes-list" id="demandes-list"></div>
 </div>
@@ -339,14 +340,14 @@ async function lancerApp(user) {
 
   // Chercher le collaborateur lié à cet utilisateur
   const { data: collab } = await db.from('collaborateurs')
-    .select('id, nom, fournisseur_id')
+    .select('id, nom, fournisseur_id, photos_validees_count, photos_validees_last_at')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
   if (!collab) {
     // Tentative de liaison par email (première connexion via lien d'invitation)
     const { data: collabByEmail } = await db.from('collaborateurs')
-      .select('id, nom, fournisseur_id')
+      .select('id, nom, fournisseur_id, photos_validees_count, photos_validees_last_at')
       .eq('email', user.email)
       .maybeSingle();
 
@@ -420,9 +421,32 @@ async function chargerDemandes() {
   show('screen-demandes');
 }
 
+// Le compteur repart à zéro chaque année au solstice d'été (21 juin)
+function _cycleStartSolstice() {
+  const now = new Date();
+  const year = (now.getMonth() < 5 || (now.getMonth() === 5 && now.getDate() < 21)) ? now.getFullYear() - 1 : now.getFullYear();
+  return new Date(year, 5, 21);
+}
+
+function _compteurEffectif(c) {
+  if (!c) return 0;
+  const lastAt = c.photos_validees_last_at ? new Date(c.photos_validees_last_at) : null;
+  if (!lastAt || lastAt < _cycleStartSolstice()) return 0;
+  return c.photos_validees_count || 0;
+}
+
 function renderDemandes() {
   const nom = state.collaborateur?.nom || '';
   document.getElementById('demandes-sous-titre').textContent = nom ? `Bonjour ${nom} 👋` : 'Photos à effectuer sur chantier';
+
+  const compteurEl = document.getElementById('demandes-compteur');
+  if (state.isFournisseur) {
+    compteurEl.classList.add('hidden');
+  } else {
+    const n = _compteurEffectif(state.collaborateur);
+    compteurEl.textContent = `📷 ${n} photo${n > 1 ? 's' : ''} validée${n > 1 ? 's' : ''} depuis le 21 juin`;
+    compteurEl.classList.remove('hidden');
+  }
 
   const el = document.getElementById('demandes-list');
   if (!state.demandes.length) {
@@ -679,6 +703,7 @@ async function uploadBlob(blob, ext) {
     fournisseur_id: d.fournisseur_id,
     url: urlData.publicUrl,
     uploaded_by: state.collaborateur?.nom || '',
+    collaborateur_id: state.isFournisseur ? null : (state.collaborateur?.id || null),
   });
   if (dbErr) { status.textContent = 'Erreur enregistrement : ' + dbErr.message; return; }
 
