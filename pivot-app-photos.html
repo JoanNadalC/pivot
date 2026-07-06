@@ -375,7 +375,7 @@ async function chargerDemandes() {
   show('screen-loading');
 
   let query = db.from('demandes_photos')
-    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, type, fourniture_reponses, consultations(titre, entrepreneur_id, chantiers(affaire))')
+    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, type, fourniture_reponses, fourniture_termine, consultations(titre, entrepreneur_id, chantiers(affaire))')
     .neq('statut', 'terminé')
     .order('created_at', { ascending: false });
 
@@ -480,7 +480,10 @@ function renderListe() {
   const isRenseignement = d.type === 'renseignement';
   const total = state.fournitures.length;
   const reponses = d.fourniture_reponses || {};
-  const done = isRenseignement ? Object.keys(reponses).filter(k => reponses[k]).length : Object.keys(state.photosPrises).length;
+  const termineIds = d.fourniture_termine || {};
+  const done = isRenseignement
+    ? Object.keys(reponses).filter(k => reponses[k]).length
+    : new Set([...Object.keys(state.photosPrises), ...Object.keys(termineIds).filter(k => termineIds[k])]).size;
   const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
   const isCatalogue = !!d.catalogue_ref;
@@ -510,12 +513,15 @@ function renderListe() {
     return;
   }
 
+  const termine = d.fourniture_termine || {};
   list.innerHTML = state.fournitures.map(f => {
-    const isDone = !!state.photosPrises[f.id];
+    const hasPhoto = !!state.photosPrises[f.id];
+    const isTermineSansPhoto = !hasPhoto && !!termine[f.id];
+    const isDone = hasPhoto || isTermineSansPhoto;
     const detail = [f.taille, f.contenant, f.unite].filter(Boolean).join(' · ');
-    const thumb = isDone
+    const thumb = hasPhoto
       ? `<div class="fourniture-thumb"><img src="${state.photosPrises[f.id]}" alt=""></div>`
-      : `<div class="fourniture-thumb">🌿</div>`;
+      : `<div class="fourniture-thumb">${isTermineSansPhoto ? '✓' : '🌿'}</div>`;
     return `<div class="fourniture-item ${isDone ? 'done' : ''}" id="item-${f.id}">
       ${thumb}
       <div class="fourniture-info">
@@ -523,15 +529,34 @@ function renderListe() {
         ${detail ? `<div class="detail">${escHtml(detail)}</div>` : ''}
         ${(state.currentDemande?.fourniture_commentaires?.[f.id]) ? `<div class="detail" style="color:var(--cuivre);font-style:italic">💬 ${escHtml(state.currentDemande.fourniture_commentaires[f.id])}</div>` : ''}
       </div>
-      <button class="btn-photo ${isDone ? 'done-btn' : 'todo'}" onclick="ouvrirCamera('${f.id}')">
-        ${isDone ? '✓ Fait' : '📷'}
-      </button>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button class="btn-photo ${hasPhoto ? 'done-btn' : 'todo'}" onclick="ouvrirCamera('${f.id}')">
+          ${hasPhoto ? '✓ Fait' : '📷'}
+        </button>
+        ${!hasPhoto ? `<button onclick="marquerFournitureTerminee('${f.id}')" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--gris-lt);background:${isTermineSansPhoto ? 'var(--vert)' : '#fff'};color:${isTermineSansPhoto ? 'var(--ecru)' : 'var(--gris)'};cursor:pointer">${isTermineSansPhoto ? '✓ Terminé' : 'Terminé'}</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 
   if (done === total && total > 0) {
     setTimeout(() => show('screen-done'), 600);
   }
+}
+
+async function marquerFournitureTerminee(fournitureId) {
+  const d = state.currentDemande;
+  const termine = { ...(d.fourniture_termine || {}), [fournitureId]: true };
+  const toutesIds = d.fourniture_ids || [];
+  const toutTermine = toutesIds.every(id => id in state.photosPrises || termine[id]);
+  const { error } = await db.from('demandes_photos').update({
+    fourniture_termine: termine,
+    statut: toutTermine ? 'terminé' : 'en_cours'
+  }).eq('id', d.id);
+  if (error) { showError('Erreur : ' + error.message); return; }
+  d.fourniture_termine = termine;
+  d.statut = toutTermine ? 'terminé' : 'en_cours';
+  if (toutTermine) { setTimeout(() => show('screen-done'), 400); return; }
+  renderListe();
 }
 
 async function marquerDemandeTerminee() {
@@ -639,7 +664,8 @@ async function uploadBlob(blob, ext) {
   // Vérifier si toutes les fournitures sont photographiées
   const toutTermine = isCatalogueItem ? true : (() => {
     const toutesIds = d.fourniture_ids || [];
-    return toutesIds.every(id => id in state.photosPrises);
+    const termine = d.fourniture_termine || {};
+    return toutesIds.every(id => id in state.photosPrises || termine[id]);
   })();
 
   await db.from('demandes_photos')

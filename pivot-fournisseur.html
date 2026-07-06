@@ -4108,9 +4108,12 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
   const total = isCatalogue ? 1 : (d.fourniture_ids || []).length;
   const dPhotos = photosMap[d.id] || {};
   const reponses = d.fourniture_reponses || {};
+  const termineMap = d.fourniture_termine || {};
   const doneCount = isRenseignement
     ? (d.fourniture_ids || []).filter(fid => reponses[fid]).length
-    : Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0);
+    : (isCatalogue
+      ? Object.keys(dPhotos).filter(k => k !== 'null').length + (dPhotos['null'] ? 1 : 0)
+      : (d.fourniture_ids || []).filter(fid => dPhotos[fid] || termineMap[fid]).length);
   const validCount = isRenseignement ? doneCount : Object.values(dPhotos).filter(p => p.valide).length;
   const pct = total ? Math.round(Math.min(doneCount, total) / total * 100) : 0;
   const assigneeIds = d.assignee_ids || [];
@@ -4160,11 +4163,12 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
       const commentaire = d.fourniture_commentaires?.[fid] || '';
       const details = [f.taille, f.contenant].filter(Boolean).map(escHtml).join(' · ');
       const detailsHtml = details ? ` <span class="text-xs text-gray-400">· ${details}</span>` : '';
+      const termineSansPhoto = !!(d.fourniture_termine || {})[fid];
       if (!photo) {
         return `<div class="flex items-center gap-2 py-1.5 border-b last:border-0">
-          <span class="text-base flex-shrink-0">🌿</span>
+          <span class="text-base flex-shrink-0">${termineSansPhoto ? '✅' : '🌿'}</span>
           <div class="flex-1 min-w-0 text-sm truncate">${escHtml(f.designation || fid)}${detailsHtml}${commentaire ? ` <span class="text-xs text-amber-600 italic">· ${escHtml(commentaire)}</span>` : ''}</div>
-          ${!isAssigned ? `<span class="text-xs text-gray-300 flex-shrink-0">En attente</span>` : ''}
+          ${termineSansPhoto ? `<span class="text-xs text-green-700 flex-shrink-0">Terminé (sans photo)</span>` : (!isAssigned ? `<span class="text-xs text-gray-300 flex-shrink-0">En attente</span>` : '')}
         </div>`;
       }
       return `<div class="flex items-center gap-2 py-1.5 border-b last:border-0" id="ligne-${photo.id}">
@@ -4217,7 +4221,7 @@ async function loadDemandesPhotosForConsultation() {
     await loadCollaborateurs();
 
     const { data, error } = await db.from('demandes_photos')
-      .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses')
+      .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses, fourniture_termine')
       .eq('fournisseur_id', fId)
       .eq('consultation_id', cons.id)
       .order('created_at', { ascending: false });
@@ -4283,7 +4287,7 @@ async function loadDemandesPhotos() {
   await loadCollaborateurs();
 
   const { data, error } = await db.from('demandes_photos')
-    .select('id, statut, message, created_at, consultation_id, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses')
+    .select('id, statut, message, created_at, consultation_id, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses, fourniture_termine')
     .eq('fournisseur_id', fId)
     .order('created_at', { ascending: false });
 
