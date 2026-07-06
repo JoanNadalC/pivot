@@ -4720,6 +4720,13 @@ function _cycleStartSolstice() {
   return new Date(year, 5, 21);
 }
 
+function _compteurEffectif(c) {
+  if (!c) return 0;
+  const lastAt = c.photos_validees_last_at ? new Date(c.photos_validees_last_at) : null;
+  if (!lastAt || lastAt < _cycleStartSolstice()) return 0;
+  return c.photos_validees_count || 0;
+}
+
 async function _incrementerCompteurPhotos(collabId) {
   const { data: c } = await db.from('collaborateurs').select('photos_validees_count, photos_validees_last_at').eq('id', collabId).maybeSingle();
   if (!c) return;
