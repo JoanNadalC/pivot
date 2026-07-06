@@ -546,7 +546,7 @@ function renderListe() {
         <button class="btn-photo ${hasPhoto ? 'done-btn' : 'todo'}" onclick="ouvrirCamera('${f.id}')">
           ${hasPhoto ? '+ Photo' : '📷'}
         </button>
-        ${!hasPhoto ? `<button onclick="marquerFournitureTerminee('${f.id}')" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--gris-lt);background:${isTermineSansPhoto ? 'var(--vert)' : '#fff'};color:${isTermineSansPhoto ? 'var(--ecru)' : 'var(--gris)'};cursor:pointer">${isTermineSansPhoto ? '✓ Terminé' : 'Terminé'}</button>` : ''}
+        <button onclick="marquerFournitureTerminee('${f.id}')" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--gris-lt);background:${isDone ? 'var(--vert)' : '#fff'};color:${isDone ? 'var(--ecru)' : 'var(--gris)'};cursor:pointer">${isDone ? '✓ Terminé' : 'Terminé'}</button>
       </div>
     </div>`;
   }).join('');
