@@ -182,6 +182,10 @@
         class="px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 h-full">
         Prospection
       </button>
+      <button id="dash-btn-rep" onclick="switchDashMode('reponses-photos')"
+        class="px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 h-full">
+        Réponses photos<span class="tab-dot hidden" id="badge-reponses-photos"></span>
+      </button>
     </div>
   </div>
 
@@ -287,6 +291,31 @@
         <div class="text-xs text-gray-500 uppercase tracking-wide mb-2">Familles couvertes</div>
         <div id="dash-familles-config" class="space-y-2 mb-4"></div>
         <button onclick="saveDashboardConfig()" class="w-full bg-green-800 text-white py-2 rounded-xl text-sm font-semibold hover:bg-green-900">Enregistrer</button>
+      </div>
+    </div>
+
+    <!-- VUE RÉPONSES PHOTOS (centralise toutes les demandes photo/renseignement, tous chantiers + catalogue) -->
+    <div id="view-reponses-photos" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-800">📷 Réponses photos</h2>
+        <div id="reponses-photos-status" class="text-xs text-gray-400"></div>
+      </div>
+      <div id="reponses-photos-avalider" class="mb-6"></div>
+      <div id="reponses-photos-actives" class="mb-6"></div>
+      <div id="reponses-photos-cloturees"></div>
+    </div>
+
+    <!-- MODAL RENVOYER UNE DEMANDE (photo ou renseignement) -->
+    <div id="modal-renvoyer-demande" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <h3 class="text-base font-bold text-gray-800 mb-1">↩ Renvoyer la demande</h3>
+        <p class="text-sm text-gray-500 mb-4">La demande repasse en attente chez le(s) collaborateur(s) assigné(s). Précisez ce qui manque ou ce qu'il faut corriger.</p>
+        <textarea id="rdem-message" rows="3" placeholder="ex : la quantité indiquée ne correspond pas au stock réel, merci de revérifier" class="w-full border rounded-lg px-3 py-2 text-sm resize-none mb-3"></textarea>
+        <p id="rdem-err" class="text-xs text-red-500 mb-3 hidden"></p>
+        <div class="flex gap-2">
+          <button onclick="fermerModalRenvoyerDemande()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Annuler</button>
+          <button onclick="confirmerRenvoyerDemandeGlobal()" class="flex-1 bg-amber-600 text-white text-sm py-2 rounded-lg hover:bg-amber-700 font-semibold">Renvoyer</button>
+        </div>
       </div>
     </div>
 
@@ -1627,8 +1656,8 @@ function showDashboard() {
 
 function switchDashMode(mode, _silent) {
   state._dashMode = mode;
-  const views = { consultations: 'view-dashboard', catalogue: 'view-catalogue', prospection: 'view-prospection' };
-  const btns  = { consultations: 'dash-btn-cons', catalogue: 'dash-btn-cat', prospection: 'dash-btn-prosp' };
+  const views = { consultations: 'view-dashboard', catalogue: 'view-catalogue', prospection: 'view-prospection', 'reponses-photos': 'view-reponses-photos' };
+  const btns  = { consultations: 'dash-btn-cons', catalogue: 'dash-btn-cat', prospection: 'dash-btn-prosp', 'reponses-photos': 'dash-btn-rep' };
   Object.entries(views).forEach(([m, id]) => document.getElementById(id)?.classList.toggle('hidden', m !== mode));
   Object.entries(btns).forEach(([m, id]) => {
     const btn = document.getElementById(id);
@@ -1642,6 +1671,7 @@ function switchDashMode(mode, _silent) {
   if (!_silent) {
     if (mode === 'catalogue') { switchCatTab('vegetaux'); }
     else if (mode === 'prospection') { loadDashboardConfig(); }
+    else if (mode === 'reponses-photos') { loadReponsesPhotos(); }
     else { loadDashboard(); renderConsultations(); }
   }
 }
@@ -4332,6 +4362,156 @@ async function loadDemandesPhotosForConsultation() {
   } catch (err) {
     el.innerHTML = `<p class="text-sm text-red-400">${escHtml(err.message)}</p>`;
   }
+}
+
+// ============================================================
+// RÉPONSES PHOTOS (onglet centralisé, toutes origines)
+// ============================================================
+async function loadReponsesPhotos() {
+  const elValider = document.getElementById('reponses-photos-avalider');
+  const elActives = document.getElementById('reponses-photos-actives');
+  const elCloturees = document.getElementById('reponses-photos-cloturees');
+  const statusEl = document.getElementById('reponses-photos-status');
+  if (!elValider) return;
+  elValider.innerHTML = elActives.innerHTML = elCloturees.innerHTML = '<p class="text-sm text-gray-400 italic">Chargement…</p>';
+
+  const fId = state.fournisseurId || state.user?.id;
+  if (!fId) return;
+
+  await loadCollaborateurs();
+
+  const { data, error } = await db.from('demandes_photos')
+    .select('id, statut, message, created_at, consultation_id, fourniture_ids, assignee_ids, fourniture_commentaires, catalogue_ref, type, fourniture_reponses, fourniture_termine, valide_fournisseur')
+    .eq('fournisseur_id', fId)
+    .order('created_at', { ascending: false });
+
+  if (error) { elValider.innerHTML = `<p class="text-sm text-red-500">Erreur : ${error.message}</p>`; elActives.innerHTML = ''; elCloturees.innerHTML = ''; return; }
+  if (!data?.length) {
+    elValider.innerHTML = ''; elActives.innerHTML = '<p class="text-sm text-gray-400 italic">Aucune demande de photo ou de renseignement pour le moment.</p>'; elCloturees.innerHTML = '';
+    if (statusEl) statusEl.textContent = '';
+    return;
+  }
+
+  const allFourIds = [...new Set(data.flatMap(d => d.fourniture_ids || []))];
+  const { data: fours } = await db.from('fournitures').select('id, designation, taille, contenant').in('id', allFourIds);
+  const fourMap = {};
+  (fours || []).forEach(f => { fourMap[f.id] = f; });
+  state._fourMap = { ...(state._fourMap || {}), ...fourMap };
+
+  const { data: photos } = await db.from('photos_fournitures')
+    .select('id, demande_id, fourniture_id, url, uploaded_by, valide')
+    .in('demande_id', data.map(d => d.id));
+  const photosMap = {};
+  (photos || []).forEach(p => {
+    if (!photosMap[p.demande_id]) photosMap[p.demande_id] = {};
+    photosMap[p.demande_id][p.fourniture_id] = p;
+  });
+
+  const consultIds = [...new Set(data.map(d => d.consultation_id).filter(Boolean))];
+  const consultMap = {};
+  if (consultIds.length) {
+    const { data: consults } = await db.from('consultations').select('id, titre, entrepreneur_id, chantiers(affaire)').in('id', consultIds);
+    (consults || []).forEach(c => { consultMap[c.id] = c; });
+    const entrepriseIds = [...new Set((consults || []).map(c => c.entrepreneur_id).filter(Boolean))];
+    if (entrepriseIds.length) {
+      const { data: entreprises } = await db.from('compte_entrepreneur').select('id, societe, nom').in('id', entrepriseIds);
+      const entrepriseMap = {};
+      (entreprises || []).forEach(e => { entrepriseMap[e.id] = e; });
+      Object.values(consultMap).forEach(c => { c._client = entrepriseMap[c.entrepreneur_id]?.societe || entrepriseMap[c.entrepreneur_id]?.nom || ''; });
+    }
+  }
+
+  const collabMap = {};
+  (state.collaborateurs || []).forEach(c => { collabMap[c.id] = c; });
+
+  const origineLabel = d => {
+    if (d.catalogue_ref && !d.consultation_id) return 'Catalogue';
+    const c = consultMap[d.consultation_id];
+    const nom = c?.chantiers?.affaire || c?.titre || 'Chantier';
+    return c?._client ? `${nom} · ${c._client}` : nom;
+  };
+
+  const aValider = data.filter(d => d.statut === 'terminé' && !d.valide_fournisseur);
+  const actives = data.filter(d => d.statut !== 'terminé' && !d.valide_fournisseur);
+  const cloturees = data.filter(d => d.valide_fournisseur);
+
+  if (statusEl) statusEl.textContent = `${aValider.length} à valider · ${actives.length} en cours · ${cloturees.length} clôturée${cloturees.length > 1 ? 's' : ''}`;
+
+  const badge = document.getElementById('badge-reponses-photos');
+  if (badge) { badge.textContent = aValider.length; badge.classList.toggle('hidden', aValider.length === 0); }
+
+  elValider.innerHTML = aValider.length
+    ? `<h3 class="text-sm font-bold text-amber-700 mb-2">🔴 À valider (${aValider.length})</h3>` + aValider.map(d => `
+        <div class="mb-2">
+          <div class="text-xs text-gray-400 mb-1">${escHtml(origineLabel(d))}</div>
+          ${renderDemande(d, collabMap, fourMap, photosMap)}
+          <div class="flex gap-2 -mt-1 mb-2">
+            <button onclick="cloturerDemande('${d.id}')" class="text-xs bg-green-700 text-white px-3 py-1.5 rounded-lg hover:bg-green-800 font-medium">✅ Clôturer</button>
+            <button onclick="ouvrirModalRenvoyerDemande('${d.id}', ${JSON.stringify(d.message || '').replace(/"/g, '&quot;')})" class="text-xs bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-200 font-medium">↩ Renvoyer</button>
+          </div>
+        </div>`).join('')
+    : '';
+
+  elActives.innerHTML = actives.length
+    ? `<h3 class="text-sm font-bold text-gray-600 mb-2">🟡 En cours (${actives.length})</h3>` + actives.map(d => `
+        <div class="mb-2">
+          <div class="text-xs text-gray-400 mb-1">${escHtml(origineLabel(d))}</div>
+          ${renderDemande(d, collabMap, fourMap, photosMap)}
+        </div>`).join('')
+    : '';
+
+  elCloturees.innerHTML = cloturees.length
+    ? `<details><summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 py-1">▸ ${cloturees.length} demande${cloturees.length > 1 ? 's' : ''} clôturée${cloturees.length > 1 ? 's' : ''}</summary>
+        <div class="mt-2 opacity-60 space-y-2">${cloturees.map(d => `
+          <div>
+            <div class="text-xs text-gray-400 mb-1">${escHtml(origineLabel(d))}</div>
+            ${renderDemande(d, collabMap, fourMap, photosMap)}
+          </div>`).join('')}</div>
+      </details>`
+    : '';
+}
+
+async function cloturerDemande(demandeId) {
+  const { error } = await db.from('demandes_photos').update({ valide_fournisseur: true }).eq('id', demandeId);
+  if (error) { toast('Erreur : ' + error.message); return; }
+  toast('Demande clôturée ✓');
+  loadReponsesPhotos();
+}
+
+let _rdemDemandeId = null;
+
+function ouvrirModalRenvoyerDemande(demandeId, currentMessage) {
+  _rdemDemandeId = demandeId;
+  document.getElementById('rdem-message').value = currentMessage || '';
+  document.getElementById('rdem-err').classList.add('hidden');
+  document.getElementById('modal-renvoyer-demande').classList.remove('hidden');
+}
+
+function fermerModalRenvoyerDemande() {
+  document.getElementById('modal-renvoyer-demande').classList.add('hidden');
+}
+
+async function confirmerRenvoyerDemandeGlobal() {
+  const err = document.getElementById('rdem-err');
+  err.classList.add('hidden');
+  const message = document.getElementById('rdem-message').value.trim();
+  if (!message) { err.textContent = 'Précisez ce qui doit être revu.'; err.classList.remove('hidden'); return; }
+
+  const { data: d } = await db.from('demandes_photos').select('type').eq('id', _rdemDemandeId).single();
+  const update = {
+    message,
+    statut: 'en_attente',
+    valide_fournisseur: false,
+  };
+  if (d?.type === 'renseignement') update.fourniture_reponses = {};
+  else update.fourniture_termine = {};
+
+  const { error } = await db.from('demandes_photos').update(update).eq('id', _rdemDemandeId);
+  if (error) { err.textContent = 'Erreur : ' + error.message; err.classList.remove('hidden'); return; }
+
+  fermerModalRenvoyerDemande();
+  toast('Demande renvoyée ✓');
+  loadReponsesPhotos();
 }
 
 async function _checkPhotosBadge() {
