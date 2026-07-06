@@ -125,7 +125,7 @@
 <body>
 
 <div class="app-header">
-  <div class="app-logo">Pivot<span>.</span></div>
+  <div class="app-logo">Pivot<span>.</span> <span style="font-family:'Playfair Display',serif;font-size:12px;font-style:italic;font-weight:400;color:rgba(245,240,232,0.3)">la racine</span></div>
   <div class="app-badge" id="header-badge">Photos / Renseignements</div>
   <button class="btn-logout hidden" id="btn-logout" onclick="logout()">Déconnexion</button>
 </div>
@@ -470,7 +470,6 @@ async function ouvrirDemande(index) {
 }
 
 function retourDemandes() {
-  stopCamera();
   chargerDemandes();
 }
 
