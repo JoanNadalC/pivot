@@ -7582,7 +7582,6 @@ function _renderPhotoBtns() {
       const nom = cf.fournisseurs?.nom || '?';
       const email = cf.fournisseurs?.email || '';
       btns.push(`<button onclick="ouvrirModalDemandePh('${consId}','${cf.fournisseur_id}','${nom.replace(/'/g,"\\'")}','photo') " class="border border-green-600 text-green-700 px-2 py-1 rounded text-xs hover:bg-green-50">📷 ${escHtml(nom)}</button>`);
-      btns.push(`<button onclick="ouvrirModalDemandePh('${consId}','${cf.fournisseur_id}','${nom.replace(/'/g,"\\'")}','renseignement') " class="border border-blue-600 text-blue-700 px-2 py-1 rounded text-xs hover:bg-blue-50">❓ ${escHtml(nom)}</button>`);
     });
   }
   if (!btns.length) { if (bloc) bloc.classList.add('hidden'); return; }
@@ -7630,7 +7629,7 @@ async function loadComparatif() {
         : db.from('comparatif_selections').select('*').eq('consultation_id', consId).is('jeu_id', null),
       db.from('consultations').select('frais_port_etude, titre, familles').eq('id', consId).maybeSingle().then(r=>r,()=>({data:null})),
       db.from('demandes_modification').select('id, fournisseur_id, message, created_at').eq('consultation_id', consId).eq('statut', 'pending').then(r=>r,()=>({data:[]})),
-      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids, statut, message, created_at, assignee_ids, type, fourniture_reponses').eq('consultation_id', consId).then(r=>r,()=>({data:[]}))
+      db.from('demandes_photos').select('id, fournisseur_id, fourniture_ids, statut, message, created_at, assignee_ids').eq('consultation_id', consId).neq('type', 'renseignement').then(r=>r,()=>({data:[]}))
     ]);
 
     let foursList = cfRes.data || [];
@@ -7665,13 +7664,9 @@ async function loadComparatif() {
       const demandeById = {};
       demandes.forEach(d => { demandeById[d.id] = d; });
       demandes.forEach(d => {
-        const isRenseignement = d.type === 'renseignement';
-        const key = isRenseignement ? 'renseignement' : 'photo';
         (d.fourniture_ids || []).forEach(fid => {
-          const reponse = isRenseignement ? (d.fourniture_reponses || {})[fid] : null;
-          ((photosMap[fid] ||= {})[d.fournisseur_id] ||= {})[key] = {
-            statut: reponse ? 'recue' : 'pending', type: d.type || 'photo', reponse,
-            demandeStatut: d.statut, message: d.message, demandeDate: d.created_at,
+          (photosMap[fid] ||= {})[d.fournisseur_id] = {
+            statut: 'pending', demandeStatut: d.statut, message: d.message, demandeDate: d.created_at,
             assignee: (d.assignee_ids || []).length > 0
           };
         });
@@ -7679,8 +7674,8 @@ async function loadComparatif() {
       (photosData || []).forEach(p => {
         const d = demandeById[p.demande_id];
         if (!d || !p.url) return;
-        ((photosMap[p.fourniture_id] ||= {})[d.fournisseur_id] ||= {}).photo = {
-          statut: 'recue', type: 'photo', url: p.url, valide: p.valide, demandeDate: d.created_at
+        (photosMap[p.fourniture_id] ||= {})[d.fournisseur_id] = {
+          statut: 'recue', url: p.url, valide: p.valide, demandeDate: d.created_at
         };
       });
     }
@@ -7705,18 +7700,6 @@ async function loadComparatif() {
 function _compPhotoIconHtml(photoInfo) {
   if (!photoInfo) return '';
   const dateTxt = photoInfo.demandeDate ? new Date(photoInfo.demandeDate).toLocaleDateString('fr-FR') : '';
-  if (photoInfo.type === 'renseignement') {
-    const statutLblR = { en_attente: '⏳ En attente de réponse du fournisseur', en_cours: '🔄 En cours de traitement', annulee: '❌ Demande annulée' }[photoInfo.demandeStatut] || '⏳ En attente de réponse du fournisseur';
-    return `<div class="relative inline-block group">
-      <span class="text-xs ${photoInfo.reponse ? 'text-blue-600' : 'text-blue-400'} cursor-default">❓</span>
-      <div class="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-max max-w-56 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-2 text-left text-xs text-gray-700 space-y-0.5 pointer-events-none">
-        <div class="font-semibold text-gray-800">❓ Renseignement demandé</div>
-        ${photoInfo.message ? `<div class="text-gray-500 italic">« ${escHtml(photoInfo.message)} »</div>` : ''}
-        ${photoInfo.reponse ? `<div class="text-blue-600 font-medium">Réponse : ${escHtml(photoInfo.reponse)}</div>` : `<div class="text-amber-600">${statutLblR}</div>`}
-        ${dateTxt ? `<div class="text-gray-400">Demandé le ${dateTxt}</div>` : ''}
-      </div>
-    </div>`;
-  }
   if (photoInfo.url) {
     return `<div class="relative inline-block group">
       <a href="${photoInfo.url}" target="_blank" onclick="event.stopPropagation()" class="text-xs">🖼️</a>
@@ -7857,8 +7840,7 @@ function _renderComparatif() {
           const isSelected = selFournId === cf.fournisseur_id && !sel._variante;
           const effectivePrix = isSelected && sel.prix_unit_ht != null ? parseFloat(sel.prix_unit_ht) : prix;
           const total = effectivePrix != null && qteDisplay ? effectivePrix * qteDisplay : null;
-          const demandeInfo = photosMap?.[f.id]?.[cf.fournisseur_id];
-          const photoIcon = (_compPhotoIconHtml(demandeInfo?.photo) + _compPhotoIconHtml(demandeInfo?.renseignement));
+          const photoIcon = _compPhotoIconHtml(photosMap?.[f.id]?.[cf.fournisseur_id]);
           if (prix === null) return `<td class="px-1 py-1 text-center text-gray-300 border-l text-xs">—${photoIcon ? `<div>${photoIcon}</div>` : ''}</td>`;
           const ficheUrl = r?.fiche_technique_url;
           const ficheIcon = ficheUrl ? `<a href="${ficheUrl}" target="_blank" onclick="event.stopPropagation()" class="text-blue-400 text-xs" title="Fiche">📄</a>` : '';
@@ -11892,23 +11874,12 @@ document.addEventListener('click', e => {
 // ============================================================
 // DEMANDES PHOTOS
 // ============================================================
-let _dphState = { consId: null, fournisseurId: null, type: 'photo' };
+let _dphState = { consId: null, fournisseurId: null };
 
-function ouvrirModalDemandePh(consId, fournisseurId, nomFour, type) {
-  type = type || 'photo';
-  _dphState = { consId, fournisseurId, type };
+function ouvrirModalDemandePh(consId, fournisseurId, nomFour) {
+  _dphState = { consId, fournisseurId };
   document.getElementById('dph-nom-four').textContent = nomFour;
   document.getElementById('dph-message').value = '';
-
-  const isRenseignement = type === 'renseignement';
-  document.getElementById('dph-titre').innerHTML = (isRenseignement ? '❓ Demande de renseignement — ' : '📷 Demande de photos — ') + '<span id="dph-nom-four">' + escHtml(nomFour) + '</span>';
-  document.getElementById('dph-intro').textContent = isRenseignement
-    ? 'Sélectionnez les fournitures concernées et précisez votre question (ex : quantité disponible, délai, dimensions...).'
-    : 'Sélectionnez les fournitures à photographier. Le fournisseur recevra une notification et pourra dispatcher la demande à ses collaborateurs.';
-  document.getElementById('dph-message-label').textContent = isRenseignement ? 'Votre question' : 'Message (optionnel)';
-  document.getElementById('dph-message').placeholder = isRenseignement ? 'ex : quelle est la quantité disponible en stock ?' : 'ex : photos de face avec étiquette visible';
-  document.getElementById('dph-submit').className = 'w-full text-white rounded-lg px-4 py-3 text-sm font-semibold ' + (isRenseignement ? 'bg-blue-700 hover:bg-blue-800' : 'bg-green-700 hover:bg-green-800');
-  document.getElementById('dph-submit').textContent = isRenseignement ? 'Envoyer la demande ❓' : 'Envoyer la demande 📷';
 
   // Seulement les fournitures pour lesquelles ce fournisseur a répondu
   const cache = state.compCaches?.[consId];
@@ -11955,17 +11926,14 @@ async function envoyerDemandePh() {
   const checked = [...document.querySelectorAll('.dph-check:checked')].map(c => c.value);
   if (!checked.length) { toast('Sélectionnez au moins une fourniture.', 'err'); return; }
 
-  const isRenseignement = _dphState.type === 'renseignement';
   const message = document.getElementById('dph-message').value.trim();
-  if (isRenseignement && !message) { toast('Précisez votre question.', 'err'); return; }
-
   const { data, error } = await db.from('demandes_photos').insert({
     consultation_id: _dphState.consId,
     fournisseur_id:  _dphState.fournisseurId,
     entrepreneur_id: state.user.id,
     fourniture_ids:  checked,
     message:         message || null,
-    type:            isRenseignement ? 'renseignement' : 'photo',
+    type:            'photo',
     statut:          'en_attente', // convention utilisée côté portail fournisseur (pas 'pending')
   }).select('id').single();
 
@@ -11979,11 +11947,9 @@ async function envoyerDemandePh() {
     const compteFournisseurId = carnetEntry?.compte_fournisseur_id || carnetEntry?.fournisseur_portail_id || null;
     if (compteFournisseurId) {
       const nomChantierPh = state.currentChantier?.affaire || '';
-      const msgPh = isRenseignement
-        ? `Demande de renseignement sur ${checked.length} fourniture(s)${nomChantierPh ? ` — ${nomChantierPh}` : ''}`
-        : `${checked.length} photo(s) demandée(s)${nomChantierPh ? ` — ${nomChantierPh}` : ''}`;
+      const msgPh = `${checked.length} photo(s) demandée(s)${nomChantierPh ? ` — ${nomChantierPh}` : ''}`;
       await db.from('notifications').insert({
-        type: isRenseignement ? 'demande_renseignement' : 'demande_photo',
+        type: 'demande_photo',
         user_id: compteFournisseurId,
         message: msgPh,
         consultation_id: _dphState.consId,
@@ -11991,13 +11957,13 @@ async function envoyerDemandePh() {
       });
       fetch(`${WORKER_URL}/notify-event`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: isRenseignement ? 'Demande de renseignement' : 'Demande de photos', message: msgPh })
+        body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: 'Demande de photos', message: msgPh })
       }).catch(() => {});
     }
   } catch (err) { console.warn('notif demande photo:', err); }
 
   fermerModalDemandePh();
-  toast(isRenseignement ? 'Demande de renseignement envoyée au fournisseur ✓' : 'Demande de photos envoyée au fournisseur ✓');
+  toast('Demande de photos envoyée au fournisseur ✓');
 }
 
 // ============================================================

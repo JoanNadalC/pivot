@@ -610,6 +610,23 @@
       </div>
     </div>
 
+    <!-- MODAL DEMANDE RENSEIGNEMENT A UN COLLABORATEUR -->
+    <div id="modal-demande-rens" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+        <h3 class="text-base font-bold text-gray-800 mb-1">❓ Demander un renseignement</h3>
+        <p class="text-sm text-gray-500 mb-4" id="rens-fourniture-nom"></p>
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Collaborateur</label>
+        <div id="rens-collab-list" class="space-y-1 mb-4"></div>
+        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Votre question</label>
+        <textarea id="rens-message" rows="2" placeholder="ex : quelle est la quantité disponible sur la parcelle B ?" class="w-full border rounded-lg px-3 py-2 text-sm resize-none mb-3"></textarea>
+        <p id="rens-err" class="text-xs text-red-500 mb-3 hidden"></p>
+        <div class="flex gap-2">
+          <button onclick="fermerModalDemandeRenseignement()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Annuler</button>
+          <button onclick="confirmerDemandeRenseignement()" class="flex-1 bg-blue-700 text-white text-sm py-2 rounded-lg hover:bg-blue-800 font-semibold">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
     <div id="tab-profil" class="tab-content hidden">
       <div class="max-w-lg">
         <h2 class="text-lg font-bold text-gray-800 mb-4">Mon profil</h2>
@@ -2856,6 +2873,7 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
       </td>
       <td class="px-3 py-2 text-center whitespace-nowrap">
         ${!locked && !isVar ? `<button onclick="addVarianteFournisseur('${f.id}')" class="text-orange-400 hover:text-orange-600 text-xs font-medium">＋ variante</button>` : ''}
+        ${!isVar ? `<button onclick="ouvrirModalDemandeRenseignement('${f.id}', '${escHtml(f.designation).replace(/'/g,"\\'")}')" class="block text-blue-400 hover:text-blue-600 text-xs font-medium mt-1" title="Demander un renseignement à un collaborateur">❓ collab.</button>` : ''}
         ${locked ? '<span class="text-green-500 text-xs">✅</span>' : ''}
       </td>
     </tr>
@@ -4415,6 +4433,66 @@ async function enregistrerReponseRenseignement(demandeId, fournitureId, valeur) 
   toast('Réponse enregistrée ✓');
   if (state.currentConsultation) await loadDemandesPhotosForConsultation();
   else await loadDemandesPhotos();
+}
+
+let _rensFournitureId = null, _rensFournitureNom = null;
+
+async function ouvrirModalDemandeRenseignement(fournitureId, nomFourniture) {
+  _rensFournitureId = fournitureId;
+  _rensFournitureNom = nomFourniture;
+  document.getElementById('rens-fourniture-nom').textContent = nomFourniture;
+  document.getElementById('rens-message').value = '';
+  document.getElementById('rens-err').classList.add('hidden');
+
+  await loadCollaborateurs();
+  const list = document.getElementById('rens-collab-list');
+  if (!state.collaborateurs.length) {
+    list.innerHTML = '<p class="text-xs text-gray-400 italic">Aucun collaborateur — ajoutez-en un depuis l\'onglet Équipe.</p>';
+  } else {
+    list.innerHTML = state.collaborateurs.map((c, i) => `
+      <label class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+        <input type="radio" name="rens-collab" value="${c.id}" ${i === 0 ? 'checked' : ''} class="accent-blue-700">
+        <span class="text-sm">${escHtml(c.nom)}</span>
+      </label>`).join('');
+  }
+
+  document.getElementById('modal-demande-rens').classList.remove('hidden');
+}
+
+function fermerModalDemandeRenseignement() {
+  document.getElementById('modal-demande-rens').classList.add('hidden');
+}
+
+async function confirmerDemandeRenseignement() {
+  const err = document.getElementById('rens-err');
+  err.classList.add('hidden');
+  const collabId = document.querySelector('input[name="rens-collab"]:checked')?.value;
+  if (!collabId) { err.textContent = 'Sélectionnez un collaborateur.'; err.classList.remove('hidden'); return; }
+  const message = document.getElementById('rens-message').value.trim();
+  if (!message) { err.textContent = 'Précisez votre question.'; err.classList.remove('hidden'); return; }
+
+  const fId = state.fournisseurId || state.user.id;
+  const { error } = await db.from('demandes_photos').insert({
+    fournisseur_id: fId,
+    consultation_id: state.currentConsultation?.id || null,
+    type: 'renseignement',
+    fourniture_ids: [_rensFournitureId],
+    assignee_ids: [collabId],
+    message,
+    statut: 'en_attente'
+  });
+  if (error) { err.textContent = 'Erreur : ' + error.message; err.classList.remove('hidden'); return; }
+
+  const collab = state.collaborateurs.find(c => c.id === collabId);
+  if (collab?.auth_user_id) {
+    fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: collab.auth_user_id, portail: 'photos', title: 'Demande de renseignement', message: `${_rensFournitureNom} : ${message}` })
+    }).catch(() => {});
+  }
+
+  fermerModalDemandeRenseignement();
+  toast('Demande de renseignement envoyée ✓');
 }
 
 let _renvoyerPhotoId = null, _renvoyerDemandeId = null, _renvoyerFournitureId = null;
