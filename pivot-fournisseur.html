@@ -568,7 +568,7 @@
     <div id="modal-renvoyer" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
         <h3 class="text-base font-bold text-gray-800 mb-1">Renvoyer la demande</h3>
-        <p class="text-sm text-gray-500 mb-4">La photo sera supprimée et la demande renvoyée aux collaborateurs.</p>
+        <p class="text-sm text-gray-500 mb-4">Toutes les photos déjà envoyées pour cette ligne seront supprimées et la demande renvoyée aux collaborateurs.</p>
         <div class="mb-4">
           <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Commentaire / précision</label>
           <textarea id="renvoyer-commentaire" rows="3" placeholder="Ex : Prenez la photo de face, en pleine lumière…"
@@ -4276,15 +4276,22 @@ function _validerControlHtml(photo, demandeId) {
       </button>`;
 }
 
-function _photoMiniCardHtml(photo, demandeId, fid, commentaire) {
-  return `<div class="flex items-center gap-1.5 bg-white border border-gray-100 rounded-lg p-1" id="ligne-${photo.id}">
+function _photoMiniCardHtml(photo, demandeId) {
+  return `<div class="relative flex items-center gap-1.5 bg-white border border-gray-100 rounded-lg p-1" id="ligne-${photo.id}">
+    <button onclick="supprimerPhotoUnique('${photo.id}')" title="Supprimer cette photo"
+      class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 hover:bg-red-500 text-white text-[10px] leading-none flex items-center justify-center">✕</button>
     <img src="${photo.url}" class="w-9 h-9 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
-    <div class="flex flex-col gap-0.5">
-      ${_validerControlHtml(photo, demandeId)}
-      ${fid ? `<button onclick="ouvrirModalRenvoyer('${photo.id}', '${demandeId}', '${fid}', ${escHtml(JSON.stringify(commentaire || ''))})"
-        class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100">↩ Renvoyer</button>` : ''}
-    </div>
+    ${_validerControlHtml(photo, demandeId)}
   </div>`;
+}
+
+async function supprimerPhotoUnique(photoId) {
+  if (!confirm('Supprimer cette photo ?')) return;
+  const { error } = await db.from('photos_fournitures').delete().eq('id', photoId);
+  if (error) { toast('Erreur : ' + error.message); return; }
+  document.getElementById(`ligne-${photoId}`)?.remove();
+  toast('Photo supprimée');
+  await _refreshDemandesActiveView();
 }
 
 // Rendu d'une demande de photo (fournitures + statut + assignation collaborateur) —
@@ -4341,7 +4348,10 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
     const photos = Object.values(dPhotos)[0] || [];
     lignes = photos.length
       ? `<div class="py-1.5">
-          <div class="text-sm font-medium mb-1.5">${escHtml(d.catalogue_ref)}</div>
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="flex-1 min-w-0 text-sm font-medium truncate">${escHtml(d.catalogue_ref)}</div>
+            <button onclick="ouvrirModalRenvoyer('${d.id}', null, '')" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100 flex-shrink-0">↩ Renvoyer</button>
+          </div>
           <div class="flex flex-wrap gap-2">${photos.map(photo => _photoMiniCardHtml(photo, d.id)).join('')}</div>
         </div>`
       : `<div class="flex items-center gap-2 py-2 text-sm">
@@ -4373,9 +4383,10 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
             ${commentaire ? `<div class="text-xs text-amber-600 italic truncate">💬 ${escHtml(commentaire)}</div>` : ''}
           </div>
           <span class="text-xs font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${allValid ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}">${photos.length} photo${photos.length > 1 ? 's' : ''}</span>
+          <button onclick="ouvrirModalRenvoyer('${d.id}', '${fid}', ${escHtml(JSON.stringify(commentaire || ''))})" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100 flex-shrink-0">↩ Renvoyer</button>
         </div>
         <div class="flex flex-wrap gap-2 pl-6">
-          ${photos.map(photo => _photoMiniCardHtml(photo, d.id, fid, commentaire)).join('')}
+          ${photos.map(photo => _photoMiniCardHtml(photo, d.id)).join('')}
         </div>
       </div>`;
     }).join('');
@@ -5016,10 +5027,10 @@ async function confirmerDemandeCatalogue() {
   _checkPhotosBadge();
 }
 
-let _renvoyerPhotoId = null, _renvoyerDemandeId = null, _renvoyerFournitureId = null;
+let _renvoyerDemandeId = null, _renvoyerFournitureId = null;
 
-function ouvrirModalRenvoyer(photoId, demandeId, fournitureId, commentaireActuel) {
-  _renvoyerPhotoId = photoId;
+// Renvoi au niveau de la ligne (fourniture) : supprime TOUTES les photos déjà envoyées pour cette ligne
+function ouvrirModalRenvoyer(demandeId, fournitureId, commentaireActuel) {
   _renvoyerDemandeId = demandeId;
   _renvoyerFournitureId = fournitureId;
   document.getElementById('renvoyer-commentaire').value = commentaireActuel || '';
@@ -5029,17 +5040,19 @@ function ouvrirModalRenvoyer(photoId, demandeId, fournitureId, commentaireActuel
 
 function fermerModalRenvoyer() {
   document.getElementById('modal-renvoyer').classList.add('hidden');
-  _renvoyerPhotoId = _renvoyerDemandeId = _renvoyerFournitureId = null;
+  _renvoyerDemandeId = _renvoyerFournitureId = null;
 }
 
 async function confirmerRenvoyer() {
-  if (!_renvoyerPhotoId || !_renvoyerDemandeId) return;
+  if (!_renvoyerDemandeId) return;
   const commentaire = document.getElementById('renvoyer-commentaire').value.trim();
   const errEl = document.getElementById('renvoyer-err');
   errEl.classList.add('hidden');
 
-  // Supprimer la photo
-  await db.from('photos_fournitures').delete().eq('id', _renvoyerPhotoId);
+  // Supprimer toutes les photos déjà envoyées pour cette ligne (fourniture_id null = item catalogue)
+  let delQuery = db.from('photos_fournitures').delete().eq('demande_id', _renvoyerDemandeId);
+  delQuery = _renvoyerFournitureId ? delQuery.eq('fourniture_id', _renvoyerFournitureId) : delQuery.is('fourniture_id', null);
+  await delQuery;
 
   // Mettre à jour le commentaire sur la fourniture
   const { data: demande } = await db.from('demandes_photos')
@@ -5047,8 +5060,10 @@ async function confirmerRenvoyer() {
     .eq('id', _renvoyerDemandeId)
     .maybeSingle();
   const comments = demande?.fourniture_commentaires || {};
-  if (commentaire) comments[_renvoyerFournitureId] = commentaire;
-  else delete comments[_renvoyerFournitureId];
+  if (_renvoyerFournitureId) {
+    if (commentaire) comments[_renvoyerFournitureId] = commentaire;
+    else delete comments[_renvoyerFournitureId];
+  }
 
   // Remettre la demande en attente
   const { error } = await db.from('demandes_photos')
