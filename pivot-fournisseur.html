@@ -3346,7 +3346,8 @@ function addVarianteFournisseur(fournitureId) {
 }
 
 async function supprimerVarianteFournisseur(fournitureId, ordre) {
-  if (!confirm('Supprimer cette variante ?')) return;
+  const ok = await showConfirm('Cette variante sera définitivement supprimée.', { title: 'Supprimer cette variante ?', okLabel: 'Supprimer', danger: true });
+  if (!ok) return;
   const key = `${fournitureId}_${ordre}`;
   const row = document.querySelector(`tr[data-fourniture="${fournitureId}"][data-ordre="${ordre}"]`);
   const fId = state.fournisseurId || state.user?.id;
@@ -4286,9 +4287,11 @@ function _photoMiniCardHtml(photo, demandeId) {
 }
 
 async function supprimerPhotoUnique(photoId) {
-  if (!confirm('Supprimer cette photo ?')) return;
-  const { error } = await db.from('photos_fournitures').delete().eq('id', photoId);
+  const ok = await showConfirm('Cette photo sera définitivement supprimée.', { title: 'Supprimer cette photo ?', okLabel: 'Supprimer', danger: true });
+  if (!ok) return;
+  const { data, error } = await db.from('photos_fournitures').delete().eq('id', photoId).select('id');
   if (error) { toast('Erreur : ' + error.message); return; }
+  if (!data?.length) { toast('Suppression refusée (droits insuffisants)', 'err'); return; }
   document.getElementById(`ligne-${photoId}`)?.remove();
   toast('Photo supprimée');
   await _refreshDemandesActiveView();
