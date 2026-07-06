@@ -382,8 +382,16 @@
           <h3 class="font-semibold mb-4">Informations chantier</h3>
           <label class="block text-xs text-gray-500 mb-1">Affaire *</label>
           <input id="ch-affaire" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
-          <label class="block text-xs text-gray-500 mb-1">Ville</label>
-          <input id="ch-ville" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Ville</label>
+              <input id="ch-ville" type="text" class="w-full border rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Code postal</label>
+              <input id="ch-cp" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="75001">
+            </div>
+          </div>
           <label class="block text-xs text-gray-500 mb-1">Maître d'ouvrage</label>
           <input id="ch-moa" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="Nom ou raison sociale du MOA">
           <label class="block text-xs text-gray-500 mb-1">Numéro de marché</label>
@@ -3149,8 +3157,16 @@ function openNewChantierModal() {
     <h2 class="text-lg font-bold mb-4">Nouveau chantier</h2>
     <label class="block text-xs text-gray-500 mb-1">Affaire *</label>
     <input id="nc-affaire" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="ex: Parc municipal Saint-Lô">
-    <label class="block text-xs text-gray-500 mb-1">Ville</label>
-    <input id="nc-ville" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Ville</label>
+        <input id="nc-ville" type="text" class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Code postal</label>
+        <input id="nc-cp" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="75001">
+      </div>
+    </div>
     <label class="block text-xs text-gray-500 mb-1">Maître d'ouvrage</label>
     <input id="nc-moa" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="Nom ou raison sociale du MOA">
     <label class="block text-xs text-gray-500 mb-1">Numéro de marché</label>
@@ -3190,6 +3206,7 @@ async function createChantier() {
       entrepreneur_id: state.user.id,
       affaire,
       ville: document.getElementById('nc-ville').value.trim() || null,
+      code_postal: document.getElementById('nc-cp').value.trim() || null,
       maitre_ouvrage: document.getElementById('nc-moa').value.trim() || null,
       numero_marche: document.getElementById('nc-marche').value.trim() || null,
       date_debut: document.getElementById('nc-debut').value || null,
@@ -3385,6 +3402,7 @@ function fillParametrage() {
   if (!c) return;
   document.getElementById('ch-affaire').value = c.affaire || '';
   document.getElementById('ch-ville').value = c.ville || '';
+  document.getElementById('ch-cp').value = c.code_postal || '';
   document.getElementById('ch-moa').value = c.maitre_ouvrage || '';
   document.getElementById('ch-marche').value = c.numero_marche || '';
   document.getElementById('ch-debut').value = c.date_debut || '';
@@ -3436,6 +3454,7 @@ async function saveChantier() {
     const payload = {
       affaire: document.getElementById('ch-affaire').value.trim(),
       ville: document.getElementById('ch-ville').value.trim(),
+      code_postal: document.getElementById('ch-cp').value.trim() || null,
       maitre_ouvrage: document.getElementById('ch-moa').value.trim(),
       numero_marche: document.getElementById('ch-marche').value.trim(),
       date_debut: document.getElementById('ch-debut').value || null,
@@ -7214,13 +7233,23 @@ function openNewConsultationModal() {
     </div>`}
     <label class="block text-xs text-gray-500 mb-2">Fournisseurs invités (carnet)</label>
     <div class="space-y-1 mb-4 max-h-36 overflow-y-auto border rounded p-2">${foursOptions || '<p class="text-gray-400 text-sm">Aucun fournisseur dans le carnet</p>'}</div>
-    <label class="flex items-center gap-3 mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-100">
-      <input type="checkbox" id="nc-ouverte">
+    <label class="flex items-center gap-3 mb-2 p-3 bg-indigo-50 border border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-100">
+      <input type="checkbox" id="nc-ouverte" onchange="document.getElementById('nc-ouverte-infos').classList.toggle('hidden', !this.checked)">
       <div>
         <p class="text-sm font-medium text-indigo-800">🌐 Consultation ouverte</p>
         <p class="text-xs text-indigo-600">Tous les fournisseurs de la plateforme (avec forfait adapté) pourront voir et répondre.</p>
       </div>
     </label>
+    <div id="nc-ouverte-infos" class="hidden mb-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+      <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Infos visibles par les fournisseurs</p>
+      <p class="text-xs text-gray-400 mb-2">La ville et le code postal du chantier sont toujours affichés.</p>
+      <div class="space-y-1.5">
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="nc-info-entreprise" checked> Nom de l'entreprise</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="nc-info-nomprenom" checked> Nom et prénom du contact</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="nc-info-telephone" checked> Téléphone</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="nc-info-email" checked> Email</label>
+      </div>
+    </div>
     <div class="flex gap-3">
       <button onclick="createConsultation()" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Créer & envoyer</button>
       <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
@@ -7235,6 +7264,12 @@ async function createConsultation() {
   const checkedFams        = [...document.querySelectorAll('input[name="nc-fam"]:checked')].map(el => el.value);
   const inclureCaract      = document.getElementById('nc-inclure-caract')?.checked || false;
   const isOuverte          = document.getElementById('nc-ouverte')?.checked || false;
+  const visibiliteInfos = isOuverte ? {
+    nom_entreprise: document.getElementById('nc-info-entreprise')?.checked || false,
+    nom_prenom:     document.getElementById('nc-info-nomprenom')?.checked || false,
+    telephone:      document.getElementById('nc-info-telephone')?.checked || false,
+    email:          document.getElementById('nc-info-email')?.checked || false,
+  } : null;
   try {
     const { data: cons, error } = await db.from('consultations').insert({
       chantier_id:            state.currentChantier.id,
@@ -7245,6 +7280,7 @@ async function createConsultation() {
       familles:               checkedFams,
       inclure_caracteristiques: inclureCaract,
       is_ouverte:             isOuverte,
+      visibilite_infos:       visibiliteInfos,
       statut:                 (checkedFours.length || isOuverte) ? 'envoyee' : 'brouillon',
       date_envoi:             (checkedFours.length || isOuverte) ? new Date().toISOString() : null
     }).select().single();
