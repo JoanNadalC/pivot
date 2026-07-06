@@ -217,8 +217,21 @@
       </span>
     </label>
     <p class="upload-status" id="upload-status" style="font-size:13px;color:var(--gris);text-align:center;min-height:20px"></p>
+    <button onclick="verifierAccesCamera()" style="background:none;border:none;color:var(--cuivre);font-size:13px;text-decoration:underline;cursor:pointer;padding:8px">🔓 L'appareil photo ne s'ouvre pas ?</button>
   </div>
   <canvas id="canvas-capture" style="display:none"></canvas>
+</div>
+
+<!-- AIDE ACCÈS CAMÉRA -->
+<div id="modal-camera-aide" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:60;display:flex;align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--blanc,#fff);border-radius:16px;padding:24px;max-width:340px;width:100%">
+    <h3 style="font-family:'Inter',sans-serif;font-weight:700;font-size:16px;margin:0 0 10px">🔓 Autoriser l'appareil photo</h3>
+    <p id="camera-aide-texte" style="font-size:14px;color:var(--gris);line-height:1.6;margin:0 0 16px"></p>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('modal-camera-aide').classList.add('hidden')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--gris-lt);background:#fff;font-size:14px;cursor:pointer">Fermer</button>
+      <button onclick="verifierAccesCamera()" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--vert);color:var(--ecru);font-size:14px;font-weight:600;cursor:pointer">Réessayer</button>
+    </div>
+  </div>
 </div>
 
 <!-- TERMINÉ -->
@@ -452,8 +465,8 @@ async function ouvrirDemande(index) {
     // Demande catalogue : un seul item virtuel
     state.fournitures = [{ id: '__catalogue__', designation: d.catalogue_ref }];
     const { data: photos } = await db.from('photos_fournitures')
-      .select('url').eq('demande_id', d.id).limit(1);
-    if (photos?.length) state.photosPrises['__catalogue__'] = photos[0].url;
+      .select('url').eq('demande_id', d.id).order('created_at', { ascending: true });
+    if (photos?.length) state.photosPrises['__catalogue__'] = photos.map(p => p.url);
   } else {
     // Fournitures standard
     const { data: fours } = await db.from('fournitures')
@@ -461,8 +474,8 @@ async function ouvrirDemande(index) {
       .in('id', d.fourniture_ids || []);
     state.fournitures = fours || [];
     const { data: photos } = await db.from('photos_fournitures')
-      .select('fourniture_id, url').eq('demande_id', d.id);
-    (photos || []).forEach(p => { state.photosPrises[p.fourniture_id] = p.url; });
+      .select('fourniture_id, url').eq('demande_id', d.id).order('created_at', { ascending: true });
+    (photos || []).forEach(p => { (state.photosPrises[p.fourniture_id] ||= []).push(p.url); });
   }
 
   renderListe();
@@ -482,7 +495,7 @@ function renderListe() {
   const termineIds = d.fourniture_termine || {};
   const done = isRenseignement
     ? Object.keys(reponses).filter(k => reponses[k]).length
-    : new Set([...Object.keys(state.photosPrises), ...Object.keys(termineIds).filter(k => termineIds[k])]).size;
+    : new Set([...Object.keys(state.photosPrises).filter(k => state.photosPrises[k]?.length), ...Object.keys(termineIds).filter(k => termineIds[k])]).size;
   const date = new Date(d.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
   const isCatalogue = !!d.catalogue_ref;
@@ -514,12 +527,13 @@ function renderListe() {
 
   const termine = d.fourniture_termine || {};
   list.innerHTML = state.fournitures.map(f => {
-    const hasPhoto = !!state.photosPrises[f.id];
+    const photos = state.photosPrises[f.id] || [];
+    const hasPhoto = photos.length > 0;
     const isTermineSansPhoto = !hasPhoto && !!termine[f.id];
     const isDone = hasPhoto || isTermineSansPhoto;
     const detail = [f.taille, f.contenant, f.unite].filter(Boolean).join(' · ');
     const thumb = hasPhoto
-      ? `<div class="fourniture-thumb"><img src="${state.photosPrises[f.id]}" alt=""></div>`
+      ? `<div class="fourniture-thumb" style="position:relative"><img src="${photos[photos.length - 1]}" alt="">${photos.length > 1 ? `<span style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.65);color:#fff;font-size:10px;font-weight:600;border-radius:8px;padding:1px 5px">×${photos.length}</span>` : ''}</div>`
       : `<div class="fourniture-thumb">${isTermineSansPhoto ? '✓' : '🌿'}</div>`;
     return `<div class="fourniture-item ${isDone ? 'done' : ''}" id="item-${f.id}">
       ${thumb}
@@ -530,31 +544,24 @@ function renderListe() {
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         <button class="btn-photo ${hasPhoto ? 'done-btn' : 'todo'}" onclick="ouvrirCamera('${f.id}')">
-          ${hasPhoto ? '✓ Fait' : '📷'}
+          ${hasPhoto ? '+ Photo' : '📷'}
         </button>
         ${!hasPhoto ? `<button onclick="marquerFournitureTerminee('${f.id}')" style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--gris-lt);background:${isTermineSansPhoto ? 'var(--vert)' : '#fff'};color:${isTermineSansPhoto ? 'var(--ecru)' : 'var(--gris)'};cursor:pointer">${isTermineSansPhoto ? '✓ Terminé' : 'Terminé'}</button>` : ''}
       </div>
     </div>`;
   }).join('');
-
-  if (done === total && total > 0) {
-    setTimeout(() => show('screen-done'), 600);
-  }
 }
 
 async function marquerFournitureTerminee(fournitureId) {
   const d = state.currentDemande;
   const termine = { ...(d.fourniture_termine || {}), [fournitureId]: true };
-  const toutesIds = d.fourniture_ids || [];
-  const toutTermine = toutesIds.every(id => id in state.photosPrises || termine[id]);
   const { error } = await db.from('demandes_photos').update({
     fourniture_termine: termine,
-    statut: toutTermine ? 'terminé' : 'en_cours'
+    statut: d.statut === 'en_attente' ? 'en_cours' : d.statut
   }).eq('id', d.id);
   if (error) { showError('Erreur : ' + error.message); return; }
   d.fourniture_termine = termine;
-  d.statut = toutTermine ? 'terminé' : 'en_cours';
-  if (toutTermine) { setTimeout(() => show('screen-done'), 400); return; }
+  if (d.statut === 'en_attente') d.statut = 'en_cours';
   renderListe();
 }
 
@@ -596,6 +603,36 @@ function ouvrirCamera(fournitureId) {
 
 function retourListe() { show('screen-liste'); }
 
+// Il n'existe pas d'API web standard pour ouvrir directement les réglages
+// caméra de l'OS depuis une page web : on teste l'accès et on affiche des
+// instructions adaptées à la plateforme si l'autorisation est refusée.
+async function verifierAccesCamera() {
+  document.getElementById('modal-camera-aide').classList.add('hidden');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    _afficherAideCamera("Votre navigateur ne permet pas de vérifier l'accès à l'appareil photo automatiquement. Vérifiez les réglages de votre téléphone.");
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream.getTracks().forEach(t => t.stop());
+    document.getElementById('upload-status').textContent = '✅ Accès à l\'appareil photo autorisé.';
+  } catch (err) {
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    let msg = "L'accès à l'appareil photo est refusé pour ce site.";
+    if (isIOS) msg += ' Sur iPhone : Réglages → Safari (ou Chrome) → Appareil photo → Autoriser. Puis revenez ici et réessayez.';
+    else if (isAndroid) msg += ' Sur Android : Réglages → Applications → Chrome → Autorisations → Appareil photo → Autoriser. Vous pouvez aussi appuyer sur l\'icône 🔒 à côté de l\'adresse du site pour changer l\'autorisation directement.';
+    else msg += ' Vérifiez les autorisations de caméra dans les réglages de votre navigateur pour ce site.';
+    _afficherAideCamera(msg);
+  }
+}
+
+function _afficherAideCamera(texte) {
+  document.getElementById('camera-aide-texte').textContent = texte;
+  document.getElementById('modal-camera-aide').classList.remove('hidden');
+}
+
 async function uploadFichier(input) {
   const file = input.files[0];
   if (!file) return;
@@ -636,49 +673,26 @@ async function uploadBlob(blob, ext) {
   const { data: urlData } = db.storage.from('photos-fournitures').getPublicUrl(path);
 
   const isCatalogueItem = state.currentFournitureId === '__catalogue__';
-  let dbErr;
-  if (isCatalogueItem) {
-    ({ error: dbErr } = await db.from('photos_fournitures').insert({
-      demande_id: d.id,
-      fourniture_id: null,
-      consultation_id: d.consultation_id,
-      fournisseur_id: d.fournisseur_id,
-      url: urlData.publicUrl,
-      uploaded_by: state.collaborateur?.nom || '',
-    }));
-  } else {
-    ({ error: dbErr } = await db.from('photos_fournitures').upsert({
-      demande_id: d.id,
-      fourniture_id: state.currentFournitureId,
-      consultation_id: d.consultation_id,
-      fournisseur_id: d.fournisseur_id,
-      url: urlData.publicUrl,
-      uploaded_by: state.collaborateur?.nom || '',
-    }, { onConflict: 'demande_id,fourniture_id' }));
-  }
+  const { error: dbErr } = await db.from('photos_fournitures').insert({
+    demande_id: d.id,
+    fourniture_id: isCatalogueItem ? null : state.currentFournitureId,
+    consultation_id: d.consultation_id,
+    fournisseur_id: d.fournisseur_id,
+    url: urlData.publicUrl,
+    uploaded_by: state.collaborateur?.nom || '',
+  });
   if (dbErr) { status.textContent = 'Erreur enregistrement : ' + dbErr.message; return; }
 
-  state.photosPrises[state.currentFournitureId] = urlData.publicUrl;
+  (state.photosPrises[state.currentFournitureId] ||= []).push(urlData.publicUrl);
 
-  // Vérifier si toutes les fournitures sont photographiées
-  const toutTermine = isCatalogueItem ? true : (() => {
-    const toutesIds = d.fourniture_ids || [];
-    const termine = d.fourniture_termine || {};
-    return toutesIds.every(id => id in state.photosPrises || termine[id]);
-  })();
-
-  await db.from('demandes_photos')
-    .update({ statut: toutTermine ? 'terminé' : 'en_cours' })
-    .eq('id', d.id);
-
-  status.textContent = toutTermine ? '✅ Toutes les photos envoyées !' : '✅ Photo envoyée !';
-
-  if (toutTermine) {
-    setTimeout(() => retourDemandes(), 1500);
-  } else {
-    renderListe();
-    show('screen-liste');
+  if (d.statut === 'en_attente') {
+    await db.from('demandes_photos').update({ statut: 'en_cours' }).eq('id', d.id);
+    d.statut = 'en_cours';
   }
+
+  status.textContent = '✅ Photo envoyée !';
+  renderListe();
+  show('screen-liste');
 }
 
 init();
