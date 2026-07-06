@@ -353,6 +353,7 @@
             oninput="_renderFullCatalogue()"
             class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700 w-52">
           <span id="cat-count-badge" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"></span>
+          <button onclick="ouvrirModalDemandeCatalogue()" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
           <button onclick="openAddCatalogueModal()" class="bg-green-800 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-900">+ Ajouter</button>
           <button onclick="document.getElementById('cat-import2').click()" class="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">📂 Import CSV</button>
           <input id="cat-import2" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
@@ -419,7 +420,6 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-bold text-gray-800">Mon catalogue</h2>
         <div class="flex gap-2">
-          <button onclick="ouvrirModalDemandeCatalogue()" class="border border-amber-500 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
           <button onclick="openAddCatalogueModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ Ajouter article</button>
           <button onclick="document.getElementById('cat-import').click()" class="border border-blue-600 text-blue-700 px-4 py-2 rounded-lg text-sm hover:bg-blue-50">📂 Import CSV</button>
           <input id="cat-import" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
