@@ -2075,10 +2075,14 @@ function setTab(tab, _noHistory) {
     return;
   }
   // Cacher les vues du tableau de bord (dashboard/catalogue/prospection/réponses photos) si on navigue vers un onglet global
-  const isConTab = tab === 'saisie' || tab === 'reponses';
+  const isConTab = tab === 'saisie' || tab === 'reponses' || tab === 'photos-cons';
   if (!isConTab) {
     ['view-dashboard', 'view-catalogue', 'view-prospection', 'view-reponses-photos'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
     // Si on va vers un onglet global depuis une consultation, garder le contexte visible
+  }
+  // "Mon profil" n'est rattaché à aucune consultation : la barre de contexte (Saisie/Photos) ne doit pas rester affichée au-dessus
+  if (tab === 'profil') {
+    document.getElementById('cons-tab-bar')?.classList.add('hidden');
   }
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2954,7 +2958,8 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
       </td>
       <td class="px-2 py-2 text-center whitespace-nowrap">
         ${!locked && !isVar ? `<button onclick="addVarianteFournisseur('${f.id}')" class="text-orange-400 hover:text-orange-600 text-xs font-medium">＋</button>` : ''}
-        ${locked ? '<span class="text-green-500 text-xs">✅</span>' : ''}
+        ${isVar ? `<button onclick="supprimerVarianteFournisseur('${f.id}', ${varOrdre})" class="text-red-300 hover:text-red-500 text-xs" title="Supprimer cette variante">🗑</button>` : ''}
+        ${locked && !isVar ? '<span class="text-green-500 text-xs">✅</span>' : ''}
       </td>
       <td class="px-2 py-2 text-center whitespace-nowrap">
         ${!isVar ? `<button onclick="ouvrirModalDemandeRenseignement('${f.id}', '${escHtml(f.designation).replace(/'/g,"\\'")}', 'photo')" class="text-green-600 hover:text-green-800 text-sm" title="Demander une photo à un collaborateur">📷</button>
@@ -3338,6 +3343,26 @@ function addVarianteFournisseur(fournitureId) {
   newRow.style.transition = 'opacity 0.2s';
   lastRow.insertAdjacentElement('afterend', newRow);
   requestAnimationFrame(() => { newRow.style.opacity = '1'; });
+}
+
+async function supprimerVarianteFournisseur(fournitureId, ordre) {
+  if (!confirm('Supprimer cette variante ?')) return;
+  const key = `${fournitureId}_${ordre}`;
+  const row = document.querySelector(`tr[data-fourniture="${fournitureId}"][data-ordre="${ordre}"]`);
+  const fId = state.fournisseurId || state.user?.id;
+
+  // Si elle avait déjà été envoyée, la retirer aussi de la base
+  const consId = state.currentConsultation?.id;
+  if (consId && fId) {
+    await db.from('reponses_fournisseurs').delete()
+      .eq('consultation_id', consId).eq('fourniture_id', fournitureId)
+      .eq('fournisseur_id', fId).eq('variante_ordre', ordre);
+  }
+
+  delete state.reponses[key];
+  delete state.reponsesEnvoyees[key];
+  row?.remove();
+  toast('Variante supprimée');
 }
 
 async function demanderModification(consId) {
@@ -4256,7 +4281,7 @@ function _photoMiniCardHtml(photo, demandeId, fid, commentaire) {
     <img src="${photo.url}" class="w-9 h-9 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
     <div class="flex flex-col gap-0.5">
       ${_validerControlHtml(photo, demandeId)}
-      ${fid ? `<button onclick="ouvrirModalRenvoyer('${photo.id}', '${demandeId}', '${fid}', ${JSON.stringify(commentaire || '')})"
+      ${fid ? `<button onclick="ouvrirModalRenvoyer('${photo.id}', '${demandeId}', '${fid}', ${escHtml(JSON.stringify(commentaire || ''))})"
         class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100">↩ Renvoyer</button>` : ''}
     </div>
   </div>`;
@@ -6345,7 +6370,7 @@ function _showImportReview(rows) {
     </div>
     <div class="flex gap-2 justify-end">
       <button onclick="closeModal()" class="border px-3 py-2 rounded-lg text-sm text-gray-600">Annuler</button>
-      <button onclick="_confirmVegetauxImport(${JSON.stringify(rows).replace(/</g,'&lt;')})"
+      <button onclick="_confirmVegetauxImport(${JSON.stringify(rows).replace(/</g,'&lt;').replace(/"/g,'&quot;')})"
         class="bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-900">
         Importer les cochés →
       </button>
