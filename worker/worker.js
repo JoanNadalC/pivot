@@ -1360,8 +1360,10 @@ async function handleStripeWebhook(request, env) {
 // ============================================================
 // NOTIFY EVENT — envoi immédiat d'un email si préférence "each"
 // ============================================================
-const PORTAIL_TABLE = { entrepreneur: 'compte_entrepreneur', fournisseur: 'compte_fournisseur', moe: 'compte_moe' };
-const PORTAIL_URL   = { entrepreneur: 'pivot-entrepreneur.html', fournisseur: 'pivot-fournisseur.html', moe: 'pivot-moe.html' };
+const PORTAIL_TABLE = { entrepreneur: 'compte_entrepreneur', fournisseur: 'compte_fournisseur', moe: 'compte_moe', photos: 'collaborateurs' };
+const PORTAIL_URL   = { entrepreneur: 'pivot-entrepreneur.html', fournisseur: 'pivot-fournisseur.html', moe: 'pivot-moe.html', photos: 'pivot-app-photos.html' };
+// Les collaborateurs (table 'collaborateurs') sont identifiés par leur auth_user_id, pas par leur id de ligne, et n'ont pas de colonne notif_preference
+const PORTAIL_ID_COL = { photos: 'auth_user_id' };
 
 function escHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1399,11 +1401,14 @@ async function handleNotifyEvent(request, env) {
     'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
   };
 
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=email,notif_preference&id=eq.${user_id}`, { headers });
+  const idCol = PORTAIL_ID_COL[portail] || 'id';
+  const selectCols = portail === 'photos' ? 'email' : 'email,notif_preference';
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${selectCols}&${idCol}=eq.${user_id}`, { headers });
   const [compte] = await r.json();
   if (!compte?.email) return new Response(JSON.stringify({ success: true, skipped: 'no-account' }), { headers: { 'Content-Type': 'application/json', ...cors } });
 
   // Seul "each" déclenche un envoi immédiat — daily/weekly sont traités par le cron, none = silence
+  // (les collaborateurs n'ont pas de préférence : ils reçoivent toujours l'email)
   if ((compte.notif_preference || 'each') !== 'each') {
     return new Response(JSON.stringify({ success: true, skipped: compte.notif_preference }), { headers: { 'Content-Type': 'application/json', ...cors } });
   }

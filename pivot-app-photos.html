@@ -588,11 +588,30 @@ async function marquerFournitureTerminee(fournitureId) {
   renderListe();
 }
 
+// Notifie le fournisseur (cloche + mail) qu'une demande vient d'être terminée par un collaborateur
+async function _notifierFournisseurTermine(d) {
+  try {
+    const { data: carnet } = await db.from('fournisseurs')
+      .select('fournisseur_portail_id, compte_fournisseur_id')
+      .eq('id', d.fournisseur_id).maybeSingle();
+    const compteId = carnet?.compte_fournisseur_id || carnet?.fournisseur_portail_id || null;
+    if (!compteId) return;
+    const label = d.catalogue_ref || d._nomChantier || 'une demande';
+    const msg = `Demande terminée par ${state.collaborateur?.nom || 'un collaborateur'} — ${label}`;
+    await db.from('notifications').insert({ type: 'demande_terminee', user_id: compteId, message: msg, consultation_id: d.consultation_id || null, read: false });
+    fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: compteId, portail: 'fournisseur', title: 'Demande terminée', message: msg })
+    }).catch(() => {});
+  } catch (err) { console.warn('notif fournisseur termine:', err); }
+}
+
 async function marquerDemandeTerminee() {
   const d = state.currentDemande;
   const { error } = await db.from('demandes_photos').update({ statut: 'terminé' }).eq('id', d.id);
   if (error) { showError('Erreur : ' + error.message); return; }
   d.statut = 'terminé';
+  await _notifierFournisseurTermine(d);
   show('screen-done');
 }
 
@@ -609,7 +628,7 @@ async function enregistrerReponseCollab(fournitureId, valeur) {
   if (error) { showError('Erreur : ' + error.message); return; }
   d.fourniture_reponses = reponses;
   d.statut = allAnswered ? 'terminé' : (Object.keys(reponses).length ? 'en_cours' : 'en_attente');
-  if (allAnswered) { setTimeout(() => show('screen-done'), 400); return; }
+  if (allAnswered) { await _notifierFournisseurTermine(d); setTimeout(() => show('screen-done'), 400); return; }
   renderListe();
 }
 
