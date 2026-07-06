@@ -4277,11 +4277,11 @@ function _validerControlHtml(photo, demandeId) {
       </button>`;
 }
 
-function _photoMiniCardHtml(photo, demandeId) {
+function _photoMiniCardHtml(photo, demandeId, urlsJson, idx) {
   return `<div class="relative flex items-center gap-1.5 bg-white border border-gray-100 rounded-lg p-1" id="ligne-${photo.id}">
     <button onclick="supprimerPhotoUnique('${photo.id}')" title="Supprimer cette photo"
       class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-400 hover:bg-red-500 text-white text-[10px] leading-none flex items-center justify-center">✕</button>
-    <img src="${photo.url}" class="w-9 h-9 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto('${photo.url}')">
+    <img src="${photo.url}" class="w-9 h-9 rounded object-cover flex-shrink-0 cursor-pointer" onclick="ouvrirPhoto(${urlsJson}, ${idx})">
     ${_validerControlHtml(photo, demandeId)}
   </div>`;
 }
@@ -4355,7 +4355,7 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
             <div class="flex-1 min-w-0 text-sm font-medium truncate">${escHtml(d.catalogue_ref)}</div>
             <button onclick="ouvrirModalRenvoyer('${d.id}', null, '')" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100 flex-shrink-0">↩ Renvoyer</button>
           </div>
-          <div class="flex flex-wrap gap-2">${photos.map(photo => _photoMiniCardHtml(photo, d.id)).join('')}</div>
+          <div class="flex flex-wrap gap-2">${(() => { const urlsJson = escHtml(JSON.stringify(photos.map(p => p.url))); return photos.map((photo, idx) => _photoMiniCardHtml(photo, d.id, urlsJson, idx)).join(''); })()}</div>
         </div>`
       : `<div class="flex items-center gap-2 py-2 text-sm">
           <span class="text-gray-400">📷</span>
@@ -4389,7 +4389,7 @@ function renderDemande(d, collabMap, fourMap, photosMap) {
           <button onclick="ouvrirModalRenvoyer('${d.id}', '${fid}', ${escHtml(JSON.stringify(commentaire || ''))})" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100 flex-shrink-0">↩ Renvoyer</button>
         </div>
         <div class="flex flex-wrap gap-2 pl-6">
-          ${photos.map(photo => _photoMiniCardHtml(photo, d.id)).join('')}
+          ${(() => { const urlsJson = escHtml(JSON.stringify(photos.map(p => p.url))); return photos.map((photo, idx) => _photoMiniCardHtml(photo, d.id, urlsJson, idx)).join(''); })()}
         </div>
       </div>`;
     }).join('');
@@ -4752,12 +4752,41 @@ function toggleChantier(id) {
   chev.classList.toggle('rotate-180');
 }
 
-function ouvrirPhoto(url) {
+function ouvrirPhoto(urlOrUrls, startIdx) {
+  const urls = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
+  let i = startIdx || 0;
+
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain">`;
-  overlay.onclick = () => overlay.remove();
+  overlay.tabIndex = 0;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;outline:none';
+
+  const img = document.createElement('img');
+  img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain';
+  overlay.appendChild(img);
+
+  let counter = null;
+  if (urls.length > 1) {
+    counter = document.createElement('div');
+    counter.style.cssText = 'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;font-size:13px;padding:4px 12px;border-radius:20px';
+    overlay.appendChild(counter);
+  }
+
+  const render = () => {
+    img.src = urls[i];
+    if (counter) counter.textContent = `${i + 1} / ${urls.length}`;
+  };
+  render();
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowRight' && urls.length > 1) { i = (i + 1) % urls.length; render(); }
+    else if (e.key === 'ArrowLeft' && urls.length > 1) { i = (i - 1 + urls.length) % urls.length; render(); }
+  };
+  document.addEventListener('keydown', onKey);
+  overlay.onclick = close;
   document.body.appendChild(overlay);
+  overlay.focus();
 }
 
 // Recharge la vue des demandes actuellement affichée (elles ne vivent pas toutes dans le même écran)
