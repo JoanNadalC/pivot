@@ -364,7 +364,7 @@
   <!-- CHANTIER DETAIL -->
   <div id="chantier-view" class="hidden max-w-7xl mx-auto px-4 py-6 pt-20">
     <!-- Onglets (collés sous la bannière au défilement) -->
-    <div class="sticky z-30 pt-3" style="top:56px;background:var(--ecru)">
+    <div id="chantier-tabbar" class="sticky z-30 pt-3" style="top:56px;background:var(--ecru)">
       <div class="flex gap-1 border-b mb-6 overflow-x-auto">
         <button onclick="setTab('parametrage')" id="ot-parametrage" class="tab-btn px-4 py-2 text-sm whitespace-nowrap tab-active">⚙️ Paramétrage</button>
         <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📦 Fournitures</button>
@@ -591,18 +591,18 @@
       </div>
       <div class="overflow-x-auto overflow-y-visible bg-white rounded-xl shadow-sm">
         <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-600">
+          <thead id="suivi-thead" class="bg-gray-50 text-gray-600 sticky z-20 shadow-sm">
             <tr>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">N°Poste</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Désignation</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Famille</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Statut DAF</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Émission DAF</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Date VISA</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Observations MOE</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Commandé</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Délai indicatif</th>
-              <th class="px-3 py-2 text-left sticky z-20 bg-gray-50 shadow-sm" style="top:104px">Reçu</th>
+              <th class="px-3 py-2 text-left">N°Poste</th>
+              <th class="px-3 py-2 text-left">Désignation</th>
+              <th class="px-3 py-2 text-left">Famille</th>
+              <th class="px-3 py-2 text-left">Statut DAF</th>
+              <th class="px-3 py-2 text-left">Émission DAF</th>
+              <th class="px-3 py-2 text-left">Date VISA</th>
+              <th class="px-3 py-2 text-left">Observations MOE</th>
+              <th class="px-3 py-2 text-left">Commandé</th>
+              <th class="px-3 py-2 text-left">Délai indicatif</th>
+              <th class="px-3 py-2 text-left">Reçu</th>
             </tr>
           </thead>
           <tbody id="suivi-tbody"></tbody>
@@ -11250,7 +11250,18 @@ function _suiviLatestDaf(fournitureId) {
   return best;
 }
 
+function _stickySuiviTheadOffset() {
+  const thead = document.getElementById('suivi-thead');
+  const tabbar = document.getElementById('chantier-tabbar');
+  if (!thead || !tabbar) return;
+  const top = tabbar.getBoundingClientRect().bottom;
+  thead.style.top = Math.max(0, Math.round(top)) + 'px';
+}
+window.addEventListener('resize', _stickySuiviTheadOffset);
+window.addEventListener('scroll', () => { if (!document.getElementById('tab-suivi')?.classList.contains('hidden')) _stickySuiviTheadOffset(); }, { passive: true });
+
 async function loadSuivi() {
+  _stickySuiviTheadOffset();
   const familleFilter = document.getElementById('suivi-famille-filter')?.value;
   const statutFilter = document.getElementById('suivi-statut-filter')?.value;
   const el = document.getElementById('suivi-tbody');
