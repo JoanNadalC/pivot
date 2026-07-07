@@ -1241,7 +1241,7 @@ async function openChantier(id, _noHistory) {
   document.getElementById('list-view').classList.add('hidden');
   document.getElementById('chantier-view').classList.remove('hidden');
   document.getElementById('btn-back-chantiers').classList.remove('hidden');
-  document.getElementById('chantier-header').textContent = state.currentChantier?.affaire || '';
+  document.getElementById('chantier-header').textContent = [state.currentChantier?.ville, state.currentChantier?.affaire].filter(Boolean).join(' — ');
   document.getElementById('chantier-header').classList.remove('hidden');
 
   await loadDafForChantier();
