@@ -7809,38 +7809,9 @@ function _renderComparatif() {
   const allFournitures = state.fournitures.filter(f => !f.is_variante);
   const famIds = new Set(state.familles.map(f => f.id));
 
-  // Bloquer si la même fourniture (ayant des réponses) apparaît dans deux consultations
-  if (state.selectedConsIds.length > 1) {
-    const seenFournitures = new Map(); // fournitureId → titre
-    const conflictPairs = [];
-    for (const consId of state.selectedConsIds) {
-      const cache = state.compCaches[consId];
-      if (!cache) continue;
-      const titre = cache.titre || 'Consultation';
-      for (const fId of Object.keys(cache.baseRep)) {
-        if (seenFournitures.has(fId)) {
-          const pair = `« ${seenFournitures.get(fId)} » et « ${titre} »`;
-          if (!conflictPairs.includes(pair)) conflictPairs.push(pair);
-        } else {
-          seenFournitures.set(fId, titre);
-        }
-      }
-    }
-    if (conflictPairs.length) {
-      const exemples = [...new Set(
-        [...seenFournitures.entries()]
-          .filter(([fId]) => conflictPairs.some(p => p.includes(seenFournitures.get(fId))))
-          .slice(0, 3).map(([fId]) => allFournitures.find(f => f.id === fId)?.designation || fId)
-      )].join(', ');
-      el.innerHTML = `<div class="bg-amber-50 border border-amber-300 rounded-xl p-5 text-center">
-        <div class="text-2xl mb-2">⚠️</div>
-        <p class="font-semibold text-amber-800 mb-2">Fournitures en doublon</p>
-        <p class="text-sm text-amber-700">${conflictPairs.join('<br>')}<br><br>Ces consultations contiennent les mêmes fournitures cotées.<br>Sélectionnez-en une seule ou vérifiez vos consultations.</p>
-        ${exemples ? `<p class="text-xs text-amber-600 mt-2 italic">Ex : ${exemples}</p>` : ''}
-      </div>`;
-      return;
-    }
-  }
+  // Note : une même fourniture peut avoir des réponses dans plusieurs consultations sélectionnées —
+  // elle s'affiche alors dans chacune (boucle plus bas), mais un seul prix reste sélectionnable au global
+  // (state.compSelections est clé par fourniture_id, voir selectComp/selectCompVariante).
 
   // Pré-calculer quelle consultation "revendique" chaque fourniture sans réponse (première dans l'ordre)
   const claimedWithoutResponse = new Map(); // fournitureId → consId
@@ -8204,11 +8175,23 @@ async function _autosaveCompSelection(fId, consId) {
   } catch (err) { console.warn('autosave comparatif:', err); }
 }
 
+// Un seul prix sélectionnable par fourniture (state.compSelections est déjà clé par fourniture_id,
+// peu importe la consultation ou s'il s'agit d'une variante) : quand on remplace une sélection
+// existante par une autre, on prévient l'utilisateur d'où venait l'ancienne.
+function _toastPrixRemplace(prevSel) {
+  if (!prevSel) return;
+  const titre = state.compCaches?.[prevSel.consultation_id]?.titre
+    || state.consultations?.find(c => c.id === prevSel.consultation_id)?.titre
+    || 'une autre consultation';
+  toast(`Prix désélectionné dans la consultation « ${titre} »`);
+}
+
 function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
   const cur = state.compSelections[fournitureId];
   if (cur?._variante && cur?.fournisseur_id === fournisseurId && cur?.prix_unit_ht != null && Math.abs(parseFloat(cur.prix_unit_ht)-prix) < 0.001) {
     delete state.compSelections[fournitureId];
   } else {
+    if (cur) _toastPrixRemplace(cur);
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prix, qte: cur?.qte??null, _variante: true, consultation_id: consId };
   }
   _renderComparatif();
@@ -8220,6 +8203,7 @@ function selectComp(fournitureId, fournisseurId, consId) {
   if (cur?.fournisseur_id === fournisseurId && !cur?._variante) {
     delete state.compSelections[fournitureId];
   } else {
+    if (cur) _toastPrixRemplace(cur);
     const prev = state.compSelections[fournitureId] || {};
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prev.prix_unit_ht??null, qte: prev.qte??null, consultation_id: consId };
   }
