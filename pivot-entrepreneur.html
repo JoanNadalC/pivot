@@ -589,7 +589,11 @@
           <option value="commandee">Commandée</option>
         </select>
       </div>
-      <div class="overflow-x-auto overflow-y-visible bg-white rounded-xl shadow-sm">
+      <!-- Pas de overflow-x-auto ici : la spec CSS force overflow-y à 'auto' dès que overflow-x
+           n'est pas 'visible', ce qui piège tout sticky descendant dans le scroll local du conteneur
+           au lieu du sticky de page (vérifié empiriquement). Le tableau déborde donc sur la page
+           plutôt que dans une bulle de scroll interne, pour que l'entête sticky fonctionne. -->
+      <div class="bg-white rounded-xl shadow-sm">
         <table class="w-full text-sm">
           <thead id="suivi-thead" class="bg-gray-50 text-gray-600 sticky z-20 shadow-sm">
             <tr>
