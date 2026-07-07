@@ -619,12 +619,10 @@
     </div>
 
     <!-- TAB: COMMANDE -->
-    <div id="tab-commande" class="tab-content hidden">
-      <div class="flex items-center gap-3 mb-4 flex-wrap">
-        <select id="cmd-consultation-select" class="border rounded px-3 py-2 text-sm" onchange="loadCommande()">
-          <option value="">-- Sélectionner une consultation --</option>
-        </select>
-        <span class="text-xs text-gray-400">Sélectionnez d'abord les fournisseurs dans l'onglet Comparatif</span>
+    <div id="tab-commande" class="tab-content hidden space-y-2">
+      <div class="bg-white rounded-lg border px-3 py-2">
+        <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Consultations affichées</div>
+        <div id="cmd-cons-checkboxes" class="flex flex-wrap gap-1.5"></div>
       </div>
       <div id="commande-content"></div>
     </div>
@@ -3413,7 +3411,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'fournitures') renderFournitures();
   if (tab === 'consultation') renderConsultations();
   if (tab === 'comparatif') loadComparatifSelects().then(loadComparatif);
-  if (tab === 'commande') { loadComparatifSelects().then(() => { syncCommandeSelect(); loadCommande(); }); }
+  if (tab === 'commande') { loadComparatifSelects().then(loadComparatif).then(loadCommande); }
   if (tab === 'daf') { loadDaf().then(() => renderDaf()); }
   if (tab === 'suivi') { loadSuivi(); if (state.currentChantier) _markChantierNotifsRead(state.currentChantier.id, 'visa_moe'); }
   if (tab === 'doe') renderDoeTable();
@@ -7403,26 +7401,8 @@ async function createConsultation() {
       }
     }
 
-    // Ajouter une ligne "Frais de port" par famille sélectionnée
-    if (checkedFours.length) {
-      for (const famId of checkedFams) {
-        const already = state.fournitures.find(f => f.famille_id === famId && f.designation === 'Frais de port');
-        if (!already) {
-          const fam = state.familles.find(f => f.id === famId);
-          const { data: fp } = await db.from('fournitures').insert({
-            chantier_id: state.currentChantier.id,
-            lot_id: state.currentEntrepriseLotId ?? null,
-            famille_id: famId,
-            designation: 'Frais de port',
-            numero_poste: 'FP',
-            qte: 1,
-            unite: 'forfait',
-            prix_etude_ht: 0
-          }).select().maybeSingle();
-          if (fp) state.fournitures.push(fp);
-        }
-      }
-    }
+    // Les frais de port sont gérés par fournisseur (consultation_fournisseurs.frais_port),
+    // visibles uniquement dans Comparatif/Commande — plus de ligne fourniture fantôme "Frais de port".
 
     state.consultations.unshift(cons);
     closeModal();
@@ -7511,24 +7491,34 @@ if (!state.hiddenFournisseurs) state.hiddenFournisseurs = new Set();
 if (!state.compJeux)           state.compJeux           = [];
 if (window._compCurrentJeuId === undefined) window._compCurrentJeuId = null;
 
-async function loadComparatifSelects() {
-  const ch = state.currentChantier;
-
-  // Checkboxes consultations
-  const cbBox = document.getElementById('comp-cons-checkboxes');
-  if (cbBox) {
-    if (!state.consultations.length) {
-      cbBox.innerHTML = '<span class="text-xs text-gray-400 italic">Aucune consultation créée.</span>';
-    } else {
-      cbBox.innerHTML = state.consultations.map(c => {
+function _renderConsCheckboxes() {
+  const html = !state.consultations.length
+    ? '<span class="text-xs text-gray-400 italic">Aucune consultation créée.</span>'
+    : state.consultations.map(c => {
         const on = state.selectedConsIds.includes(c.id);
         return `<label class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${on ? 'bg-green-50 border-green-400 text-green-800 font-medium' : 'bg-white hover:bg-gray-50 text-gray-700'}">
           <input type="checkbox" value="${c.id}" ${on ? 'checked' : ''} onchange="toggleConsSelection('${c.id}',this.checked)" class="rounded accent-green-700">
           ${escHtml(c.titre || 'Sans titre')}
         </label>`;
       }).join('');
-    }
+  ['comp-cons-checkboxes', 'cmd-cons-checkboxes'].forEach(id => {
+    const box = document.getElementById(id);
+    if (box) box.innerHTML = html;
+  });
+}
+
+async function loadComparatifSelects() {
+  const ch = state.currentChantier;
+
+  // Consultations masquées (persistées par chantier) → par défaut tout est affiché
+  if (!state.hiddenConsultations) state.hiddenConsultations = new Set();
+  if (ch?.id) {
+    const { data: masks } = await db.from('comparatif_masques').select('consultation_id').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] }));
+    state.hiddenConsultations = new Set((masks || []).map(m => m.consultation_id));
   }
+  state.selectedConsIds = state.consultations.map(c => c.id).filter(id => !state.hiddenConsultations.has(id));
+
+  _renderConsCheckboxes();
 
   // Jeux
   if (ch?.id) {
@@ -7536,14 +7526,6 @@ async function loadComparatifSelects() {
     state.compJeux = jeux || [];
     _renderJeuxSelect();
   }
-}
-
-function syncCommandeSelect() {
-  const dst = document.getElementById('cmd-consultation-select');
-  if (!dst) return;
-  dst.innerHTML = '<option value="">-- Sélectionner --</option>' +
-    state.consultations.map(c => `<option value="${c.id}">${escHtml(c.titre||'Sans titre')}</option>`).join('');
-  if (state.selectedConsIds.length) dst.value = state.selectedConsIds[0];
 }
 
 function _renderJeuxSelect() {
@@ -7559,13 +7541,27 @@ function _renderJeuxSelect() {
 async function toggleConsSelection(consId, checked) {
   if (checked && !state.selectedConsIds.includes(consId)) state.selectedConsIds.push(consId);
   if (!checked) state.selectedConsIds = state.selectedConsIds.filter(id => id !== consId);
-  document.querySelectorAll('#comp-cons-checkboxes label').forEach(lbl => {
+
+  const chId = state.currentChantier?.id;
+  if (chId) {
+    if (!state.hiddenConsultations) state.hiddenConsultations = new Set();
+    if (checked) {
+      state.hiddenConsultations.delete(consId);
+      await db.from('comparatif_masques').delete().eq('chantier_id', chId).eq('consultation_id', consId);
+    } else {
+      state.hiddenConsultations.add(consId);
+      await db.from('comparatif_masques').upsert({ chantier_id: chId, consultation_id: consId }, { onConflict: 'chantier_id,consultation_id' });
+    }
+  }
+
+  document.querySelectorAll('#comp-cons-checkboxes label, #cmd-cons-checkboxes label').forEach(lbl => {
     const cb = lbl.querySelector('input');
     if (!cb) return;
     const on = state.selectedConsIds.includes(cb.value);
     lbl.className = `flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${on ? 'bg-green-50 border-green-400 text-green-800 font-medium' : 'bg-white hover:bg-gray-50 text-gray-700'}`;
   });
   await loadComparatif();
+  if (document.getElementById('tab-commande') && !document.getElementById('tab-commande').classList.contains('hidden')) loadCommande();
 }
 
 async function switchJeu(val) {
@@ -7675,7 +7671,6 @@ function toggleFournisseur(fournisseurId) {
 
 function openCommandeFromComp() {
   if (!state.selectedConsIds.length) return toast('Aucune consultation sélectionnée', 'err');
-  syncCommandeSelect();
   setTab('commande');
 }
 
@@ -8258,20 +8253,11 @@ function exportComparatifPdf() {
 // COMMANDE
 // ============================================================
 async function loadCommande() {
-  const consId = document.getElementById('cmd-consultation-select').value;
   const el = document.getElementById('commande-content');
-  if (!consId) { if (el) el.innerHTML = ''; return; }
+  if (!el) return;
+  if (!state.selectedConsIds.length) { el.innerHTML = '<p class="text-sm text-gray-400 italic text-center py-10">Sélectionnez une ou plusieurs consultations ci-dessus.</p>'; return; }
 
-  // Load selections from DB if not already in state
-  if (!Object.keys(state.compSelections || {}).length) {
-    const { data: selData } = await db.from('comparatif_selections').select('*').eq('consultation_id', consId).then(r => r, () => ({ data: [] }));
-    state.compSelections = {};
-    (selData || []).forEach(s => {
-      state.compSelections[s.fourniture_id] = { fournisseur_id: s.fournisseur_id, prix_unit_ht: s.prix_unit_ht, qte: s.qte };
-    });
-  }
-
-  const selectedFids = Object.keys(state.compSelections).filter(k => state.compSelections[k].fournisseur_id);
+  const selectedFids = Object.keys(state.compSelections || {}).filter(k => state.compSelections[k].fournisseur_id);
   if (!selectedFids.length) {
     el.innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
       <p class="font-semibold mb-1">Aucune sélection trouvée</p>
@@ -8280,123 +8266,167 @@ async function loadCommande() {
     return;
   }
 
-  // Load fournisseurs info + frais de port
+  const chantier = state.currentChantier;
+
+  // Quantités déjà commandées (toutes commandes confondues, ce chantier)
+  const { data: cmdData } = await db.from('commandes').select('id, fournisseur_id, created_at, frais_port').eq('chantier_id', chantier.id).order('created_at', { ascending: false }).then(r => r, () => ({ data: [] }));
+  const commandes = cmdData || [];
+  const qteCommandee = {};
+  let lignesByCommande = {};
+  if (commandes.length) {
+    const { data: lignesData } = await db.from('commande_lignes').select('*').in('commande_id', commandes.map(c => c.id)).then(r => r, () => ({ data: [] }));
+    (lignesData || []).forEach(l => {
+      qteCommandee[l.fourniture_id] = (qteCommandee[l.fourniture_id] || 0) + parseFloat(l.qte);
+      (lignesByCommande[l.commande_id] ||= []).push(l);
+    });
+  }
+
+  // Fournisseurs concernés par la sélection courante
   const foursList = [...new Set(selectedFids.map(fid => state.compSelections[fid].fournisseur_id))];
-  const [{ data: foursData }, { data: cfData }] = await Promise.all([
-    db.from('fournisseurs').select('id, nom, email, adresse, telephone').in('id', foursList),
-    db.from('consultation_fournisseurs').select('fournisseur_id, frais_port').eq('consultation_id', consId).in('fournisseur_id', foursList).then(r => r, () => ({ data: [] }))
-  ]);
-  const fraisPortMap = {};
-  (cfData || []).forEach(cf => { fraisPortMap[cf.fournisseur_id] = parseFloat(cf.frais_port) || 0; });
+  const { data: foursData } = await db.from('fournisseurs').select('id, nom, email, adresse, telephone').in('id', foursList);
   const foursMap = {};
   (foursData || []).forEach(f => { foursMap[f.id] = f; });
-  // Fallback sur state.fournisseurs si la requête a raté ou l'entrée manque
-  foursList.forEach(fid => {
-    if (!foursMap[fid]) {
-      const sf = state.fournisseurs.find(f => f.id === fid);
-      if (sf) foursMap[fid] = sf;
-    }
-  });
+  foursList.forEach(fid => { if (!foursMap[fid]) { const sf = state.fournisseurs.find(f => f.id === fid); if (sf) foursMap[fid] = sf; } });
 
-  // Group by famille then fournisseur
-  const groupedByFamFour = {};
-  state.familles.forEach(fam => {
-    const items = state.fournitures.filter(f => !f.is_variante && f.famille_id === fam.id && selectedFids.includes(f.id));
-    items.forEach(f => {
-      const sel = state.compSelections[f.id];
-      const key = `${fam.id}__${sel.fournisseur_id}`;
-      if (!groupedByFamFour[key]) groupedByFamFour[key] = { fam, fourId: sel.fournisseur_id, lines: [] };
-      const qte = sel.qte != null ? parseFloat(sel.qte) : (parseFloat(f.qte) || 0);
-      const prix = sel.prix_unit_ht != null ? parseFloat(sel.prix_unit_ht) : 0;
-      groupedByFamFour[key].lines.push({ ...f, _qte: qte, _prix: prix, _total: qte * prix });
+  // Frais de port par fournisseur (pris sur la 1ère consultation où il apparaît)
+  const fraisPortMap = {};
+  for (const consId of state.selectedConsIds) {
+    const cache = state.compCaches[consId];
+    if (!cache) continue;
+    (cache.foursList || []).forEach(cf => {
+      if (fraisPortMap[cf.fournisseur_id] == null) fraisPortMap[cf.fournisseur_id] = parseFloat(cf.frais_port) || 0;
     });
+  }
+
+  // Regroupement par fournisseur (toutes familles confondues)
+  const byFour = {};
+  selectedFids.forEach(fid => {
+    const f = state.fournitures.find(x => x.id === fid && !x.is_variante);
+    if (!f) return;
+    const sel = state.compSelections[fid];
+    const fam = state.familles.find(fa => fa.id === f.famille_id);
+    const qtePrevue = sel.qte != null ? parseFloat(sel.qte) : (parseFloat(f.qte) || 0);
+    const prix = sel.prix_unit_ht != null ? parseFloat(sel.prix_unit_ht) : 0;
+    const dejaCommande = qteCommandee[fid] || 0;
+    const restant = Math.max(0, qtePrevue - dejaCommande);
+    (byFour[sel.fournisseur_id] ||= []).push({ ...f, fam, _qtePrevue: qtePrevue, _prix: prix, _dejaCommande: dejaCommande, _restant: restant, _consultationId: sel.consultation_id });
   });
 
-  const chantier = state.currentChantier;
   let html = '';
 
-  Object.values(groupedByFamFour).forEach(grp => {
-    const four = foursMap[grp.fourId] || { nom: '?' };
-    const fraisPort = fraisPortMap[grp.fourId] || 0;
-    const totalHT = grp.lines.reduce((s, l) => s + l._total, 0);
-    const totalAvecFrais = totalHT + fraisPort;
-    const grpKey = `${grp.fam.id}_${grp.fourId}`;
+  Object.entries(byFour).forEach(([fourId, lines]) => {
+    const four = foursMap[fourId] || { nom: '?' };
+    const fraisPort = fraisPortMap[fourId] || 0;
 
-    const lignesRows = grp.lines.map(l => `
+    const rows = lines.map(l => `
       <tr class="border-b hover:bg-gray-50">
         <td class="px-3 py-2 text-xs text-gray-400">${l.numero_poste || ''}</td>
-        <td class="px-3 py-2">${l.designation}</td>
-        <td class="px-3 py-2 text-right">${l._qte}</td>
-        <td class="px-3 py-2 text-left text-xs text-gray-500">${l.unite || 'U'}</td>
+        <td class="px-3 py-2">${l.fam?.icone || ''} ${l.designation}</td>
+        <td class="px-3 py-2 text-right text-xs text-gray-500">${l._qtePrevue} ${l.unite || 'U'}</td>
+        <td class="px-3 py-2 text-right text-xs ${l._dejaCommande > 0 ? 'text-green-700 font-medium' : 'text-gray-400'}">${l._dejaCommande}</td>
         <td class="px-3 py-2 text-right">${fmt(l._prix)}</td>
-        <td class="px-3 py-2 text-right font-medium">${fmt(l._total)}</td>
+        <td class="px-3 py-2 text-right">
+          ${l._restant > 0
+            ? `<input type="number" min="0" step="any" value="${l._restant}" data-fid="${l.id}" data-prix="${l._prix}" data-cons="${l._consultationId || ''}" data-numposte="${l.numero_poste || ''}" data-desig="${(l.designation||'').replace(/"/g,'&quot;')}" data-unite="${l.unite || 'U'}" class="cmd-qty-input w-20 border rounded px-1.5 py-0.5 text-right text-sm">`
+            : `<span class="text-xs text-green-700 font-medium">✓ Soldé</span>`}
+        </td>
       </tr>`).join('');
 
-    html += `<div class="mb-6 bg-white rounded-xl shadow-sm overflow-hidden">
-      <div class="flex items-center justify-between px-4 py-3 border-b" style="background:${grp.fam.couleur}15">
-        <div class="flex items-center gap-2 font-semibold">${grp.fam.icone} ${grp.fam.nom} — <span class="text-green-700">${four.nom}</span></div>
+    html += `<div class="mb-6 bg-white rounded-xl shadow-sm overflow-hidden" data-four-card="${fourId}">
+      <div class="flex items-center justify-between px-4 py-3 border-b bg-blue-50">
+        <div class="flex items-center gap-2 font-semibold text-green-800">🏭 ${escHtml(four.nom)}</div>
         <div class="flex gap-2">
-          <button onclick="genCommandePdf('${grpKey}')" class="bg-red-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-red-700">📄 PDF Bon de commande</button>
-          <button onclick="exportCommandeCsv('${grpKey}')" class="bg-green-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-green-700">📊 Export CSV</button>
+          <button onclick="creerCommande('${fourId}')" class="bg-green-600 text-white px-3 py-1.5 text-xs rounded-lg hover:bg-green-700">🛒 Créer la commande</button>
         </div>
       </div>
-      <table class="w-full text-sm" id="cmd-table-${grpKey}">
+      <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs border-b">
           <tr>
             <th class="px-3 py-2 text-left">N°</th>
             <th class="px-3 py-2 text-left">Désignation</th>
-            <th class="px-3 py-2 text-right">Qté</th>
-            <th class="px-3 py-2 text-left">U</th>
+            <th class="px-3 py-2 text-right">Qté prévue</th>
+            <th class="px-3 py-2 text-right">Déjà commandé</th>
             <th class="px-3 py-2 text-right">Prix HT</th>
-            <th class="px-3 py-2 text-right">Total HT</th>
+            <th class="px-3 py-2 text-right">Qté à commander</th>
           </tr>
         </thead>
-        <tbody>${lignesRows}</tbody>
-        <tfoot class="border-t-2 bg-gray-50">
-          <tr>
-            <td colspan="5" class="px-3 py-2 text-right text-xs text-gray-500">Total fournitures HT</td>
-            <td class="px-3 py-2 text-right">${fmt(totalHT)}</td>
-          </tr>
-          ${fraisPort > 0 ? `<tr>
-            <td colspan="5" class="px-3 py-2 text-right text-xs text-gray-500">🚚 Frais de port HT</td>
-            <td class="px-3 py-2 text-right">${fmt(fraisPort)}</td>
-          </tr>
-          <tr class="font-semibold border-t">
-            <td colspan="5" class="px-3 py-2 text-right">Total HT (avec frais de port)</td>
-            <td class="px-3 py-2 text-right">${fmt(totalAvecFrais)}</td>
-          </tr>` : `<tr class="font-semibold">
-            <td colspan="5" class="px-3 py-2 text-right">Total HT</td>
-            <td class="px-3 py-2 text-right">${fmt(totalHT)}</td>
-          </tr>`}
-        </tfoot>
+        <tbody>${rows}</tbody>
       </table>
+      ${fraisPort > 0 ? `<div class="px-4 py-2 text-xs text-gray-500 border-t">🚚 Frais de port HT : ${fmt(fraisPort)} € (appliqués à chaque commande)</div>` : ''}
     </div>`;
-
-    // Store group data for PDF/CSV generation
-    if (!window._cmdGroups) window._cmdGroups = {};
-    window._cmdGroups[grpKey] = { fam: grp.fam, four, lines: grp.lines, totalHT, fraisPort, totalAvecFrais, chantier };
   });
 
-  if (el) el.innerHTML = html || '<p class="text-gray-400 text-sm italic">Aucune commande à éditer.</p>';
-}
-
-async function genCommandePdf(grpKey) {
-  const grp = window._cmdGroups?.[grpKey];
-  if (!grp) return toast('Données introuvables', 'err');
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  const ch = grp.chantier;
-  const dateStr = new Date().toLocaleDateString('fr-FR');
-
-  // Logo
-  const logoB64 = await _loadLogoBase64();
-  let headerY = 20;
-  if (logoB64) {
-    try { doc.addImage(logoB64, 14, 8, 30, 15); } catch(e) {}
-    headerY = 26;
+  // Historique des commandes déjà créées
+  if (commandes.length) {
+    html += `<div class="mt-6"><div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Commandes créées</div>`;
+    commandes.forEach(c => {
+      const four = foursMap[c.fournisseur_id] || state.fournisseurs.find(f => f.id === c.fournisseur_id) || { nom: '?' };
+      const lignes = lignesByCommande[c.id] || [];
+      const totalHT = lignes.reduce((s, l) => s + parseFloat(l.qte) * parseFloat(l.prix_unit_ht), 0);
+      const dateStr = new Date(c.created_at).toLocaleDateString('fr-FR');
+      html += `<div class="bg-white rounded-lg border px-4 py-2.5 mb-2 flex items-center justify-between text-sm">
+        <div><span class="font-medium">${escHtml(four.nom)}</span> <span class="text-gray-400 text-xs">· ${dateStr} · ${lignes.length} ligne(s) · ${fmt(totalHT)} € HT</span></div>
+        <button onclick="genCommandePdfFromRecord('${c.id}')" class="border border-red-400 text-red-600 px-2.5 py-1 rounded text-xs hover:bg-red-50">📄 PDF</button>
+      </div>`;
+    });
+    html += `</div>`;
   }
 
-  // En-tête
+  el.innerHTML = html || '<p class="text-gray-400 text-sm italic">Aucune commande à éditer.</p>';
+}
+
+async function creerCommande(fournisseurId) {
+  const card = document.querySelector(`[data-four-card="${fournisseurId}"]`);
+  if (!card) return;
+  const inputs = [...card.querySelectorAll('.cmd-qty-input')].filter(i => parseFloat(i.value) > 0);
+  if (!inputs.length) return toast('Aucune quantité à commander', 'err');
+
+  const lignes = inputs.map(i => ({
+    fourniture_id: i.dataset.fid,
+    consultation_id: i.dataset.cons || null,
+    numero_poste: i.dataset.numposte,
+    designation: i.dataset.desig,
+    unite: i.dataset.unite,
+    qte: parseFloat(i.value),
+    prix_unit_ht: parseFloat(i.dataset.prix)
+  }));
+
+  const fraisPort = state.compCaches ? Object.values(state.compCaches).flatMap(c => c.foursList || []).find(cf => cf.fournisseur_id === fournisseurId)?.frais_port || 0 : 0;
+
+  const ok = await showConfirm(`Créer une commande de ${lignes.length} ligne(s) pour ce fournisseur ? Les lignes commandées seront verrouillées.`);
+  if (!ok) return;
+
+  const { data: cmd, error } = await db.from('commandes').insert({
+    chantier_id: state.currentChantier.id, fournisseur_id: fournisseurId, frais_port: parseFloat(fraisPort) || 0
+  }).select().single();
+  if (error) return toast('Erreur : ' + error.message, 'err');
+
+  const { error: err2 } = await db.from('commande_lignes').insert(lignes.map(l => ({ ...l, commande_id: cmd.id })));
+  if (err2) return toast('Erreur : ' + err2.message, 'err');
+
+  toast('Commande créée ✓');
+  await genCommandePdfFromRecord(cmd.id);
+  loadCommande();
+}
+
+async function genCommandePdfFromRecord(commandeId) {
+  const { data: cmd } = await db.from('commandes').select('*').eq('id', commandeId).maybeSingle();
+  const { data: lignes } = await db.from('commande_lignes').select('*').eq('commande_id', commandeId);
+  if (!cmd || !lignes) return toast('Commande introuvable', 'err');
+  const four = state.fournisseurs.find(f => f.id === cmd.fournisseur_id) || (await db.from('fournisseurs').select('*').eq('id', cmd.fournisseur_id).maybeSingle()).data || { nom: '?' };
+  const ch = state.currentChantier;
+  const totalHT = lignes.reduce((s, l) => s + parseFloat(l.qte) * parseFloat(l.prix_unit_ht), 0);
+  const fraisPort = parseFloat(cmd.frais_port) || 0;
+  const totalAvecFrais = totalHT + fraisPort;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const dateStr = new Date(cmd.created_at).toLocaleDateString('fr-FR');
+
+  const logoB64 = await _loadLogoBase64();
+  let headerY = 20;
+  if (logoB64) { try { doc.addImage(logoB64, 14, 8, 30, 15); } catch(e) {} headerY = 26; }
+
   doc.setFontSize(18);
   doc.setTextColor(22, 101, 52);
   doc.text('BON DE COMMANDE', 105, headerY, { align: 'center' });
@@ -8412,38 +8442,31 @@ async function genCommandePdf(grpKey) {
   doc.setFontSize(11);
   doc.setTextColor(0, 0, 0);
   const fourY = infoY + 24;
-  doc.text(`Fournisseur : ${grp.four.nom}`, 14, fourY);
-  if (grp.four.adresse) doc.text(`Adresse : ${grp.four.adresse}`, 14, fourY + 6);
-  if (grp.four.email) doc.text(`Email : ${grp.four.email}`, 14, fourY + 12);
-  if (grp.four.telephone) doc.text(`Tél : ${grp.four.telephone}`, 14, fourY + 18);
+  doc.text(`Fournisseur : ${four.nom}`, 14, fourY);
+  if (four.adresse) doc.text(`Adresse : ${four.adresse}`, 14, fourY + 6);
+  if (four.email) doc.text(`Email : ${four.email}`, 14, fourY + 12);
+  if (four.telephone) doc.text(`Tél : ${four.telephone}`, 14, fourY + 18);
 
-  doc.text(`Famille : ${grp.fam.nom}`, 14, fourY + 28);
-
-  // Tableau
   const headers = [['N°', 'Désignation', 'Qté', 'U', 'Prix HT', 'Total HT']];
-  const rows = grp.lines.map(l => [
-    l.numero_poste || '',
-    l.designation,
-    String(l._qte),
-    l.unite || 'U',
-    fmt(l._prix) + ' €',
-    fmt(l._total) + ' €'
+  const rows = lignes.map(l => [
+    l.numero_poste || '', l.designation, String(l.qte), l.unite || 'U',
+    fmt(l.prix_unit_ht) + ' €', fmt(l.qte * l.prix_unit_ht) + ' €'
   ]);
-  rows.push(['', '', '', '', 'Total fournitures HT', fmt(grp.totalHT) + ' €']);
-  if (grp.fraisPort > 0) {
-    rows.push(['', '', '', '', 'Frais de port HT', fmt(grp.fraisPort) + ' €']);
-    rows.push(['', '', '', '', 'Total HT (avec frais de port)', fmt(grp.totalAvecFrais) + ' €']);
+  rows.push(['', '', '', '', 'Total fournitures HT', fmt(totalHT) + ' €']);
+  if (fraisPort > 0) {
+    rows.push(['', '', '', '', 'Frais de port HT', fmt(fraisPort) + ' €']);
+    rows.push(['', '', '', '', 'Total HT (avec frais de port)', fmt(totalAvecFrais) + ' €']);
   }
 
   doc.autoTable({
-    startY: fourY + 34,
+    startY: fourY + 26,
     head: headers,
     body: rows,
     headStyles: { fillColor: [22, 101, 52], textColor: 255 },
     columnStyles: { 0: { cellWidth: 14 }, 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
     styles: { fontSize: 9 },
     didParseCell: (data) => {
-      const totalRows = grp.fraisPort > 0 ? 3 : 1;
+      const totalRows = fraisPort > 0 ? 3 : 1;
       if (data.row.index >= rows.length - totalRows) {
         data.cell.styles.fontStyle = 'bold';
         if (data.row.index === rows.length - 1) data.cell.styles.fillColor = [240, 253, 244];
@@ -8451,7 +8474,6 @@ async function genCommandePdf(grpKey) {
     }
   });
 
-  // Zone signature
   const finalY = doc.lastAutoTable?.finalY || 150;
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
@@ -8460,24 +8482,7 @@ async function genCommandePdf(grpKey) {
   doc.text('Bon pour accord :', 110, finalY + 20);
   doc.rect(110, finalY + 24, 60, 25);
 
-  doc.save(`BC_${grp.fam.nom.replace(/\s+/g,'_')}_${grp.four.nom.replace(/\s+/g,'_')}_${dateStr.replace(/\//g,'-')}.pdf`);
-}
-
-function exportCommandeCsv(grpKey) {
-  const grp = window._cmdGroups?.[grpKey];
-  if (!grp) return toast('Données introuvables', 'err');
-  const header = 'N°Poste;Désignation;Quantité;Unité;Prix HT';
-  const rows = grp.lines.map(l =>
-    `${l.numero_poste || ''};${l.designation.replace(/;/g,'_')};${l._qte};${l.unite || 'U'};${l._prix}`
-  );
-  const csv = [header, ...rows].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `commande_${grp.fam.nom.replace(/\s+/g,'_')}_${grp.four.nom.replace(/\s+/g,'_')}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  doc.save(`BC_${four.nom.replace(/\s+/g,'_')}_${dateStr.replace(/\//g,'-')}.pdf`);
 }
 
 // DAF / DOE
