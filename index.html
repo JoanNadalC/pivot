@@ -654,6 +654,10 @@
     const { error } = await db.from('waitlist').insert({ prenom, email, role: roleActif });
 
     if (!error) {
+      fetch('https://pivot-pdf.jncoutier.workers.dev/waitlist-confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prenom, email, role: roleActif })
+      }).catch(() => {});
       document.getElementById('success-msg').style.display = 'block';
       document.getElementById('input-prenom').value = '';
       document.getElementById('input-email').value = '';

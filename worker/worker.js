@@ -1444,6 +1444,45 @@ async function sendResendEmail(env, { to, subject, html }) {
 }
 
 // ============================================================
+// WAITLIST — confirmation d'inscription à la liste d'attente
+// ============================================================
+const WAITLIST_ROLE_LABEL = { entrepreneur: 'Entreprise', fournisseur: 'Fournisseur', moe: 'Maître d\'œuvre' };
+
+function waitlistEmailHtml(prenom, role) {
+  const label = WAITLIST_ROLE_LABEL[role] || 'Pivot';
+  return `
+    <div style="font-family:'Inter',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1C3A2A;background:#F5F0E8;">
+      <div style="background:#1C3A2A;padding:32px 40px 24px;">
+        <span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#F5F0E8;">Pivot</span><span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#B87333;">.</span><span style="font-family:Georgia,serif;font-size:16px;font-style:italic;color:rgba(245,240,232,0.55);margin-left:6px;">la racine</span>
+      </div>
+      <div style="padding:40px;background:#F5F0E8;">
+        <p style="font-size:15px;margin:0 0 16px;">Bonjour ${escHtml(prenom)},</p>
+        <p style="font-size:15px;margin:0 0 16px;">Merci pour votre inscription sur la liste d'attente Pivot la racine, côté <strong>${escHtml(label)}</strong> !</p>
+        <p style="font-size:14px;color:#374151;margin:0 0 24px;line-height:1.6;">Pivot ouvre dans quelques semaines. Vous serez parmi les premiers prévenus, avec un onboarding personnalisé pour démarrer sereinement.</p>
+        <p style="font-size:12px;color:#9CA3AF;margin:32px 0 0;">Si vous n'êtes pas à l'origine de cette inscription, ignorez cet email.</p>
+      </div>
+    </div>`;
+}
+
+async function handleWaitlistConfirm(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const { prenom, email, role } = await request.json();
+  if (!prenom || !email) {
+    return new Response(JSON.stringify({ error: 'Champs manquants' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+  try {
+    await sendResendEmail(env, {
+      to: email,
+      subject: 'Bienvenue sur la liste d\'attente Pivot la racine',
+      html: waitlistEmailHtml(prenom, role),
+    });
+  } catch (err) {
+    console.error('waitlist email error', err);
+  }
+  return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+}
+
+// ============================================================
 // CRON — RELANCES & NOTIFICATIONS ADMIN
 // ============================================================
 async function handleScheduled(env) {
@@ -1834,6 +1873,7 @@ export default {
       if (url.pathname === '/delete-user')             return await handleDeleteUser(request, env);
       if (url.pathname === '/send-invitation')         return await handleSendInvitation(request, env);
       if (url.pathname === '/notify-event')            return await handleNotifyEvent(request, env);
+      if (url.pathname === '/waitlist-confirm')        return await handleWaitlistConfirm(request, env);
       if (url.pathname === '/invite-collaborateur')    return await handleInviteCollaborateur(request, env);
       if (url.pathname === '/generate-daf') return await handleDAF(request, env);
       if (url.pathname === '/generate-doe') return await handleDOE(request, env);
