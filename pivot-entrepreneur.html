@@ -11254,11 +11254,13 @@ function _stickySuiviTheadOffset() {
   const thead = document.getElementById('suivi-thead');
   const tabbar = document.getElementById('chantier-tabbar');
   if (!thead || !tabbar) return;
-  const top = tabbar.getBoundingClientRect().bottom;
-  thead.style.top = Math.max(0, Math.round(top)) + 'px';
+  // La barre d'onglets a "top:56px" en CSS : une fois collée, son bord bas est toujours à
+  // 56 + sa propre hauteur intrinsèque (offsetHeight, indépendant du défilement — contrairement
+  // à getBoundingClientRect() qui renvoie une valeur fausse tant que la barre n'est pas encore collée).
+  const top = 56 + tabbar.offsetHeight;
+  thead.style.top = top + 'px';
 }
 window.addEventListener('resize', _stickySuiviTheadOffset);
-window.addEventListener('scroll', () => { if (!document.getElementById('tab-suivi')?.classList.contains('hidden')) _stickySuiviTheadOffset(); }, { passive: true });
 
 async function loadSuivi() {
   _stickySuiviTheadOffset();
