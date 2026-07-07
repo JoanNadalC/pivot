@@ -735,6 +735,13 @@
   const PIVOT_HELP_URL = 'https://pivot-pdf.jncoutier.workers.dev/help-chat';
   let pivotHelpMessages = [];
   let pivotHelpOpened = false;
+  let pivotHelpSessionId = (function () {
+    try {
+      let id = localStorage.getItem('pivot_help_session');
+      if (!id) { id = crypto.randomUUID(); localStorage.setItem('pivot_help_session', id); }
+      return id;
+    } catch (e) { return crypto.randomUUID(); }
+  })();
 
   window.pivotHelpToggle = function () {
     const panel = document.getElementById('pivot-help-panel');
@@ -772,7 +779,7 @@
     try {
       const res = await fetch(PIVOT_HELP_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: pivotHelpMessages, context: PIVOT_HELP_CONTEXT })
+        body: JSON.stringify({ messages: pivotHelpMessages, context: PIVOT_HELP_CONTEXT, sessionId: pivotHelpSessionId })
       });
       const data = await res.json();
       typingEl.remove();

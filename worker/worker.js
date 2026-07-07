@@ -1501,9 +1501,28 @@ Consignes de réponse :
 - Si la question porte sur un problème de compte précis (bug, données manquantes, facture), ne tente pas de le résoudre toi-même : explique que tu transmets et invite à écrire à contact@pivotlaracine.com avec les détails.
 - Ne donne jamais d'information confidentielle ou interne (code, clés API, architecture technique détaillée).`;
 
+async function _persistHelpConversation(env, sessionId, context, messages) {
+  if (!sessionId || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const headers = {
+      'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates',
+    };
+    await fetch(`${SUPABASE_URL}/rest/v1/help_conversations?on_conflict=session_id`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ session_id: sessionId, context: context || null, messages, updated_at: new Date().toISOString() }),
+    });
+  } catch (err) {
+    console.error('persist help conversation error', err);
+  }
+}
+
 async function handleHelpChat(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
-  const { messages, context } = await request.json();
+  const { messages, context, sessionId } = await request.json();
   if (!Array.isArray(messages) || !messages.length) {
     return new Response(JSON.stringify({ error: 'Messages manquants' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
   }
@@ -1538,6 +1557,7 @@ async function handleHelpChat(request, env) {
     }
     const data = await res.json();
     const reply = (data.content || []).map(b => b.text || '').join('').trim() || 'Désolé, je n\'ai pas pu générer de réponse. Écrivez-nous à contact@pivotlaracine.com.';
+    await _persistHelpConversation(env, sessionId, context, [...safeMessages, { role: 'assistant', content: reply }]);
     return new Response(JSON.stringify({ reply }), { headers: { 'Content-Type': 'application/json', ...cors } });
   } catch (err) {
     console.error('help-chat error', err);
