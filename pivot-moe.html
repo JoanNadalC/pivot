@@ -282,16 +282,16 @@
         <span class="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">Lecture seule</span>
       </div>
       <div class="overflow-x-auto bg-white rounded-xl shadow-sm">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm" style="table-layout:fixed">
           <thead class="bg-gray-50 text-gray-500 text-xs">
             <tr>
-              <th class="px-3 py-2 text-left">N°Poste</th>
+              <th class="px-3 py-2 text-left w-20">N°Poste</th>
               <th class="px-3 py-2 text-left">Désignation</th>
-              <th class="px-3 py-2 text-left">Famille</th>
-              <th class="px-3 py-2 text-left">Statut DAF</th>
-              <th class="px-3 py-2 text-left">Commandé</th>
-              <th class="px-3 py-2 text-left">Délai indicatif</th>
-              <th class="px-3 py-2 text-left">En stock</th>
+              <th class="px-3 py-2 text-left w-36">Famille</th>
+              <th class="px-3 py-2 text-left w-28">Statut DAF</th>
+              <th class="px-3 py-2 text-left w-24">Commandé</th>
+              <th class="px-3 py-2 text-left w-28">Délai indicatif</th>
+              <th class="px-3 py-2 text-left w-16">En stock</th>
             </tr>
           </thead>
           <tbody id="suivi-tbody"></tbody>
@@ -4591,10 +4591,10 @@ function _suiviRowHtml(f, fam, d) {
       : statutBadge(d.statut);
   return `
     <tr class="hover:bg-gray-50 border-b text-sm">
-      <td class="px-3 py-2 text-gray-400">${f.numero_poste || ''}</td>
-      <td class="px-3 py-2 font-medium">
+      <td class="px-3 py-2 text-gray-400 truncate">${f.numero_poste || ''}</td>
+      <td class="px-3 py-2 font-medium truncate" title="${escHtml(d?.designation || f.designation || '')}">
         ${d?.version > 1 ? `<span class="mr-1 text-xs text-orange-500 font-semibold">v${d.version}</span>` : ''}
-        ${d?.designation || f.designation || ''}
+        ${escHtml(d?.designation || f.designation || '')}
       </td>
       <td class="px-3 py-2">${fam ? fam.icone + ' ' + fam.nom : ''}</td>
       <td class="px-3 py-2">${statutHtml}</td>
