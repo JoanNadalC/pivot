@@ -8375,7 +8375,10 @@ async function loadCommande() {
       const dateStr = new Date(c.created_at).toLocaleDateString('fr-FR');
       html += `<div class="bg-white rounded-lg border px-4 py-2.5 mb-2 flex items-center justify-between text-sm">
         <div><span class="font-medium">${escHtml(four.nom)}</span> <span class="text-gray-400 text-xs">· ${dateStr} · ${lignes.length} ligne(s) · ${fmt(totalHT)} € HT</span></div>
-        <button onclick="genCommandePdfFromRecord('${c.id}')" class="border border-red-400 text-red-600 px-2.5 py-1 rounded text-xs hover:bg-red-50">📄 PDF</button>
+        <div class="flex gap-2">
+          <button onclick="genCommandePdfFromRecord('${c.id}')" class="border border-red-400 text-red-600 px-2.5 py-1 rounded text-xs hover:bg-red-50">📄 PDF</button>
+          <button onclick="exportCommandeCsvFromRecord('${c.id}')" class="border border-green-600 text-green-700 px-2.5 py-1 rounded text-xs hover:bg-green-50">📊 CSV</button>
+        </div>
       </div>`;
     });
     html += `</div>`;
@@ -8416,6 +8419,30 @@ async function creerCommande(fournisseurId) {
   toast('Commande créée ✓');
   await genCommandePdfFromRecord(cmd.id);
   loadCommande();
+}
+
+async function exportCommandeCsvFromRecord(commandeId) {
+  const { data: cmd } = await db.from('commandes').select('*').eq('id', commandeId).maybeSingle();
+  const { data: lignes } = await db.from('commande_lignes').select('*').eq('commande_id', commandeId);
+  if (!cmd || !lignes) return toast('Commande introuvable', 'err');
+  const four = state.fournisseurs.find(f => f.id === cmd.fournisseur_id) || (await db.from('fournisseurs').select('*').eq('id', cmd.fournisseur_id).maybeSingle()).data || { nom: '?' };
+  const ch = state.currentChantier;
+  const dateStr = new Date(cmd.created_at).toLocaleDateString('fr-FR');
+
+  const header = 'Chantier;Fournisseur;Date;N°Poste;Désignation;Quantité;Unité;Prix Unitaire HT;Total HT';
+  const rows = lignes.map(l =>
+    `${(ch?.affaire||'').replace(/;/g,'_')};${four.nom.replace(/;/g,'_')};${dateStr};${l.numero_poste || ''};${(l.designation||'').replace(/;/g,'_')};${l.qte};${l.unite || 'U'};${l.prix_unit_ht};${(parseFloat(l.qte)*parseFloat(l.prix_unit_ht)).toFixed(2)}`
+  );
+  if (cmd.frais_port > 0) rows.push(`${(ch?.affaire||'').replace(/;/g,'_')};${four.nom.replace(/;/g,'_')};${dateStr};;Frais de port;1;forfait;${cmd.frais_port};${cmd.frais_port}`);
+
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `commande_${four.nom.replace(/\s+/g,'_')}_${dateStr.replace(/\//g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function genCommandePdfFromRecord(commandeId) {
