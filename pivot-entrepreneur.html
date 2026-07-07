@@ -7608,16 +7608,14 @@ async function saveCurrentJeu() {
         await db.from('comparatif_selections').delete().eq('fourniture_id', fId);
         await db.from('comparatif_selections').insert({
           jeu_id: null, consultation_id: sel.consultation_id, fourniture_id: fId,
-          fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
-          updated_at: new Date().toISOString()
+          fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte
         });
       }
     } else {
       await db.from('comparatif_selections').delete().eq('jeu_id', jeuId);
       const rows = Object.entries(state.compSelections).map(([fId, sel]) => ({
         jeu_id: jeuId, consultation_id: sel.consultation_id, fourniture_id: fId,
-        fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
-        updated_at: new Date().toISOString()
+        fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte
       }));
       if (rows.length) { const { error } = await db.from('comparatif_selections').insert(rows); if (error) throw error; }
     }
@@ -8169,8 +8167,7 @@ async function _autosaveCompSelection(fId, consId) {
     if (sel) {
       const { error: insErr } = await db.from('comparatif_selections').insert({
         jeu_id: jeuId, consultation_id: sel.consultation_id || consId, fourniture_id: fId,
-        fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
-        updated_at: new Date().toISOString()
+        fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte
       });
       if (insErr) throw insErr;
     }
