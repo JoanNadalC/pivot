@@ -1464,6 +1464,24 @@ function waitlistEmailHtml(prenom, role) {
     </div>`;
 }
 
+function waitlistAdminEmailHtml(prenom, email, role) {
+  const label = WAITLIST_ROLE_LABEL[role] || role || '—';
+  return `
+    <div style="font-family:'Inter',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1C3A2A;background:#F5F0E8;">
+      <div style="background:#1C3A2A;padding:32px 40px 24px;">
+        <span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#F5F0E8;">Pivot</span><span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#B87333;">.</span><span style="font-family:Georgia,serif;font-size:16px;font-style:italic;color:rgba(245,240,232,0.55);margin-left:6px;">la racine</span>
+      </div>
+      <div style="padding:40px;background:#F5F0E8;">
+        <p style="font-size:15px;margin:0 0 16px;font-weight:600;">🌱 Nouvelle inscription à la liste d'attente</p>
+        <table style="font-size:14px;color:#374151;border-collapse:collapse;margin:0 0 24px;">
+          <tr><td style="padding:4px 12px 4px 0;color:#9CA3AF;">Prénom</td><td style="padding:4px 0;font-weight:500;">${escHtml(prenom)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#9CA3AF;">Email</td><td style="padding:4px 0;font-weight:500;">${escHtml(email)}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#9CA3AF;">Portail</td><td style="padding:4px 0;font-weight:500;">${escHtml(label)}</td></tr>
+        </table>
+      </div>
+    </div>`;
+}
+
 async function handleWaitlistConfirm(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
   const { prenom, email, role } = await request.json();
@@ -1478,6 +1496,15 @@ async function handleWaitlistConfirm(request, env) {
     });
   } catch (err) {
     console.error('waitlist email error', err);
+  }
+  try {
+    await sendResendEmail(env, {
+      to: env.ADMIN_EMAIL || 'jncoutier@gmail.com',
+      subject: `Nouvelle inscription waitlist — ${prenom}`,
+      html: waitlistAdminEmailHtml(prenom, email, role),
+    });
+  } catch (err) {
+    console.error('waitlist admin email error', err);
   }
   return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
 }
