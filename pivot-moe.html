@@ -1650,7 +1650,6 @@ const _CT_FIELDS_DEVIS = [
   { value: 'description',   label: 'Description' },
   { value: 'unite',         label: 'Unité' },
   { value: 'qte',           label: 'Quantité' },
-  { value: 'prix_etude_ht', label: 'Prix HT' },
   { value: 'reference',     label: 'Référence' },
 ];
 const _CT_FIELDS_BPU = [
@@ -1659,7 +1658,6 @@ const _CT_FIELDS_BPU = [
   { value: 'designation',   label: 'Désignation *' },
   { value: 'description',   label: 'Description' },
   { value: 'unite',         label: 'Unité' },
-  { value: 'prix_etude_ht', label: 'Prix HT' },
   { value: 'reference',     label: 'Référence' },
   { value: '__caract__',    label: '⚙ Caractéristique' },
 ];
@@ -2010,10 +2008,9 @@ async function importBpu(event) {
     if (!rows.length) return toast('Fichier vide ou non reconnu', 'err');
 
     // Colonnes attendues (insensible à la casse) :
-    // N°Poste, Désignation, Qté, Unité, Prix étude HT, + toutes autres colonnes = caractéristiques
+    // N°Poste, Désignation, Qté, Unité, + toutes autres colonnes = caractéristiques
     const FIXED = ['n°poste','numero_poste','poste','désignation','designation','libellé','libelle',
-                   'qté','qte','quantité','quantite','unité','unite','u.',
-                   'prix','prix etude ht','prix_etude_ht','p.u.ht'];
+                   'qté','qte','quantité','quantite','unité','unite','u.'];
     const get = (row, ...keys) => {
       for (const k of keys) {
         const found = Object.keys(row).find(rk => rk.toLowerCase().trim() === k);
@@ -2042,7 +2039,6 @@ async function importBpu(event) {
         designation,
         qte: parseFloat(get(row, 'qté', 'qte', 'quantité', 'quantite')) || null,
         unite: get(row, 'unité', 'unite', 'u.') || 'U',
-        prix_etude_ht: parseFloat(get(row, 'prix etude ht', 'prix_etude_ht', 'prix', 'p.u.ht')) || null,
         caracteristiques: caract.length ? caract : null,
         ordre: ordre++
       }).select('*, famille:familles_fournitures(nom,icone,couleur)').single();
@@ -2490,10 +2486,6 @@ function openImportMappingModal(headers, dataRows) {
       <div id="map-prix-wrap">
         <label class="block text-xs text-gray-500 mb-1">Prix unitaire HT marché <span class="text-green-700 font-semibold">(DQE / devis)</span></label>
         <select id="map-prix-marche" class="w-full border rounded px-2 py-1 text-sm">${noneOpt}${opts(guessPrix)}</select>
-      </div>
-      <div id="map-prix-etude-wrap">
-        <label class="block text-xs text-gray-500 mb-1">Prix unitaire HT étude</label>
-        <select id="map-prix" class="w-full border rounded px-2 py-1 text-sm">${noneOpt}${opts('')}</select>
       </div>
     </div>
 
@@ -3002,7 +2994,6 @@ async function executeImport() {
           qte:             getNum(row, cQte),
           unite:           get(row, cUnite) || 'U',
           prix_marche_ht:  getNum(row, cPrixMarche),
-          prix_etude_ht:   getNum(row, cPrix),
           caracteristiques: caract,
           ordre:           ordre++
         }).select('*, famille:familles_fournitures(nom, icone, couleur)').single();
@@ -3265,13 +3256,11 @@ const FCOLUMNS = {
     { key: 'contenant',   label: 'Conditionnement',    cls: 'text-left w-28', dl: 'dl-conditionnement' },
     { key: 'qte',         label: 'Qté',                cls: 'text-right w-16', num: true },
     { key: 'unite',       label: 'U.',                 cls: 'text-left w-12' },
-    { key: 'prix_etude_ht', label: 'Prix étude HT',   cls: 'text-right w-28', fmt: true },
   ],
   default: [
     { key: 'designation', label: 'Désignation',        cls: 'text-left' },
     { key: 'qte',         label: 'Qté',                cls: 'text-right w-16', num: true },
     { key: 'unite',       label: 'Unité',              cls: 'text-left w-16' },
-    { key: 'prix_etude_ht', label: 'Prix étude HT',   cls: 'text-right w-28', fmt: true },
   ]
 };
 
@@ -4003,7 +3992,7 @@ function openAddFournitureModal(parentId, parent) {
     <div id="nf-champs-famille" class="mb-3"></div>
     <label class="block text-xs text-gray-500 mb-1">Description</label>
     <textarea id="nf-description" rows="2" class="w-full border rounded px-3 py-2 text-sm mb-3">${escHtml(parent?.description || '')}</textarea>
-    <div class="grid grid-cols-3 gap-3 mb-3">
+    <div class="grid grid-cols-2 gap-3 mb-3">
       <div>
         <label class="block text-xs text-gray-500 mb-1">Quantité</label>
         <input id="nf-qte" type="number" step="0.01" class="w-full border rounded px-3 py-2 text-sm" value="${parent?.qte ?? ''}">
@@ -4011,10 +4000,6 @@ function openAddFournitureModal(parentId, parent) {
       <div>
         <label class="block text-xs text-gray-500 mb-1">Unité</label>
         <input id="nf-unite" type="text" class="w-full border rounded px-3 py-2 text-sm" value="${escHtml(parent?.unite || 'U')}">
-      </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Prix étude HT</label>
-        <input id="nf-prix" type="number" step="0.01" class="w-full border rounded px-3 py-2 text-sm" value="${parent?.prix_etude_ht ?? ''}">
       </div>
     </div>
     <div class="mb-4">
@@ -4108,7 +4093,6 @@ async function saveFourniture(parentId) {
       description: document.getElementById('nf-description').value.trim(),
       qte: document.getElementById('nf-qte').value || null,
       unite: document.getElementById('nf-unite').value || 'U',
-      prix_etude_ht: document.getElementById('nf-prix').value || null,
       is_variante: !!parentId,
       parent_id: parentId || null,
       caracteristiques: caract.length ? caract : null,
