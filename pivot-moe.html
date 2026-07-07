@@ -1054,7 +1054,7 @@ function showApp() {
   } else {
     document.getElementById('user-name').textContent = 'Accès invité';
     document.getElementById('list-view').classList.add('hidden');
-    document.getElementById('chantier-header').textContent = state.currentChantier?.affaire || '';
+    document.getElementById('chantier-header').textContent = [state.currentChantier?.ville, state.currentChantier?.affaire].filter(Boolean).join(' — ');
     document.getElementById('chantier-header').classList.remove('hidden');
   }
 }
