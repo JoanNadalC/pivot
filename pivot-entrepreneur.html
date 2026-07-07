@@ -9443,7 +9443,62 @@ function openDafFichesModal(fId) {
       <button onclick="dafAddFicheUrl('${fId}')" class="border border-blue-200 text-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-50">🔗 Ajouter une URL</button>
       <button onclick="openCataloguePicker(url => dafAddFicheFromCatalogue('${fId}', url))" class="border border-green-200 text-green-700 px-3 py-1.5 rounded-lg text-sm hover:bg-green-50">📚 Bibliothèque</button>
     </div>
+    <div class="mt-5 pt-4 border-t border-gray-100">
+      <h3 class="text-sm font-semibold text-gray-700 mb-2">📷 Photos reçues du fournisseur</h3>
+      <div id="daf-photos-modal-body" class="text-sm text-gray-400">Chargement…</div>
+    </div>
   `);
+  _dafLoadPhotosPicker(fId);
+}
+
+// Photos validées reçues de la fourniture (via demandes_photos/photos_fournitures) pour le fournisseur retenu de cette ligne DAF
+async function _dafLoadPhotosPicker(fId) {
+  const row = window._dafRows[fId] || {};
+  const el = document.getElementById('daf-photos-modal-body');
+  if (!el) return;
+  if (!row.fournisseur_id) { el.innerHTML = '<p class="text-xs text-gray-400">Sélectionnez d\'abord un fournisseur pour cette ligne.</p>'; return; }
+  try {
+    const { data: demandes } = await db.from('demandes_photos').select('id')
+      .eq('fournisseur_id', row.fournisseur_id).contains('fourniture_ids', [fId]);
+    const demandeIds = (demandes || []).map(d => d.id);
+    let photos = [];
+    if (demandeIds.length) {
+      const { data } = await db.from('photos_fournitures').select('id, url')
+        .in('demande_id', demandeIds).eq('fourniture_id', fId).eq('valide', true);
+      photos = data || [];
+    }
+    window._dafRows[fId].photosDisponibles = photos;
+    if (!Array.isArray(window._dafRows[fId].photosExclues)) window._dafRows[fId].photosExclues = [];
+    _dafRenderPhotosPicker(fId);
+  } catch (err) {
+    el.innerHTML = `<p class="text-xs text-red-400">Erreur : ${err.message}</p>`;
+  }
+}
+
+function _dafRenderPhotosPicker(fId) {
+  const row = window._dafRows[fId] || {};
+  const el = document.getElementById('daf-photos-modal-body');
+  if (!el) return;
+  const photos = row.photosDisponibles || [];
+  if (!photos.length) { el.innerHTML = '<p class="text-xs text-gray-400">Aucune photo validée reçue pour cette fourniture chez ce fournisseur.</p>'; return; }
+  const exclues = new Set(row.photosExclues || []);
+  el.innerHTML = `<div class="flex flex-wrap gap-2">${photos.map(p => {
+    const included = !exclues.has(p.url);
+    return `<label class="relative cursor-pointer">
+      <img src="${p.url}" class="w-16 h-16 rounded-lg object-cover border-2 ${included ? 'border-green-500' : 'border-gray-200 opacity-40'}">
+      <input type="checkbox" ${included ? 'checked' : ''} onchange="dafTogglePhoto('${fId}','${p.url}')" class="absolute top-1 right-1 w-4 h-4 accent-green-600">
+    </label>`;
+  }).join('')}</div>
+  <p class="text-xs text-gray-400 mt-2">Cochées = incluses dans le PDF de la DAF.</p>`;
+}
+
+function dafTogglePhoto(fId, url) {
+  const row = window._dafRows[fId];
+  if (!row) return;
+  const exclues = new Set(row.photosExclues || []);
+  if (exclues.has(url)) exclues.delete(url); else exclues.add(url);
+  row.photosExclues = [...exclues];
+  _dafRenderPhotosPicker(fId);
 }
 function dafTriggerFile(fId) { document.getElementById(`daf-file-${fId}`)?.click(); }
 async function dafHandleFiles(fId, input) {
@@ -9631,10 +9686,12 @@ async function dafGeneratePdf(fId) {
       }
     }
 
-    // Photos validées envoyées par le fournisseur retenu pour cette fourniture (auto-intégrées)
+    // Photos validées envoyées par le fournisseur retenu pour cette fourniture (auto-intégrées,
+    // sauf celles décochées manuellement via le sélecteur "Photos reçues du fournisseur")
     const photos = [];
     if (row.fournisseur_id) {
       try {
+        const exclues = new Set(row.photosExclues || []);
         const { data: demandes } = await db.from('demandes_photos')
           .select('id')
           .eq('fournisseur_id', row.fournisseur_id)
@@ -9647,7 +9704,7 @@ async function dafGeneratePdf(fId) {
             .eq('fourniture_id', f.id)
             .eq('valide', true);
           for (const p of photosData || []) {
-            if (!p.url) continue;
+            if (!p.url || exclues.has(p.url)) continue;
             try { photos.push({ base64: await _urlToBase64(p.url) }); } catch {}
           }
         }
