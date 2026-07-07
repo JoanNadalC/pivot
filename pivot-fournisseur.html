@@ -793,6 +793,13 @@
           </div>
           <button onclick="ouvrirModalChangeEmail()" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 flex-shrink-0 ml-4">Modifier →</button>
         </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm mt-4 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-gray-400 mb-0.5">Mot de passe</div>
+            <div class="text-sm font-medium text-gray-700">••••••••</div>
+          </div>
+          <button onclick="ouvrirModalChangePassword()" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 flex-shrink-0 ml-4">Modifier →</button>
+        </div>
       </div>
     </div>
 
@@ -1570,6 +1577,42 @@ async function changeEmail() {
   msg.textContent = 'Email de confirmation envoyé à ' + newEmail + '.';
   msg.className = 'text-xs text-green-600';
   setTimeout(closeModal, 2500);
+}
+
+function ouvrirModalChangePassword() {
+  showModal(`
+    <h2 class="text-lg font-bold mb-1">Changer de mot de passe</h2>
+    <label class="block text-xs text-gray-500 mb-1">Mot de passe actuel *</label>
+    <input id="modal-pwd-current" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mb-3" placeholder="••••••••">
+    <label class="block text-xs text-gray-500 mb-1">Nouveau mot de passe *</label>
+    <input id="modal-pwd-new" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mb-1" placeholder="8 caractères minimum">
+    <button type="button" onclick="suggestPwd('modal-pwd-new','modal-pwd-new2')" class="text-xs text-blue-700 hover:text-blue-900 mb-3 flex items-center gap-1">🔑 Suggérer un mot de passe sécurisé</button>
+    <label class="block text-xs text-gray-500 mb-1">Confirmer le nouveau mot de passe *</label>
+    <input id="modal-pwd-new2" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mb-3" placeholder="••••••••">
+    <div id="modal-pwd-msg" class="text-xs mb-3 hidden"></div>
+    <div class="flex gap-3">
+      <button onclick="changePassword()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Confirmer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+}
+
+async function changePassword() {
+  const current = document.getElementById('modal-pwd-current')?.value;
+  const pwd1 = document.getElementById('modal-pwd-new')?.value;
+  const pwd2 = document.getElementById('modal-pwd-new2')?.value;
+  const msg = document.getElementById('modal-pwd-msg');
+  msg.className = 'text-xs hidden';
+  if (!current || !pwd1 || !pwd2) { msg.textContent = 'Remplissez tous les champs.'; msg.className = 'text-xs text-red-500'; return; }
+  if (pwd1.length < 8) { msg.textContent = 'Le nouveau mot de passe doit faire au moins 8 caractères.'; msg.className = 'text-xs text-red-500'; return; }
+  if (pwd1 !== pwd2) { msg.textContent = 'Les deux mots de passe ne correspondent pas.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error: signErr } = await db.auth.signInWithPassword({ email: state.user.email, password: current });
+  if (signErr) { msg.textContent = 'Mot de passe actuel incorrect.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error } = await db.auth.updateUser({ password: pwd1 });
+  if (error) { msg.textContent = 'Erreur : ' + error.message; msg.className = 'text-xs text-red-500'; return; }
+  msg.textContent = 'Mot de passe modifié avec succès.';
+  msg.className = 'text-xs text-green-600';
+  setTimeout(closeModal, 2000);
 }
 
 async function saveProfil() {

@@ -987,7 +987,48 @@ function openCompteModal() {
         <button onclick="changeEmail()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Envoyer le lien de confirmation</button>
       </div>
     </div>
+
+    <div class="mt-5 pt-5 border-t border-gray-200">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Changer de mot de passe</h3>
+      <div class="space-y-2">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Mot de passe actuel *</label>
+          <input id="cpt-pwd-current" type="password" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="••••••••" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nouveau mot de passe *</label>
+          <input id="cpt-pwd-new" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mb-1" placeholder="8 caractères minimum" />
+          <button type="button" onclick="suggestPwd('cpt-pwd-new','cpt-pwd-new2')" class="text-xs text-purple-700 hover:text-purple-900 flex items-center gap-1">🔑 Suggérer un mot de passe sécurisé</button>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Confirmer le nouveau mot de passe *</label>
+          <input id="cpt-pwd-new2" type="password" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="••••••••" />
+        </div>
+        <div id="cpt-pwd-msg" class="text-xs hidden"></div>
+        <button onclick="changePassword()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">Modifier le mot de passe</button>
+      </div>
+    </div>
   `);
+}
+
+async function changePassword() {
+  const current = document.getElementById('cpt-pwd-current')?.value;
+  const pwd1 = document.getElementById('cpt-pwd-new')?.value;
+  const pwd2 = document.getElementById('cpt-pwd-new2')?.value;
+  const msg = document.getElementById('cpt-pwd-msg');
+  msg.className = 'text-xs hidden';
+  if (!current || !pwd1 || !pwd2) { msg.textContent = 'Remplissez tous les champs.'; msg.className = 'text-xs text-red-500'; return; }
+  if (pwd1.length < 8) { msg.textContent = 'Le nouveau mot de passe doit faire au moins 8 caractères.'; msg.className = 'text-xs text-red-500'; return; }
+  if (pwd1 !== pwd2) { msg.textContent = 'Les deux mots de passe ne correspondent pas.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error: signErr } = await db.auth.signInWithPassword({ email: state.user.email, password: current });
+  if (signErr) { msg.textContent = 'Mot de passe actuel incorrect.'; msg.className = 'text-xs text-red-500'; return; }
+  const { error } = await db.auth.updateUser({ password: pwd1 });
+  if (error) { msg.textContent = 'Erreur : ' + error.message; msg.className = 'text-xs text-red-500'; return; }
+  msg.textContent = 'Mot de passe modifié avec succès.';
+  msg.className = 'text-xs text-green-600';
+  document.getElementById('cpt-pwd-current').value = '';
+  document.getElementById('cpt-pwd-new').value = '';
+  document.getElementById('cpt-pwd-new2').value = '';
 }
 
 function previewCompteLogo(input) {
