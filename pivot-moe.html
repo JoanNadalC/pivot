@@ -278,9 +278,11 @@
 
     <!-- TAB: SUIVI (lecture seule + annotations) -->
     <div id="tab-suivi" class="tab-content hidden">
-      <div class="flex items-center gap-2 mb-4">
+      <div class="flex items-center gap-2 mb-4 flex-wrap">
         <span class="text-xs bg-gray-100 text-gray-500 px-3 py-1 rounded-full">Lecture seule</span>
+        <button onclick="exporterSuiviPdf()" class="ml-auto border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">📄 Exporter en PDF</button>
       </div>
+      <div id="suivi-stats" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-4"></div>
       <div class="overflow-x-auto bg-white rounded-xl shadow-sm">
         <table class="w-full text-sm" style="table-layout:fixed">
           <thead class="bg-gray-50 text-gray-500 text-xs">
@@ -4604,8 +4606,46 @@ function _suiviRowHtml(f, fam, d) {
     </tr>`;
 }
 
+// Statut le plus avancé de chaque fourniture (dernière version non-brouillon), pour les stats globales
+function _computeSuiviStats() {
+  const fournitures = state.fournitures.filter(f => !f.is_variante);
+  const stats = { total: fournitures.length, sansDaf: 0, soumise: 0, visa_ok: 0, visa_remarques: 0, refusee: 0, commandee: 0 };
+  fournitures.forEach(f => {
+    const versions = state.daf
+      .filter(d => d.fourniture_id === f.id && d.statut !== 'brouillon')
+      .sort((a, b) => (a.version || 1) - (b.version || 1));
+    if (!versions.length) { stats.sansDaf++; return; }
+    const dernier = versions[versions.length - 1];
+    if (stats[dernier.statut] !== undefined) stats[dernier.statut]++;
+  });
+  stats.avancees = stats.visa_ok + stats.commandee;
+  stats.pct = stats.total ? Math.round((stats.avancees / stats.total) * 100) : 0;
+  return stats;
+}
+
+function _renderSuiviStats(stats) {
+  const el = document.getElementById('suivi-stats');
+  if (!el) return;
+  const cards = [
+    { label: 'Fournitures', val: stats.total, cls: 'bg-gray-50 text-gray-700' },
+    { label: 'Sans DAF', val: stats.sansDaf, cls: 'bg-gray-100 text-gray-500' },
+    { label: 'Soumises', val: stats.soumise, cls: 'bg-blue-50 text-blue-700' },
+    { label: 'Visa OK', val: stats.visa_ok, cls: 'bg-green-50 text-green-700' },
+    { label: 'Visa ⚠️', val: stats.visa_remarques, cls: 'bg-yellow-50 text-yellow-700' },
+    { label: 'Refusées', val: stats.refusee, cls: 'bg-red-50 text-red-700' },
+    { label: 'Commandées', val: stats.commandee, cls: 'bg-purple-50 text-purple-700' },
+    { label: 'Avancement', val: stats.pct + '%', cls: 'bg-emerald-50 text-emerald-700' },
+  ];
+  el.innerHTML = cards.map(c => `
+    <div class="rounded-xl px-3 py-2 ${c.cls}">
+      <div class="text-lg font-bold leading-tight">${c.val}</div>
+      <div class="text-xs opacity-80">${c.label}</div>
+    </div>`).join('');
+}
+
 function renderSuivi() {
   const tbody = document.getElementById('suivi-tbody');
+  _renderSuiviStats(_computeSuiviStats());
   // Toutes les fournitures (même sans DAF) pour voir ce qu'il reste à faire
   const fournitures = state.fournitures.filter(f => !f.is_variante);
   if (!fournitures.length) {
@@ -4623,6 +4663,81 @@ function renderSuivi() {
     else versions.forEach(d => rows.push(_suiviRowHtml(f, fam, d)));
   });
   tbody.innerHTML = rows.join('');
+}
+
+async function exporterSuiviPdf() {
+  const ch = state.currentChantier;
+  if (!ch) return toast('Aucun chantier sélectionné', 'err');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const stats = _computeSuiviStats();
+  const dateStr = new Date().toLocaleDateString('fr-FR');
+
+  const logoB64 = await _loadLogoBase64();
+  let headerY = 20;
+  if (logoB64) {
+    try { doc.addImage(logoB64, 14, 8, 30, 15); } catch (e) {}
+    headerY = 26;
+  }
+
+  doc.setFontSize(18);
+  doc.setTextColor(22, 101, 52);
+  doc.text('SUIVI DES FOURNITURES', 105, headerY, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setTextColor(80, 80, 80);
+  const infoY = headerY + 12;
+  doc.text(`Chantier : ${[ch.ville, ch.affaire].filter(Boolean).join(' — ') || '—'}`, 14, infoY);
+  doc.text(`Date : ${dateStr}`, 160, infoY);
+
+  // Résumé statistiques
+  const statY = infoY + 12;
+  doc.setFontSize(11);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Avancement global : ${stats.pct}% (${stats.avancees}/${stats.total} fournitures avec visa ou commandées)`, 14, statY);
+
+  doc.autoTable({
+    startY: statY + 6,
+    head: [['Fournitures', 'Sans DAF', 'Soumises', 'Visa OK', 'Visa ⚠️', 'Refusées', 'Commandées']],
+    body: [[stats.total, stats.sansDaf, stats.soumise, stats.visa_ok, stats.visa_remarques, stats.refusee, stats.commandee]],
+    theme: 'grid',
+    headStyles: { fillColor: [22, 101, 52], textColor: 255, fontSize: 8 },
+    styles: { fontSize: 9, halign: 'center' },
+  });
+
+  // Détail des lignes (même contenu que le tableau Suivi à l'écran)
+  const fournitures = state.fournitures.filter(f => !f.is_variante);
+  const rows = [];
+  fournitures.forEach(f => {
+    const fam = state.familles.find(ff => ff.id === f.famille_id);
+    const versions = state.daf
+      .filter(d => d.fourniture_id === f.id && d.statut !== 'brouillon')
+      .sort((a, b) => (a.version || 1) - (b.version || 1));
+    const statutLabels = { soumise: 'Soumise', visa_ok: 'Visa OK', visa_remarques: 'Visa ⚠️', refusee: 'Refusée', commandee: 'Commandée' };
+    const list = versions.length ? versions : [null];
+    list.forEach(d => {
+      rows.push([
+        f.numero_poste || '',
+        (d?.version > 1 ? `v${d.version} ` : '') + (d?.designation || f.designation || ''),
+        fam ? fam.nom : '',
+        d ? (statutLabels[d.statut] || d.statut) : 'Sans DAF',
+        d?.date_commande ? new Date(d.date_commande).toLocaleDateString('fr-FR') : '—',
+        d?.date_livraison_prevue || '—',
+        d?.en_stock ? 'Oui' : '—',
+      ]);
+    });
+  });
+
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 10,
+    head: [['N°', 'Désignation', 'Famille', 'Statut DAF', 'Commandé', 'Délai indicatif', 'En stock']],
+    body: rows,
+    headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+    styles: { fontSize: 8 },
+    columnStyles: { 0: { cellWidth: 14 } },
+  });
+
+  doc.save(`Suivi_${(ch.affaire || 'chantier').replace(/[^a-z0-9]/gi, '_')}.pdf`);
 }
 
 // ============================================================
