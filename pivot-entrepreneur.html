@@ -7605,11 +7605,12 @@ async function saveCurrentJeu() {
   try {
     if (!jeuId) {
       for (const [fId, sel] of Object.entries(state.compSelections)) {
-        await db.from('comparatif_selections').upsert({
+        await db.from('comparatif_selections').delete().eq('fourniture_id', fId).is('jeu_id', null);
+        await db.from('comparatif_selections').insert({
           jeu_id: null, consultation_id: sel.consultation_id, fourniture_id: fId,
           fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'consultation_id,fourniture_id' });
+        });
       }
     } else {
       await db.from('comparatif_selections').delete().eq('jeu_id', jeuId);
@@ -8156,16 +8157,19 @@ async function _autosaveCompSelection(fId, consId) {
   const jeuId = window._compCurrentJeuId || null;
   const sel = state.compSelections[fId];
   try {
-    if (!sel) {
-      let q = db.from('comparatif_selections').delete().eq('fourniture_id', fId).eq('consultation_id', consId);
-      q = jeuId ? q.eq('jeu_id', jeuId) : q.is('jeu_id', null);
-      await q;
-    } else {
-      await db.from('comparatif_selections').upsert({
+    // Une seule sélection possible par fourniture, quelle que soit la consultation : on supprime
+    // systématiquement toute ligne existante (potentiellement rattachée à une autre consultation)
+    // avant de réinsérer, sinon une ancienne ligne "orpheline" peut ré-écraser la nouvelle sélection
+    // au rechargement (ordre non déterministe du Promise.all dans loadComparatif).
+    let delQ = db.from('comparatif_selections').delete().eq('fourniture_id', fId);
+    delQ = jeuId ? delQ.eq('jeu_id', jeuId) : delQ.is('jeu_id', null);
+    await delQ;
+    if (sel) {
+      await db.from('comparatif_selections').insert({
         jeu_id: jeuId, consultation_id: sel.consultation_id || consId, fourniture_id: fId,
         fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'consultation_id,fourniture_id' });
+      });
     }
   } catch (err) { console.warn('autosave comparatif:', err); }
 }
@@ -8558,8 +8562,11 @@ async function loadDaf() {
             .filter(([,v]) => v !== null && v !== undefined && String(v).trim() !== '')
             .map(([k,v]) => ({ cle: k, valeur: String(v) }));
       }
+      // Tant que la DAF n'a pas été soumise, le fournisseur suit la sélection du Comparatif ;
+      // une fois soumise, on fige le fournisseur déjà enregistré (traçabilité de la commande).
+      const followComparatif = !d.statut || d.statut === 'brouillon';
       window._dafRows[fId] = {
-        fournisseur_id: d.fournisseur_id || compSelMap[fId] || '',
+        fournisseur_id: (followComparatif && compSelMap[fId]) ? compSelMap[fId] : (d.fournisseur_id || compSelMap[fId] || ''),
         fiches: ex.fiches?.length ? ex.fiches : fiches,
         entretien: d.entretien || ex.entretien || '',
         notes: d.notes_entrepreneur || '',
