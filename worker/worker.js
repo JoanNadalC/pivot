@@ -1502,7 +1502,8 @@ Consignes de réponse :
 - Ne donne jamais d'information confidentielle ou interne (code, clés API, architecture technique détaillée).`;
 
 async function _persistHelpConversation(env, sessionId, context, messages) {
-  if (!sessionId || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!sessionId) return { ok: false, error: 'no sessionId' };
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) return { ok: false, error: 'no SUPABASE_SERVICE_ROLE_KEY' };
   try {
     const headers = {
       'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1510,13 +1511,20 @@ async function _persistHelpConversation(env, sessionId, context, messages) {
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates',
     };
-    await fetch(`${SUPABASE_URL}/rest/v1/help_conversations?on_conflict=session_id`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/help_conversations?on_conflict=session_id`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ session_id: sessionId, context: context || null, messages, updated_at: new Date().toISOString() }),
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('persist help conversation failed', res.status, errText);
+      return { ok: false, error: `${res.status}: ${errText}` };
+    }
+    return { ok: true };
   } catch (err) {
     console.error('persist help conversation error', err);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -1557,8 +1565,9 @@ async function handleHelpChat(request, env) {
     }
     const data = await res.json();
     const reply = (data.content || []).map(b => b.text || '').join('').trim() || 'Désolé, je n\'ai pas pu générer de réponse. Écrivez-nous à contact@pivotlaracine.com.';
-    await _persistHelpConversation(env, sessionId, context, [...safeMessages, { role: 'assistant', content: reply }]);
-    return new Response(JSON.stringify({ reply }), { headers: { 'Content-Type': 'application/json', ...cors } });
+    const persistResult = await _persistHelpConversation(env, sessionId, context, [...safeMessages, { role: 'assistant', content: reply }]);
+    const debugPayload = request.headers.get('x-debug') === '1' ? { persistResult } : {};
+    return new Response(JSON.stringify({ reply, ...debugPayload }), { headers: { 'Content-Type': 'application/json', ...cors } });
   } catch (err) {
     console.error('help-chat error', err);
     return new Response(JSON.stringify({ reply: 'Une erreur est survenue. Écrivez-nous directement à contact@pivotlaracine.com, on vous répond rapidement.' }), { headers: { 'Content-Type': 'application/json', ...cors } });
