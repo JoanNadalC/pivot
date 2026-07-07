@@ -7605,7 +7605,7 @@ async function saveCurrentJeu() {
   try {
     if (!jeuId) {
       for (const [fId, sel] of Object.entries(state.compSelections)) {
-        await db.from('comparatif_selections').delete().eq('fourniture_id', fId).is('jeu_id', null);
+        await db.from('comparatif_selections').delete().eq('fourniture_id', fId);
         await db.from('comparatif_selections').insert({
           jeu_id: null, consultation_id: sel.consultation_id, fourniture_id: fId,
           fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
@@ -8161,17 +8161,23 @@ async function _autosaveCompSelection(fId, consId) {
     // systématiquement toute ligne existante (potentiellement rattachée à une autre consultation)
     // avant de réinsérer, sinon une ancienne ligne "orpheline" peut ré-écraser la nouvelle sélection
     // au rechargement (ordre non déterministe du Promise.all dans loadComparatif).
-    let delQ = db.from('comparatif_selections').delete().eq('fourniture_id', fId);
-    delQ = jeuId ? delQ.eq('jeu_id', jeuId) : delQ.is('jeu_id', null);
-    await delQ;
+    // Supprime TOUTE ligne existante pour cette fourniture (peu importe consultation/jeu) : la table a
+    // une contrainte unique sur (consultation_id, fourniture_id), donc une ligne d'un autre jeu sur la
+    // même consultation bloquerait sinon l'insertion suivante avec un conflit silencieux.
+    const { error: delErr } = await db.from('comparatif_selections').delete().eq('fourniture_id', fId);
+    if (delErr) throw delErr;
     if (sel) {
-      await db.from('comparatif_selections').insert({
+      const { error: insErr } = await db.from('comparatif_selections').insert({
         jeu_id: jeuId, consultation_id: sel.consultation_id || consId, fourniture_id: fId,
         fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte,
         updated_at: new Date().toISOString()
       });
+      if (insErr) throw insErr;
     }
-  } catch (err) { console.warn('autosave comparatif:', err); }
+  } catch (err) {
+    console.error('autosave comparatif:', err);
+    toast('⚠️ Sélection non enregistrée : ' + (err.message || err), 'err');
+  }
 }
 
 // Un seul prix sélectionnable par fourniture (state.compSelections est déjà clé par fourniture_id,
@@ -8185,7 +8191,7 @@ function _toastPrixRemplace(prevSel) {
   toast(`Prix désélectionné dans la consultation « ${titre} »`);
 }
 
-function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
+async function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
   const cur = state.compSelections[fournitureId];
   if (cur?._variante && cur?.fournisseur_id === fournisseurId && cur?.prix_unit_ht != null && Math.abs(parseFloat(cur.prix_unit_ht)-prix) < 0.001) {
     delete state.compSelections[fournitureId];
@@ -8194,10 +8200,10 @@ function selectCompVariante(fournitureId, fournisseurId, prix, consId) {
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prix, qte: cur?.qte??null, _variante: true, consultation_id: consId };
   }
   _renderComparatif();
-  _autosaveCompSelection(fournitureId, consId);
+  await _autosaveCompSelection(fournitureId, consId);
 }
 
-function selectComp(fournitureId, fournisseurId, consId) {
+async function selectComp(fournitureId, fournisseurId, consId) {
   const cur = state.compSelections[fournitureId];
   if (cur?.fournisseur_id === fournisseurId && !cur?._variante) {
     delete state.compSelections[fournitureId];
@@ -8207,7 +8213,7 @@ function selectComp(fournitureId, fournisseurId, consId) {
     state.compSelections[fournitureId] = { fournisseur_id: fournisseurId, prix_unit_ht: prev.prix_unit_ht??null, qte: prev.qte??null, consultation_id: consId };
   }
   _renderComparatif();
-  _autosaveCompSelection(fournitureId, consId);
+  await _autosaveCompSelection(fournitureId, consId);
 }
 
 function autoSelectCheapest() {
