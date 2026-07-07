@@ -1482,6 +1482,69 @@ function waitlistAdminEmailHtml(prenom, email, role) {
     </div>`;
 }
 
+// ============================================================
+// AIDE — chat IA (landing + portails)
+// ============================================================
+const HELP_CHAT_SYSTEM = `Tu es l'assistant d'aide de Pivot la racine (pivotlaracine.com), un SaaS pour les paysagistes (entreprises, pépinières/fournisseurs, maîtres d'œuvre) qui centralise consultations fournisseurs, DAF (demande d'agrément fournisseur) et DOE (dossier des ouvrages exécutés), pour éviter la ressaisie entre devis, consultation et commande.
+
+Contexte produit :
+- 3 portails métier : Entreprise (paysagiste qui consulte des fournisseurs, génère DAF/DOE), Fournisseur (pépinière/fournisseur qui répond aux consultations, gère son catalogue), Maître d'œuvre / MOE (valide les DAF, suit l'avancement du chantier).
+- Fonctionnement type entreprise : import d'un DQE/BPU (PDF, Excel, CSV, ou coller un tableau) → détection automatique des familles de fournitures et parsing des végétaux (type/calibre/conditionnement) → consultation envoyée à plusieurs fournisseurs → comparatif des prix reçus par article → sélection du fournisseur retenu → génération automatique de la DAF (structurée, avec fiches techniques et photos annexées) → validation/visa par le MOE → suivi des commandes → DOE généré en quelques clics en fin de chantier.
+- Portail fournisseur : reçoit les consultations, répond avec ses prix (pré-remplissage depuis l'historique), gère un catalogue de végétaux/fournitures, peut assigner des collaborateurs (comptes légers, sans licence payante) pour prendre des photos des végétaux ou répondre à des demandes de renseignement via une petite appli mobile dédiée (Pivot Photos).
+- Le service est actuellement en bêta privée (accès sur liste d'attente, ouverture progressive).
+- Tarifs : chaque portail a sa propre page de tarifs (/pivot-tarifs-entreprise.html, /pivot-tarifs-fournisseur.html, /pivot-tarifs-moe.html). Le portail Fournisseur a 4 formules à connotation végétale (Stipa gratuit, Myrtus, Cercis, Quercus, du moins cher au plus complet) avec rabais dégressif à partir de 3 licences. Si on te demande un prix précis que tu ne connais pas avec certitude, renvoie vers la page tarifs correspondante plutôt que d'inventer un chiffre.
+- Contact humain : pour tout ce que tu ne sais pas traiter, ou une question de compte/facturation spécifique, oriente vers contact@pivotlaracine.com.
+
+Consignes de réponse :
+- Réponds en français, ton professionnel mais chaleureux, concis (3-6 phrases sauf si une explication plus longue est nécessaire).
+- Ne jamais inventer de fonctionnalité, de prix ou de délai que tu ne connais pas — dans le doute, oriente vers contact@pivotlaracine.com.
+- Si la question porte sur un problème de compte précis (bug, données manquantes, facture), ne tente pas de le résoudre toi-même : explique que tu transmets et invite à écrire à contact@pivotlaracine.com avec les détails.
+- Ne donne jamais d'information confidentielle ou interne (code, clés API, architecture technique détaillée).`;
+
+async function handleHelpChat(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const { messages, context } = await request.json();
+  if (!Array.isArray(messages) || !messages.length) {
+    return new Response(JSON.stringify({ error: 'Messages manquants' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+  const safeMessages = messages
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+    .slice(-12)
+    .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
+  if (!safeMessages.length) {
+    return new Response(JSON.stringify({ error: 'Messages invalides' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+
+  const system = HELP_CHAT_SYSTEM + (context ? `\n\nContexte actuel : l'utilisateur écrit depuis ${escHtml(context)}.` : '');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 500,
+        system,
+        messages: safeMessages,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Anthropic ${res.status}: ${errText}`);
+    }
+    const data = await res.json();
+    const reply = (data.content || []).map(b => b.text || '').join('').trim() || 'Désolé, je n\'ai pas pu générer de réponse. Écrivez-nous à contact@pivotlaracine.com.';
+    return new Response(JSON.stringify({ reply }), { headers: { 'Content-Type': 'application/json', ...cors } });
+  } catch (err) {
+    console.error('help-chat error', err);
+    return new Response(JSON.stringify({ reply: 'Une erreur est survenue. Écrivez-nous directement à contact@pivotlaracine.com, on vous répond rapidement.' }), { headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+}
+
 async function handleWaitlistConfirm(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
   const { prenom, email, role } = await request.json();
@@ -1901,6 +1964,7 @@ export default {
       if (url.pathname === '/send-invitation')         return await handleSendInvitation(request, env);
       if (url.pathname === '/notify-event')            return await handleNotifyEvent(request, env);
       if (url.pathname === '/waitlist-confirm')        return await handleWaitlistConfirm(request, env);
+      if (url.pathname === '/help-chat')               return await handleHelpChat(request, env);
       if (url.pathname === '/invite-collaborateur')    return await handleInviteCollaborateur(request, env);
       if (url.pathname === '/generate-daf') return await handleDAF(request, env);
       if (url.pathname === '/generate-doe') return await handleDOE(request, env);

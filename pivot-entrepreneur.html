@@ -12148,5 +12148,124 @@ init();
   <option value="C45">
   <option value="C65">
 </datalist>
+<!-- WIDGET AIDE PIVOT -->
+<style>
+  #pivot-help-btn {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9998;
+    background: #1C3A2A; color: #F5F0E8; border: none; border-radius: 999px;
+    padding: 13px 20px; font-family: 'Inter', Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.25); transition: transform 0.15s;
+  }
+  #pivot-help-btn:hover { transform: translateY(-2px); }
+  #pivot-help-panel {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    width: 360px; max-width: calc(100vw - 32px); height: 500px; max-height: calc(100vh - 100px);
+    background: #FAFAF7; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    display: none; flex-direction: column; overflow: hidden;
+    font-family: 'Inter', Helvetica, Arial, sans-serif;
+  }
+  #pivot-help-panel.open { display: flex; }
+  #pivot-help-head {
+    background: #1C3A2A; color: #F5F0E8; padding: 16px 18px; display: flex; align-items: center; justify-content: space-between;
+  }
+  #pivot-help-head-title { font-size: 14px; font-weight: 600; }
+  #pivot-help-head-sub { font-size: 11px; color: rgba(245,240,232,0.5); margin-top: 2px; }
+  #pivot-help-close { background: none; border: none; color: rgba(245,240,232,0.6); font-size: 20px; cursor: pointer; line-height: 1; }
+  #pivot-help-msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .pivot-help-msg { max-width: 85%; padding: 9px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
+  .pivot-help-msg.user { align-self: flex-end; background: #1C3A2A; color: #F5F0E8; border-bottom-right-radius: 3px; }
+  .pivot-help-msg.assistant { align-self: flex-start; background: #EFEAE0; color: #1C3A2A; border-bottom-left-radius: 3px; }
+  .pivot-help-msg.typing { align-self: flex-start; background: #EFEAE0; color: #9CA3AF; font-style: italic; }
+  #pivot-help-foot { border-top: 1px solid #E8E4DC; padding: 10px; }
+  #pivot-help-form { display: flex; gap: 6px; }
+  #pivot-help-input {
+    flex: 1; border: 1px solid #E8E4DC; border-radius: 10px; padding: 9px 12px; font-size: 13.5px; font-family: inherit;
+    resize: none; outline: none;
+  }
+  #pivot-help-send {
+    background: #B87333; color: #fff; border: none; border-radius: 10px; padding: 0 14px; font-weight: 600; cursor: pointer; font-size: 13px;
+  }
+  #pivot-help-contact { font-size: 11px; color: #9CA3AF; text-align: center; margin-top: 8px; }
+  #pivot-help-contact a { color: #B87333; text-decoration: none; }
+</style>
+
+<button id="pivot-help-btn" onclick="pivotHelpToggle()">💬 Aide</button>
+<div id="pivot-help-panel">
+  <div id="pivot-help-head">
+    <div>
+      <div id="pivot-help-head-title">Pivot. la racine</div>
+      <div id="pivot-help-head-sub">Assistant d'aide</div>
+    </div>
+    <button id="pivot-help-close" onclick="pivotHelpToggle()">×</button>
+  </div>
+  <div id="pivot-help-msgs"></div>
+  <div id="pivot-help-foot">
+    <form id="pivot-help-form" onsubmit="pivotHelpSend(event)">
+      <textarea id="pivot-help-input" rows="1" placeholder="Posez votre question…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();pivotHelpSend(event);}"></textarea>
+      <button id="pivot-help-send" type="submit">Envoyer</button>
+    </form>
+    <div id="pivot-help-contact">Question de compte ou de facturation ? <a href="mailto:contact@pivotlaracine.com">contact@pivotlaracine.com</a></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const PIVOT_HELP_CONTEXT = 'le portail Entreprise (utilisateur connecte)';
+  const PIVOT_HELP_URL = 'https://pivot-pdf.jncoutier.workers.dev/help-chat';
+  let pivotHelpMessages = [];
+  let pivotHelpOpened = false;
+
+  window.pivotHelpToggle = function () {
+    const panel = document.getElementById('pivot-help-panel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open') && !pivotHelpOpened) {
+      pivotHelpOpened = true;
+      pivotHelpAppend('assistant', 'Bonjour 👋 Je suis l\'assistant Pivot. la racine. Posez-moi vos questions sur le fonctionnement, les tarifs ou les portails — pour une question de compte précise, je vous orienterai vers contact@pivotlaracine.com.');
+    }
+  };
+
+  function pivotHelpAppend(role, text) {
+    const el = document.createElement('div');
+    el.className = 'pivot-help-msg ' + role;
+    el.textContent = text;
+    document.getElementById('pivot-help-msgs').appendChild(el);
+    document.getElementById('pivot-help-msgs').scrollTop = 999999;
+    return el;
+  }
+
+  window.pivotHelpSend = async function (e) {
+    e.preventDefault();
+    const input = document.getElementById('pivot-help-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    pivotHelpAppend('user', text);
+    pivotHelpMessages.push({ role: 'user', content: text });
+
+    const typingEl = document.createElement('div');
+    typingEl.className = 'pivot-help-msg typing';
+    typingEl.textContent = 'écrit…';
+    document.getElementById('pivot-help-msgs').appendChild(typingEl);
+    document.getElementById('pivot-help-msgs').scrollTop = 999999;
+
+    try {
+      const res = await fetch(PIVOT_HELP_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: pivotHelpMessages, context: PIVOT_HELP_CONTEXT })
+      });
+      const data = await res.json();
+      typingEl.remove();
+      const reply = data.reply || 'Désolé, une erreur est survenue. Écrivez-nous à contact@pivotlaracine.com.';
+      pivotHelpAppend('assistant', reply);
+      pivotHelpMessages.push({ role: 'assistant', content: reply });
+    } catch (err) {
+      typingEl.remove();
+      pivotHelpAppend('assistant', 'Une erreur est survenue. Écrivez-nous à contact@pivotlaracine.com.');
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
