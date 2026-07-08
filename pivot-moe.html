@@ -303,15 +303,16 @@
       <div class="mt-6">
         <h3 class="font-semibold text-sm text-gray-600 mb-2">📐 Autres documents à viser</h3>
         <div class="overflow-x-auto bg-white rounded-xl shadow-sm">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm" style="table-layout:fixed">
             <thead class="bg-gray-50 text-gray-500 text-xs">
               <tr>
-                <th class="px-3 py-2 text-left">Document</th>
-                <th class="px-3 py-2 text-left">Catégorie</th>
-                <th class="px-3 py-2 text-left">Statut</th>
-                <th class="px-3 py-2 text-left">Date émission</th>
-                <th class="px-3 py-2 text-left">Date VISA</th>
-                <th class="px-3 py-2 text-left">Observations MOE</th>
+                <th class="px-3 py-2 text-left w-20"></th>
+                <th class="px-3 py-2 text-left">Désignation</th>
+                <th class="px-3 py-2 text-left w-36">Famille</th>
+                <th class="px-3 py-2 text-left w-28">Statut DAF</th>
+                <th class="px-3 py-2 text-left w-24">Date émission</th>
+                <th class="px-3 py-2 text-left w-24">Date VISA</th>
+                <th class="px-3 py-2 text-left w-48">Observations MOE</th>
               </tr>
             </thead>
             <tbody id="suivi-documents-list"></tbody>
@@ -4999,18 +5000,20 @@ async function _renderSuiviDocuments() {
   const ch = state.currentChantier;
   if (!el || !ch) return;
   const { data, error } = await db.from('documents_viser').select('*').eq('chantier_id', ch.id).order('created_at', { ascending: false });
-  if (error) { el.innerHTML = `<tr><td colspan="6" class="px-3 py-4 text-center text-red-500 text-xs">${error.message}</td></tr>`; return; }
+  if (error) { el.innerHTML = `<tr><td colspan="7" class="px-3 py-4 text-center text-red-500 text-xs">${error.message}</td></tr>`; return; }
   const docs = data || [];
-  if (!docs.length) { el.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-400 text-sm italic">Aucun document envoyé.</td></tr>'; return; }
+  if (!docs.length) { el.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-400 text-sm italic">Aucun document envoyé.</td></tr>'; return; }
 
   const { data: visasData } = await db.from('visa_documents').select('*').in('document_id', docs.map(d => d.id)).order('date_visa', { ascending: false });
   const lastVisaByDoc = {};
   (visasData || []).forEach(v => { if (!lastVisaByDoc[v.document_id]) lastVisaByDoc[v.document_id] = v; });
 
+  // Colonnes alignées avec le tableau Fournitures ci-dessus : Désignation=nom, Famille=catégorie
   el.innerHTML = docs.map(d => {
     const visa = lastVisaByDoc[d.id];
     return `
     <tr class="hover:bg-gray-50 border-b text-sm">
+      <td class="px-3 py-2"></td>
       <td class="px-3 py-2">
         <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="font-medium hover:text-blue-600 hover:underline">${escHtml(d.nom)}</a>
         <span class="text-xs text-gray-400 ml-1">v${d.version}</span>
