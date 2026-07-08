@@ -11424,28 +11424,49 @@ async function loadDocumentsViser() {
   onDocViserCategorieChange();
 }
 
+// Regroupe les versions d'un même document par lignée (parent_id) : racine → v1, v2, v3…
+function _groupDocVersions(docs) {
+  const byId = {}; docs.forEach(d => { byId[d.id] = d; });
+  const groups = {};
+  docs.forEach(d => {
+    let rootId = d.id, cur = d;
+    while (cur.parent_id && byId[cur.parent_id]) { rootId = cur.parent_id; cur = byId[cur.parent_id]; }
+    (groups[rootId] ||= []).push(d);
+  });
+  return Object.values(groups).map(list => list.sort((a,b) => a.version - b.version));
+}
+
 function _renderDocumentsViser() {
   const el = document.getElementById('documents-viser-list');
   if (!el) return;
   const docs = state.documentsViser || [];
   if (!docs.length) { el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucun document envoyé pour le moment.</p>'; return; }
 
-  const sorted = [...docs].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-  // Une ligne peut proposer "+ Nouvelle version" tant qu'aucune version plus récente ne lui succède déjà
-  // (comme sur une fourniture : on peut créer une v2 quel que soit le statut de la v1)
-  const supersededIds = new Set(docs.filter(d => d.parent_id).map(d => d.parent_id));
+  const groups = _groupDocVersions(docs).sort((a,b) => new Date(b[b.length-1].created_at) - new Date(a[a.length-1].created_at));
 
-  el.innerHTML = sorted.map(d => `
-    <div class="bg-white rounded-xl p-4 shadow-sm flex items-center justify-between gap-3 flex-wrap">
-      <div>
-        <div class="font-medium text-sm">${escHtml(d.nom)} <span class="text-xs text-gray-400">v${d.version}</span>${d.categorie ? ` <span class="text-xs text-gray-400">· ${escHtml(d.categorie)}</span>` : ''}</div>
-        <div class="text-xs text-gray-400 mt-0.5">${new Date(d.created_at).toLocaleDateString('fr-FR')} ${statutBadge(d.statut)}</div>
-      </div>
-      <div class="flex items-center gap-2">
+  // Comme pour une fourniture : en-tête (nom du document) + une ligne par version (fond ambré si plusieurs versions)
+  el.innerHTML = groups.map(versions => {
+    const root = versions[0];
+    const latest = versions[versions.length - 1];
+    const multi = versions.length > 1;
+    const versionRows = versions.map(d => `
+      <div class="flex items-center justify-between gap-3 px-4 py-2 ${multi ? 'bg-amber-50' : ''} border-t border-gray-100 first:border-t-0">
+        <div class="flex items-center gap-2 text-sm">
+          <span class="text-xs text-gray-500 font-mono">v${d.version}</span>
+          ${statutBadge(d.statut)}
+          <span class="text-xs text-gray-400">${new Date(d.created_at).toLocaleDateString('fr-FR')}</span>
+        </div>
         <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="text-xs border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">${d.pdf_visa_url ? '📄 PDF visé' : '📄 Voir le PDF'}</a>
-        ${!supersededIds.has(d.id) ? `<button onclick="ouvrirNouvelleVersionDoc('${d.id}','${escHtml(d.nom).replace(/'/g,"\\'")}',${d.version})" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">+ Nouvelle version</button>` : ''}
+      </div>`).join('');
+    return `
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-4 py-2.5 bg-gray-100">
+        <div class="font-semibold text-sm text-gray-800">${escHtml(root.nom)}${root.categorie ? ` <span class="text-xs font-normal text-gray-400">· ${escHtml(root.categorie)}</span>` : ''}</div>
+        <button onclick="ouvrirNouvelleVersionDoc('${latest.id}','${escHtml(root.nom).replace(/'/g,"\\'")}',${latest.version})" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">+ Nouvelle version</button>
       </div>
-    </div>`).join('');
+      ${versionRows}
+    </div>`;
+  }).join('');
 }
 
 async function uploadDocumentViser() {
