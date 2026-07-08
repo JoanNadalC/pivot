@@ -1046,10 +1046,9 @@ async function init() {
 
 async function showInvitationBanner(token) {
   // Récupérer les infos de l'invitation pour afficher le nom du chantier
-  const { data: inv } = await db.from('chantier_invitations')
-    .select('nom_chantier, email_invite, statut')
-    .eq('token', token)
-    .maybeSingle();
+  // (RPC dédiée : avant connexion, aucune policy ne doit exposer toute la table d'invitations)
+  const { data: invRows } = await db.rpc('get_chantier_invitation_public', { p_token: token });
+  const inv = invRows?.[0] || null;
 
   const banner = document.createElement('div');
   banner.className = 'mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm';

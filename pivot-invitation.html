@@ -262,11 +262,9 @@
 
     if (!token) { show('state-invalid'); document.getElementById('invalid-msg').textContent = 'Aucun token d\'invitation trouvé dans l\'URL.'; return; }
 
-    // Charger l'invitation
-    const { data: inv, error } = await db.from('structure_invitations')
-      .select('*, structures(id, nom, type)')
-      .eq('token', token)
-      .maybeSingle();
+    // Charger l'invitation (RPC dédiée : avant connexion, aucune policy ne doit exposer toute la table)
+    const { data: invRows, error } = await db.rpc('get_structure_invitation_public', { p_token: token });
+    const inv = invRows?.[0] ? { ...invRows[0], structures: { id: invRows[0].structure_id, nom: invRows[0].structure_nom, type: invRows[0].structure_type } } : null;
 
     if (error || !inv) { show('state-invalid'); return; }
 
