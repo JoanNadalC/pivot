@@ -1703,20 +1703,53 @@ async function handleScheduled(env) {
     });
   }
 
-  // ── 3. Digests notifications (quotidien & hebdomadaire) ──
+  // ── 3. Digests notifications (quotidien & hebdomadaire), groupées par chantier puis par catégorie ──
   const isMonday = today.getDay() === 1;
   const notifRes = await fetch(
-    `${supabaseUrl}/rest/v1/notifications?emailed_at=is.null&select=id,user_id,message,created_at&order=created_at.asc`,
+    `${supabaseUrl}/rest/v1/notifications?emailed_at=is.null&select=id,user_id,type,message,chantier_id,consultation_id,created_at&order=created_at.asc`,
     { headers }
   );
   const pendingNotifs = await notifRes.json();
   let digestsSent = 0;
+
+  const CATEGORY_LABELS = {
+    reponse_fournisseur: '💬 Réponses fournisseurs',
+    photo_validee: '📷 Photos reçues',
+    visa_moe: '✅ Visas DAF',
+    visa_document: '📐 Visas documents',
+    nouvelle_consultation: '📤 Nouvelles consultations',
+    demande_modification: '🔓 Demandes de modification',
+    modification_autorisee: '🔓 Modifications de prix',
+    demande_photo: '📷 Demandes de photos',
+    consultation_ignoree: '❌ Consultations déclinées',
+    invitation_acceptee: '👥 Invitations',
+    invitation_chantier_moe: '👥 Invitations',
+    reassignation_chantier: '👥 Affectations',
+  };
 
   if (pendingNotifs?.length) {
     const byUser = {};
     for (const n of (pendingNotifs || [])) {
       if (!byUser[n.user_id]) byUser[n.user_id] = [];
       byUser[n.user_id].push(n);
+    }
+
+    // Résoudre les chantier_id manquants via consultation_id (certains types ne stockent pas chantier_id directement)
+    const missingChantierConsIds = [...new Set(pendingNotifs.filter(n => !n.chantier_id && n.consultation_id).map(n => n.consultation_id))];
+    const consToChantier = {};
+    if (missingChantierConsIds.length) {
+      const consRes = await fetch(`${supabaseUrl}/rest/v1/consultations?id=in.(${missingChantierConsIds.join(',')})&select=id,chantier_id`, { headers });
+      const consRows = await consRes.json();
+      (consRows || []).forEach(c => { consToChantier[c.id] = c.chantier_id; });
+    }
+    pendingNotifs.forEach(n => { if (!n.chantier_id && n.consultation_id) n.chantier_id = consToChantier[n.consultation_id] || null; });
+
+    const allChantierIds = [...new Set(pendingNotifs.filter(n => n.chantier_id).map(n => n.chantier_id))];
+    const chantierNames = {};
+    if (allChantierIds.length) {
+      const chRes = await fetch(`${supabaseUrl}/rest/v1/chantiers?id=in.(${allChantierIds.join(',')})&select=id,affaire,ville`, { headers });
+      const chRows = await chRes.json();
+      (chRows || []).forEach(c => { chantierNames[c.id] = [c.ville, c.affaire].filter(Boolean).join(' — ') || 'Chantier'; });
     }
 
     const sentIds = [];
@@ -1733,7 +1766,25 @@ async function handleScheduled(env) {
       const shouldSend = pref === 'daily' || (pref === 'weekly' && isMonday);
       if (!shouldSend) continue;
 
-      const itemsHtml = notifs.map(n => `<li style="margin-bottom:8px;">${escHtml(n.message)}</li>`).join('');
+      // Groupe par chantier, puis par catégorie de notification à l'intérieur de chaque chantier
+      const byChantier = {};
+      notifs.forEach(n => { (byChantier[n.chantier_id || '_autres'] ||= []).push(n); });
+
+      const sections = Object.entries(byChantier).map(([chId, chNotifs]) => {
+        const byType = {};
+        chNotifs.forEach(n => { (byType[n.type] ||= []).push(n); });
+        const catBlocks = Object.entries(byType).map(([type, items]) => {
+          const label = CATEGORY_LABELS[type] || '📌 Autres';
+          const lis = items.map(n => `<li style="margin-bottom:4px;">${escHtml(n.message)}</li>`).join('');
+          return `<p style="font-weight:600;margin:12px 0 4px;">${label} (${items.length})</p><ul style="padding-left:18px;margin:0;">${lis}</ul>`;
+        }).join('');
+        const chantierTitle = chId === '_autres' ? 'Autres notifications' : (chantierNames[chId] || 'Chantier');
+        return `<div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e5e7eb;">
+          <p style="font-weight:700;font-size:15px;margin:0 0 4px;color:#1C3A2A;">🏗️ ${escHtml(chantierTitle)}</p>
+          ${catBlocks}
+        </div>`;
+      }).join('');
+
       await sendResendEmail(env, {
         to: compte.email,
         subject: pref === 'daily' ? 'Votre récap quotidien Pivot' : 'Votre récap hebdomadaire Pivot',
@@ -1741,7 +1792,7 @@ async function handleScheduled(env) {
           title: pref === 'daily'
             ? `📋 ${notifs.length} nouvelle${notifs.length>1?'s':''} notification${notifs.length>1?'s':''}`
             : `📋 Récap de la semaine — ${notifs.length} notification${notifs.length>1?'s':''}`,
-          message: `<ul style="padding-left:18px;margin:0;">${itemsHtml}</ul>`,
+          message: sections,
           link: `${env.SITE_URL || 'https://pivotlaracine.com'}/${PORTAIL_URL[portail]}`,
         }),
       });
