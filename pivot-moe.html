@@ -5030,22 +5030,35 @@ async function _renderSuiviDocuments() {
   const lastVisaByDoc = {};
   (visasData || []).forEach(v => { if (!lastVisaByDoc[v.document_id]) lastVisaByDoc[v.document_id] = v; });
 
-  // Colonnes alignées avec le tableau Fournitures ci-dessus : Désignation=nom, Famille=catégorie
-  el.innerHTML = docs.map(d => {
-    const visa = lastVisaByDoc[d.id];
-    return `
-    <tr class="hover:bg-gray-50 border-b text-sm">
+  // Colonnes alignées avec le tableau Fournitures ci-dessus ; versions empilées comme pour une fourniture
+  // (en-tête = nom du document, puis une ligne par version, fond ambré si plusieurs versions)
+  const groups = _groupDocVersions(docs).sort((a,b) => new Date(b[b.length-1].created_at) - new Date(a[a.length-1].created_at));
+
+  el.innerHTML = groups.map(versions => {
+    const root = versions[0];
+    const multi = versions.length > 1;
+    const headerRow = multi ? `
+    <tr class="bg-gray-100 border-b border-gray-200">
       <td class="px-3 py-2"></td>
-      <td class="px-3 py-2">
-        <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="font-medium hover:text-blue-600 hover:underline">${escHtml(d.nom)}</a>
-        <span class="text-xs text-gray-400 ml-1">v${d.version}</span>
-      </td>
-      <td class="px-3 py-2 text-xs text-gray-500">${escHtml(d.categorie || '—')}</td>
-      <td class="px-3 py-2">${statutBadge(d.statut)}</td>
-      <td class="px-3 py-2 text-xs">${new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
-      <td class="px-3 py-2 text-xs">${visa?.date_visa ? new Date(visa.date_visa).toLocaleDateString('fr-FR') : '—'}</td>
-      <td class="px-3 py-2 text-xs text-gray-600">${visa?.remarques ? escHtml(visa.remarques) : '—'}</td>
-    </tr>`;
+      <td colspan="6" class="px-3 py-2 text-sm font-bold text-gray-800">${escHtml(root.nom)}</td>
+    </tr>` : '';
+    const versionRows = versions.map(d => {
+      const visa = lastVisaByDoc[d.id];
+      return `
+      <tr class="hover:bg-gray-50 border-b text-sm ${multi ? 'bg-amber-50' : ''}">
+        <td class="px-3 py-2"></td>
+        <td class="px-3 py-2">
+          <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="${multi ? 'text-xs text-gray-600' : 'font-medium'} hover:text-blue-600 hover:underline">${multi ? '' : escHtml(d.nom) + ' '}</a>
+          <span class="text-xs text-gray-400 font-mono">v${d.version}</span>
+        </td>
+        <td class="px-3 py-2 text-xs text-gray-500">${escHtml(d.categorie || '—')}</td>
+        <td class="px-3 py-2">${statutBadge(d.statut)}</td>
+        <td class="px-3 py-2 text-xs">${new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
+        <td class="px-3 py-2 text-xs">${visa?.date_visa ? new Date(visa.date_visa).toLocaleDateString('fr-FR') : '—'}</td>
+        <td class="px-3 py-2 text-xs text-gray-600">${visa?.remarques ? escHtml(visa.remarques) : '—'}</td>
+      </tr>`;
+    }).join('');
+    return headerRow + versionRows;
   }).join('');
 }
 
