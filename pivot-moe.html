@@ -162,6 +162,7 @@
       <button onclick="setTab('fournitures')" id="ot-fournitures" class="tab-btn px-4 py-3 text-sm whitespace-nowrap tab-active">📦 Fournitures</button>
       <button onclick="setTab('daf')" id="ot-daf" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📋 DAF / VISA</button>
       <button onclick="setTab('suivi')" id="ot-suivi" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📈 Suivi</button>
+      <button onclick="setTab('documents')" id="ot-documents" class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500">📐 Documents à viser</button>
     </div>
   </div>
 
@@ -299,6 +300,18 @@
           <tbody id="suivi-tbody"></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- TAB: DOCUMENTS À VISER (plans, etc.) -->
+    <div id="tab-documents" class="tab-content hidden">
+      <div class="flex gap-2 mb-4 flex-wrap">
+        <button onclick="filterDocuments('soumise')" id="doc-f-soumise" class="px-3 py-1 rounded-full text-xs bg-purple-600 text-white">En attente</button>
+        <button onclick="filterDocuments('visa_ok')" id="doc-f-visa_ok" class="px-3 py-1 rounded-full text-xs bg-gray-200 text-gray-700">Validés</button>
+        <button onclick="filterDocuments('visa_remarques')" id="doc-f-visa_remarques" class="px-3 py-1 rounded-full text-xs bg-gray-200 text-gray-700">Avec remarques</button>
+        <button onclick="filterDocuments('refusee')" id="doc-f-refusee" class="px-3 py-1 rounded-full text-xs bg-gray-200 text-gray-700">Refusés</button>
+        <button onclick="filterDocuments('all')" id="doc-f-all" class="px-3 py-1 rounded-full text-xs bg-gray-200 text-gray-700">Tous</button>
+      </div>
+      <div id="documents-viser-list" class="space-y-3"></div>
     </div>
 
         </div><!-- /flex-1 -->
@@ -1478,6 +1491,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'fournitures') renderFournitures();
   if (tab === 'daf') { renderDafVisa(); if (state.currentChantier) _markChantierNotifsRead(state.currentChantier.id, 'daf_soumise'); }
   if (tab === 'suivi') renderSuivi();
+  if (tab === 'documents') renderDocumentsViser();
   if (!_noHistory) history.pushState({ view: 'tab', tab, chantierId: state.currentChantier?.id, lotId: state.currentLot?.id }, '');
 }
 
@@ -4494,6 +4508,237 @@ async function donnerVisa(dafId, type) {
     closeModal();
     renderDafVisa();
     renderLotsSidebar();
+    toast(type === 'sans_remarque' ? 'VISA accordé !' : type === 'avec_remarques' ? 'VISA avec remarques envoyé !' : 'Refus notifié à l\'entrepreneur !');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+// ============================================================
+// AUTRES DOCUMENTS À VISER (plans, etc.) — même principe que le VISA DAF
+// ============================================================
+state.filterDocuments = 'soumise';
+
+async function renderDocumentsViser() {
+  const ch = state.currentChantier;
+  const el = document.getElementById('documents-viser-list');
+  if (!el || !ch) return;
+  el.innerHTML = '<p class="text-gray-400 text-sm italic">Chargement…</p>';
+  const { data, error } = await db.from('documents_viser').select('*').eq('chantier_id', ch.id).order('created_at', { ascending: false });
+  if (error) { el.innerHTML = `<p class="text-sm text-red-500">${error.message}</p>`; return; }
+  state.documentsViser = data || [];
+
+  const { data: visasData } = await db.from('visa_documents').select('*').in('document_id', state.documentsViser.map(d => d.id).length ? state.documentsViser.map(d => d.id) : ['00000000-0000-0000-0000-000000000000']).order('date_visa', { ascending: false });
+  state.visaDocuments = {};
+  (visasData || []).forEach(v => { if (!state.visaDocuments[v.document_id]) state.visaDocuments[v.document_id] = v; });
+
+  _renderDocumentsViserList();
+}
+
+function filterDocuments(f) {
+  state.filterDocuments = f;
+  document.querySelectorAll('[id^="doc-f-"]').forEach(btn => { btn.className = 'px-3 py-1 rounded-full text-xs bg-gray-200 text-gray-700'; });
+  const activeBtn = document.getElementById(`doc-f-${f}`);
+  if (activeBtn) activeBtn.className = 'px-3 py-1 rounded-full text-xs bg-purple-600 text-white';
+  _renderDocumentsViserList();
+}
+
+function _renderDocumentsViserList() {
+  const el = document.getElementById('documents-viser-list');
+  if (!el) return;
+  let list = state.documentsViser || [];
+  if (state.filterDocuments !== 'all') list = list.filter(d => d.statut === state.filterDocuments);
+  list = list.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  if (!list.length) { el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucun document dans ce filtre.</p>'; return; }
+
+  el.innerHTML = list.map(d => {
+    const lastVisa = state.visaDocuments?.[d.id];
+    return `
+    <div class="bg-white rounded-xl p-4 shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2 mb-1">${statutBadge(d.statut)}<span class="text-xs text-gray-400">v${d.version}</span></div>
+          <h3 class="font-semibold text-sm cursor-pointer hover:text-blue-600 hover:underline" onclick="window.open('${d.pdf_url}','_blank')">${escHtml(d.nom)}</h3>
+          <p class="text-xs text-gray-400 mt-1">Envoyé le ${new Date(d.created_at).toLocaleDateString('fr-FR')}</p>
+        </div>
+        <div class="flex gap-2 ml-4 flex-wrap justify-end">
+          <a href="${d.pdf_url}" target="_blank" class="text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded hover:bg-blue-50">📄 Voir</a>
+          ${d.pdf_visa_url ? `<a href="${d.pdf_visa_url}" target="_blank" class="text-xs text-purple-600 border border-purple-300 px-2 py-1 rounded hover:bg-purple-50">📥 Visé</a>` : ''}
+          ${d.statut === 'soumise' ? `<button onclick="openVisaDocModal('${d.id}')" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-purple-700">Donner VISA</button>` : ''}
+        </div>
+      </div>
+      ${lastVisa ? `
+        <div class="mt-2 p-3 rounded-lg border ${lastVisa.type === 'sans_remarque' ? 'bg-green-50 border-green-200' : lastVisa.type === 'refus' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}">
+          <div class="text-xs font-semibold ${lastVisa.type === 'sans_remarque' ? 'text-green-700' : lastVisa.type === 'refus' ? 'text-red-700' : 'text-yellow-700'} mb-1">
+            ${lastVisa.type === 'sans_remarque' ? '✅ VISA sans observation' : lastVisa.type === 'avec_remarques' ? '📝 VISA avec observations' : '❌ Refus'}
+            <span class="font-normal text-gray-400 ml-2">${lastVisa.date_visa ? new Date(lastVisa.date_visa).toLocaleDateString('fr-FR') : ''}</span>
+          </div>
+          ${lastVisa.remarques ? `<p class="text-xs text-gray-700 leading-relaxed">${escHtml(lastVisa.remarques)}</p>` : ''}
+        </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openVisaDocModal(docId) {
+  const d = state.documentsViser.find(x => x.id === docId);
+  if (!d) return;
+  showModal(`
+    <h2 class="text-lg font-bold mb-2">VISA — ${escHtml(d.nom)}</h2>
+    <div class="space-y-3 mb-4">
+      <button onclick="donnerVisaDoc('${docId}','sans_remarque')" class="w-full flex items-center gap-3 p-3 border-2 border-green-400 rounded-xl hover:bg-green-50 text-left">
+        <span class="text-2xl">✅</span>
+        <div><p class="font-semibold text-green-700">VISA sans observation</p><p class="text-xs text-gray-500">Le document est approuvé tel quel.</p></div>
+      </button>
+      <button onclick="openVisaDocAvecRemarques('${docId}')" class="w-full flex items-center gap-3 p-3 border-2 border-yellow-400 rounded-xl hover:bg-yellow-50 text-left">
+        <span class="text-2xl">📝</span>
+        <div><p class="font-semibold text-yellow-700">VISA avec observations</p><p class="text-xs text-gray-500">Approuvé mais avec des observations à tenir compte.</p></div>
+      </button>
+      <button onclick="openVisaDocRefus('${docId}')" class="w-full flex items-center gap-3 p-3 border-2 border-red-400 rounded-xl hover:bg-red-50 text-left">
+        <span class="text-2xl">❌</span>
+        <div><p class="font-semibold text-red-700">Refus</p><p class="text-xs text-gray-500">L'entrepreneur devra envoyer une nouvelle version.</p></div>
+      </button>
+    </div>
+    <button onclick="closeModal()" class="w-full border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+  `);
+}
+
+function openVisaDocAvecRemarques(docId) {
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">📝 VISA avec observations</h2>
+    <label class="block text-xs text-gray-500 mb-1">Observations (obligatoire)</label>
+    <textarea id="visa-doc-remarques" rows="4" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="Décrivez les observations ou réserves…"></textarea>
+    <div class="flex gap-3">
+      <button onclick="donnerVisaDoc('${docId}','avec_remarques')" class="flex-1 bg-yellow-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-yellow-600">Confirmer VISA avec observations</button>
+      <button onclick="openVisaDocModal('${docId}')" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Retour</button>
+    </div>
+  `);
+}
+
+function openVisaDocRefus(docId) {
+  showModal(`
+    <h2 class="text-lg font-bold mb-3">❌ Refus du document</h2>
+    <label class="block text-xs text-gray-500 mb-1">Motif du refus (obligatoire)</label>
+    <textarea id="visa-doc-remarques" rows="4" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="Expliquez pourquoi ce document est refusé…"></textarea>
+    <div class="flex gap-3">
+      <button onclick="donnerVisaDoc('${docId}','refus')" class="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700">Confirmer le refus</button>
+      <button onclick="openVisaDocModal('${docId}')" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Retour</button>
+    </div>
+  `);
+}
+
+// Le document visé doit être EXACTEMENT le PDF soumis par l'entreprise, avec une page de signature ajoutée à la fin.
+async function _genererPdfViseDocument(d, statutDoc, remarques) {
+  if (!window.PDFLib) { toast('Librairie PDF manquante', 'err'); return null; }
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const compteInfo = state._compteInfo || {};
+  const dateVisa = new Date().toLocaleDateString('fr-FR');
+
+  const resp = await fetch(d.pdf_url);
+  if (!resp.ok) throw new Error('Impossible de charger le PDF émis par l\'entreprise');
+  const origBytes = await resp.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(origBytes);
+
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const page = pdfDoc.addPage([595.28, 841.89]);
+  const { width: W, height: H } = page.getSize();
+  const M = 40;
+
+  const colorMap = { visa_ok: rgb(0.09,0.64,0.29), visa_remarques: rgb(0.85,0.47,0.02), refusee: rgb(0.86,0.15,0.15) };
+  const labelMap = { visa_ok: 'VISA SANS REMARQUE', visa_remarques: 'VISA AVEC REMARQUES', refusee: 'REFUSÉ' };
+  const color = colorMap[statutDoc] || colorMap.visa_ok;
+  const label = labelMap[statutDoc] || 'VISA';
+
+  let y = H - M;
+  page.drawText("VISA MAÎTRE D'ŒUVRE", { x: M, y, size: 16, font: fontBold, color: rgb(0.1,0.1,0.1) });
+  y -= 10;
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: rgb(0.85,0.85,0.85) });
+  y -= 30;
+
+  page.drawRectangle({ x: M, y: y - 8, width: W - 2*M, height: 26, color });
+  page.drawText(label, { x: M + 12, y, size: 12, font: fontBold, color: rgb(1,1,1) });
+  y -= 50;
+
+  page.drawText(`Document : ${d.nom || ''}`, { x: M, y, size: 10, font: fontBold, color: rgb(0.2,0.2,0.2) });
+  y -= 24;
+
+  page.drawText("Maître d'œuvre :", { x: M, y, size: 10, font: fontBold, color: rgb(0.2,0.2,0.2) });
+  y -= 16;
+  const nomMoe = compteInfo.societe || compteInfo.nom || state.user?.email || '';
+  page.drawText(nomMoe, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
+  y -= 16;
+  page.drawText(`Date du VISA : ${dateVisa}`, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
+  y -= 24;
+
+  if (remarques) {
+    page.drawText('Remarques :', { x: M, y, size: 10, font: fontBold, color: rgb(0.2,0.2,0.2) });
+    y -= 16;
+    const maxWidth = W - 2*M;
+    const words = remarques.split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (fontReg.widthOfTextAtSize(test, 10) > maxWidth) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    lines.forEach(l => { page.drawText(l, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) }); y -= 14; });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const path = `${d.id}/document_vise.pdf`;
+  const { error } = await db.storage.from('daf-pdfs').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true });
+  if (error) throw error;
+  const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+  return urlData?.publicUrl || null;
+}
+
+async function donnerVisaDoc(docId, type) {
+  const remarquesEl = document.getElementById('visa-doc-remarques');
+  const remarques = remarquesEl ? remarquesEl.value.trim() : '';
+  if ((type === 'avec_remarques' || type === 'refus') && !remarques) {
+    toast('Les observations sont obligatoires', 'err');
+    return;
+  }
+  const statutDoc = type === 'sans_remarque' ? 'visa_ok' : type === 'avec_remarques' ? 'visa_remarques' : 'refusee';
+  const d = state.documentsViser.find(x => x.id === docId);
+  try {
+    const { error: visaErr } = await db.from('visa_documents').insert({
+      document_id: docId, moe_id: state.isGuest ? null : state.user?.id, type, remarques: remarques || null
+    });
+    if (visaErr) throw visaErr;
+    await db.from('documents_viser').update({ statut: statutDoc }).eq('id', docId);
+    if (d) d.statut = statutDoc;
+
+    if (d?.entrepreneur_id) {
+      const chDoc = d.chantier_id ? state.chantiers?.find(c => c.id === d.chantier_id) : null;
+      const chDocNom = chDoc?.affaire ? ` — ${chDoc.affaire}` : '';
+      const msg = type === 'sans_remarque'
+        ? `VISA accordé sans observation pour le document « ${d.nom} »${chDocNom}`
+        : type === 'avec_remarques'
+          ? `VISA avec observations pour le document « ${d.nom} »${chDocNom}`
+          : `Refus du document « ${d.nom} »${chDocNom} — ${remarques}`;
+      await db.from('notifications').insert({
+        type: 'visa_document', user_id: d.entrepreneur_id, message: msg, chantier_id: d.chantier_id, read: false
+      });
+      fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: d.entrepreneur_id, portail: 'entrepreneur', title: 'Document visé', message: msg })
+      }).catch(() => {});
+    }
+
+    try {
+      const pdfVisaUrl = await _genererPdfViseDocument(d, statutDoc, remarques);
+      if (pdfVisaUrl) {
+        await db.from('documents_viser').update({ pdf_visa_url: pdfVisaUrl }).eq('id', docId);
+        if (d) d.pdf_visa_url = pdfVisaUrl;
+      }
+    } catch (pdfErr) { console.warn('PDF visé document:', pdfErr); }
+
+    closeModal();
+    renderDocumentsViser();
     toast(type === 'sans_remarque' ? 'VISA accordé !' : type === 'avec_remarques' ? 'VISA avec remarques envoyé !' : 'Refus notifié à l\'entrepreneur !');
   } catch (err) {
     toast(err.message, 'err');

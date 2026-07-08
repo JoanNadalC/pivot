@@ -374,6 +374,7 @@
         <button onclick="setTab('suivi')" id="ot-suivi" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📈 Suivi</button>
         <button onclick="setTab('commande')" id="ot-commande" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">🛒 Commande</button>
         <button onclick="setTab('doe')" id="ot-doe" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📁 DOE</button>
+        <button onclick="setTab('documents')" id="ot-documents" class="tab-btn px-4 py-2 text-sm whitespace-nowrap">📐 Autres documents à viser</button>
       </div>
     </div>
 
@@ -634,6 +635,23 @@
         <button onclick="addDoeExtraLine()" class="border border-green-600 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50">+ Ajouter une ligne</button>
       </div>
       <div id="doe-table-container"></div>
+    </div>
+
+    <!-- TAB: AUTRES DOCUMENTS À VISER (plans, etc.) -->
+    <div id="tab-documents" class="tab-content hidden">
+      <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+        <h3 class="font-semibold mb-3">Envoyer un document à viser</h3>
+        <div class="flex items-end gap-3 flex-wrap">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Nom du document</label>
+            <input id="doc-viser-nom" type="text" placeholder="ex : Plan de plantation V1" class="border rounded px-3 py-2 text-sm w-64">
+          </div>
+          <label class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 cursor-pointer">
+            ⬆ Choisir un PDF<input id="doc-viser-file" type="file" accept=".pdf" class="hidden" onchange="uploadDocumentViser()">
+          </label>
+        </div>
+      </div>
+      <div id="documents-viser-list" class="space-y-3"></div>
     </div>
 
     <!-- TAB: COMMANDE -->
@@ -3440,6 +3458,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'daf') { loadDaf().then(() => renderDaf()); }
   if (tab === 'suivi') { loadSuivi(); if (state.currentChantier) _markChantierNotifsRead(state.currentChantier.id, 'visa_moe'); }
   if (tab === 'doe') renderDoeTable();
+  if (tab === 'documents') loadDocumentsViser();
 }
 
 function showTabBadge(tabName) {
@@ -11313,6 +11332,99 @@ function _dafCreateV2Confirmed(fId) {
   toast(`v${ver} prête — modifiez et cliquez "📄 Générer DAF" pour sauvegarder`);
 }
 
+
+// ============================================================
+// AUTRES DOCUMENTS À VISER (plans, etc.)
+// ============================================================
+async function loadDocumentsViser() {
+  const el = document.getElementById('documents-viser-list');
+  const ch = state.currentChantier;
+  if (!el || !ch) return;
+  el.innerHTML = '<p class="text-sm text-gray-400 italic">Chargement…</p>';
+  const { data, error } = await db.from('documents_viser').select('*').eq('chantier_id', ch.id).order('created_at', { ascending: false });
+  if (error) { el.innerHTML = `<p class="text-sm text-red-500">${error.message}</p>`; return; }
+  state.documentsViser = data || [];
+  _renderDocumentsViser();
+}
+
+function _renderDocumentsViser() {
+  const el = document.getElementById('documents-viser-list');
+  if (!el) return;
+  const docs = state.documentsViser || [];
+  if (!docs.length) { el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucun document envoyé pour le moment.</p>'; return; }
+
+  const sorted = [...docs].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+  el.innerHTML = sorted.map(d => `
+    <div class="bg-white rounded-xl p-4 shadow-sm flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <div class="font-medium text-sm">${escHtml(d.nom)} <span class="text-xs text-gray-400">v${d.version}</span></div>
+        <div class="text-xs text-gray-400 mt-0.5">${new Date(d.created_at).toLocaleDateString('fr-FR')} ${statutBadge(d.statut)}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="text-xs border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">${d.pdf_visa_url ? '📄 PDF visé' : '📄 Voir le PDF'}</a>
+        ${d.statut === 'refusee' ? `<button onclick="ouvrirNouvelleVersionDoc('${d.id}','${escHtml(d.nom).replace(/'/g,"\\'")}',${d.version})" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">+ Nouvelle version</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function uploadDocumentViser() {
+  const ch = state.currentChantier;
+  const fileInput = document.getElementById('doc-viser-file');
+  const nomInput = document.getElementById('doc-viser-nom');
+  const file = fileInput.files[0];
+  const nom = nomInput.value.trim();
+  if (!file) return;
+  if (!nom) { toast('Indiquez un nom pour le document', 'err'); fileInput.value = ''; return; }
+  try {
+    toast('Envoi en cours…');
+    const path = `${ch.id}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+    const { error } = await db.from('documents_viser').insert({
+      chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
+      nom, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
+    });
+    if (error) throw error;
+    fileInput.value = ''; nomInput.value = '';
+    toast('Document envoyé au MOE !');
+    loadDocumentsViser();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function ouvrirNouvelleVersionDoc(parentId, nom, prevVersion) {
+  showModal(`
+    <h2 class="text-lg font-bold mb-4">Nouvelle version — ${escHtml(nom)}</h2>
+    <p class="text-sm text-gray-500 mb-3">Cette version remplacera la v${prevVersion} refusée.</p>
+    <input id="doc-nv-file" type="file" accept=".pdf" class="w-full border rounded px-3 py-2 text-sm mb-4">
+    <div class="flex gap-3">
+      <button onclick="envoyerNouvelleVersionDoc('${parentId}','${nom.replace(/'/g,"\\'")}',${prevVersion})" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Envoyer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+}
+
+async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
+  const file = document.getElementById('doc-nv-file').files[0];
+  if (!file) return toast('Choisissez un fichier', 'err');
+  const ch = state.currentChantier;
+  try {
+    toast('Envoi en cours…');
+    const path = `${ch.id}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+    const { error } = await db.from('documents_viser').insert({
+      chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
+      nom, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
+    });
+    if (error) throw error;
+    closeModal();
+    toast('Nouvelle version envoyée !');
+    loadDocumentsViser();
+  } catch (err) { toast(err.message, 'err'); }
+}
 
 // ============================================================
 // SUIVI
