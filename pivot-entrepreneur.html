@@ -627,7 +627,21 @@
       </div>
       <div class="mt-6">
         <h3 class="font-semibold text-sm text-gray-600 mb-2">📐 Autres documents à viser</h3>
-        <div id="suivi-documents-list" class="space-y-2"></div>
+        <div class="overflow-x-auto bg-white rounded-xl shadow-sm">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600">
+              <tr>
+                <th class="px-3 py-2 text-left">Document</th>
+                <th class="px-3 py-2 text-left">Catégorie</th>
+                <th class="px-3 py-2 text-left">Statut</th>
+                <th class="px-3 py-2 text-left">Date émission</th>
+                <th class="px-3 py-2 text-left">Date VISA</th>
+                <th class="px-3 py-2 text-left">Observations MOE</th>
+              </tr>
+            </thead>
+            <tbody id="suivi-documents-list"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -643,12 +657,20 @@
 
     <!-- TAB: AUTRES DOCUMENTS À VISER (plans, etc.) -->
     <div id="tab-documents" class="tab-content hidden">
+      <div id="doc-requis-bloc" class="bg-white rounded-xl p-5 shadow-sm mb-4 hidden">
+        <h3 class="font-semibold mb-3">Documents exigés par le MOE</h3>
+        <div id="doc-requis-list" class="flex flex-wrap gap-2"></div>
+      </div>
       <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
         <h3 class="font-semibold mb-3">Envoyer un document à viser</h3>
         <div class="flex items-end gap-3 flex-wrap">
           <div>
             <label class="block text-xs text-gray-500 mb-1">Nom du document</label>
             <input id="doc-viser-nom" type="text" placeholder="ex : Plan de plantation V1" class="border rounded px-3 py-2 text-sm w-64">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Catégorie</label>
+            <select id="doc-viser-categorie" class="border rounded px-3 py-2 text-sm"></select>
           </div>
           <label class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 cursor-pointer">
             ⬆ Choisir un PDF<input id="doc-viser-file" type="file" accept=".pdf" class="hidden" onchange="uploadDocumentViser()">
@@ -11340,15 +11362,35 @@ function _dafCreateV2Confirmed(fId) {
 // ============================================================
 // AUTRES DOCUMENTS À VISER (plans, etc.)
 // ============================================================
+const CATEGORIES_DOCUMENTS = ['PAQ / PAE', 'Plan masse', 'Plan arrosage', 'Plan nivellement', 'Plan revêtements', 'Autre'];
+
+async function _renderDocRequis() {
+  const ch = state.currentChantier;
+  const bloc = document.getElementById('doc-requis-bloc');
+  const list = document.getElementById('doc-requis-list');
+  if (!bloc || !list || !ch) return;
+  const { data: requis } = await db.from('chantier_documents_requis').select('categorie').eq('chantier_id', ch.id);
+  if (!requis?.length) { bloc.classList.add('hidden'); return; }
+  bloc.classList.remove('hidden');
+  const envoyees = new Set((state.documentsViser || []).map(d => d.categorie).filter(Boolean));
+  list.innerHTML = requis.map(r => {
+    const ok = envoyees.has(r.categorie);
+    return `<span class="text-xs px-3 py-1.5 rounded-full ${ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ok ? '✅' : '⬜'} ${escHtml(r.categorie)}</span>`;
+  }).join('');
+}
+
 async function loadDocumentsViser() {
   const el = document.getElementById('documents-viser-list');
   const ch = state.currentChantier;
   if (!el || !ch) return;
+  const catSel = document.getElementById('doc-viser-categorie');
+  if (catSel) catSel.innerHTML = CATEGORIES_DOCUMENTS.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
   el.innerHTML = '<p class="text-sm text-gray-400 italic">Chargement…</p>';
   const { data, error } = await db.from('documents_viser').select('*').eq('chantier_id', ch.id).order('created_at', { ascending: false });
   if (error) { el.innerHTML = `<p class="text-sm text-red-500">${error.message}</p>`; return; }
   state.documentsViser = data || [];
   _renderDocumentsViser();
+  _renderDocRequis();
 }
 
 function _renderDocumentsViser() {
@@ -11358,16 +11400,19 @@ function _renderDocumentsViser() {
   if (!docs.length) { el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucun document envoyé pour le moment.</p>'; return; }
 
   const sorted = [...docs].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  // Une ligne peut proposer "+ Nouvelle version" tant qu'aucune version plus récente ne lui succède déjà
+  // (comme sur une fourniture : on peut créer une v2 quel que soit le statut de la v1)
+  const supersededIds = new Set(docs.filter(d => d.parent_id).map(d => d.parent_id));
 
   el.innerHTML = sorted.map(d => `
     <div class="bg-white rounded-xl p-4 shadow-sm flex items-center justify-between gap-3 flex-wrap">
       <div>
-        <div class="font-medium text-sm">${escHtml(d.nom)} <span class="text-xs text-gray-400">v${d.version}</span></div>
+        <div class="font-medium text-sm">${escHtml(d.nom)} <span class="text-xs text-gray-400">v${d.version}</span>${d.categorie ? ` <span class="text-xs text-gray-400">· ${escHtml(d.categorie)}</span>` : ''}</div>
         <div class="text-xs text-gray-400 mt-0.5">${new Date(d.created_at).toLocaleDateString('fr-FR')} ${statutBadge(d.statut)}</div>
       </div>
       <div class="flex items-center gap-2">
         <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="text-xs border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">${d.pdf_visa_url ? '📄 PDF visé' : '📄 Voir le PDF'}</a>
-        ${d.statut === 'refusee' ? `<button onclick="ouvrirNouvelleVersionDoc('${d.id}','${escHtml(d.nom).replace(/'/g,"\\'")}',${d.version})" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">+ Nouvelle version</button>` : ''}
+        ${!supersededIds.has(d.id) ? `<button onclick="ouvrirNouvelleVersionDoc('${d.id}','${escHtml(d.nom).replace(/'/g,"\\'")}',${d.version})" class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">+ Nouvelle version</button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -11386,9 +11431,10 @@ async function uploadDocumentViser() {
     const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+    const categorie = document.getElementById('doc-viser-categorie')?.value || null;
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
-      nom, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
+      nom, categorie, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
     });
     if (error) throw error;
     fileInput.value = ''; nomInput.value = '';
@@ -11400,7 +11446,7 @@ async function uploadDocumentViser() {
 async function ouvrirNouvelleVersionDoc(parentId, nom, prevVersion) {
   showModal(`
     <h2 class="text-lg font-bold mb-4">Nouvelle version — ${escHtml(nom)}</h2>
-    <p class="text-sm text-gray-500 mb-3">Cette version remplacera la v${prevVersion} refusée.</p>
+    <p class="text-sm text-gray-500 mb-3">Cette version remplacera la v${prevVersion}.</p>
     <input id="doc-nv-file" type="file" accept=".pdf" class="w-full border rounded px-3 py-2 text-sm mb-4">
     <div class="flex gap-3">
       <button onclick="envoyerNouvelleVersionDoc('${parentId}','${nom.replace(/'/g,"\\'")}',${prevVersion})" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Envoyer</button>
@@ -11419,9 +11465,10 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
     const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+    const parentDoc = state.documentsViser?.find(d => d.id === parentId);
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
-      nom, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
+      nom, categorie: parentDoc?.categorie || null, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
     });
     if (error) throw error;
     closeModal();
@@ -11485,21 +11532,29 @@ async function _renderSuiviDocuments() {
   const ch = state.currentChantier;
   if (!el || !ch) return;
   const { data, error } = await db.from('documents_viser').select('*').eq('chantier_id', ch.id).order('created_at', { ascending: false });
-  if (error) { el.innerHTML = ''; return; }
+  if (error) { el.innerHTML = `<tr><td colspan="6" class="px-3 py-4 text-center text-red-500 text-xs">${error.message}</td></tr>`; return; }
   const docs = data || [];
-  if (!docs.length) { el.innerHTML = '<p class="text-gray-400 text-xs italic">Aucun document envoyé.</p>'; return; }
-  el.innerHTML = docs.map(d => `
-    <div class="bg-white rounded-lg border px-3 py-2 flex items-center justify-between gap-3 flex-wrap text-sm">
-      <div class="flex items-center gap-2">
-        <span class="font-medium">${escHtml(d.nom)}</span>
-        <span class="text-xs text-gray-400">v${d.version}</span>
-        ${statutBadge(d.statut)}
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-gray-400">${new Date(d.created_at).toLocaleDateString('fr-FR')}</span>
-        <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="text-xs border border-gray-300 text-gray-600 px-2 py-1 rounded hover:bg-gray-50">${d.pdf_visa_url ? '📄 PDF visé' : '📄 Voir'}</a>
-      </div>
-    </div>`).join('');
+  if (!docs.length) { el.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-400 text-sm italic">Aucun document envoyé.</td></tr>'; return; }
+
+  const { data: visasData } = await db.from('visa_documents').select('*').in('document_id', docs.map(d => d.id)).order('date_visa', { ascending: false });
+  const lastVisaByDoc = {};
+  (visasData || []).forEach(v => { if (!lastVisaByDoc[v.document_id]) lastVisaByDoc[v.document_id] = v; });
+
+  el.innerHTML = docs.map(d => {
+    const visa = lastVisaByDoc[d.id];
+    return `
+    <tr class="hover:bg-gray-50 border-b text-sm">
+      <td class="px-3 py-2">
+        <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="font-medium hover:text-blue-600 hover:underline">${escHtml(d.nom)}</a>
+        <span class="text-xs text-gray-400 ml-1">v${d.version}</span>
+      </td>
+      <td class="px-3 py-2 text-xs text-gray-500">${escHtml(d.categorie || '—')}</td>
+      <td class="px-3 py-2">${statutBadge(d.statut)}</td>
+      <td class="px-3 py-2 text-xs">${new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
+      <td class="px-3 py-2 text-xs">${visa?.date_visa ? new Date(visa.date_visa).toLocaleDateString('fr-FR') : '—'}</td>
+      <td class="px-3 py-2 text-xs text-gray-600">${visa?.remarques ? escHtml(visa.remarques) : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function exporterSuiviPdf() {
