@@ -659,18 +659,19 @@
     <div id="tab-documents" class="tab-content hidden">
       <div id="doc-requis-bloc" class="bg-white rounded-xl p-5 shadow-sm mb-4 hidden">
         <h3 class="font-semibold mb-3">Documents exigés par le MOE</h3>
-        <div id="doc-requis-list" class="flex flex-wrap gap-2"></div>
+        <div id="doc-requis-list"></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
         <h3 class="font-semibold mb-3">Envoyer un document à viser</h3>
         <div class="flex items-end gap-3 flex-wrap">
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Nom du document</label>
-            <input id="doc-viser-nom" type="text" placeholder="ex : Plan de plantation V1" class="border rounded px-3 py-2 text-sm w-64">
+            <label class="block text-xs text-gray-500 mb-1">Catégorie</label>
+            <select id="doc-viser-categorie" class="border rounded px-3 py-2 text-sm" onchange="onDocViserCategorieChange()"></select>
           </div>
           <div>
-            <label class="block text-xs text-gray-500 mb-1">Catégorie</label>
-            <select id="doc-viser-categorie" class="border rounded px-3 py-2 text-sm"></select>
+            <label class="block text-xs text-gray-500 mb-1">Nom du document</label>
+            <input id="doc-viser-nom" type="text" list="doc-viser-nom-suggestions" placeholder="ex : Plan de masse" class="border rounded px-3 py-2 text-sm w-64">
+            <datalist id="doc-viser-nom-suggestions"></datalist>
           </div>
           <label class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 cursor-pointer">
             ⬆ Choisir un PDF<input id="doc-viser-file" type="file" accept=".pdf" class="hidden" onchange="uploadDocumentViser()">
@@ -11362,21 +11363,40 @@ function _dafCreateV2Confirmed(fId) {
 // ============================================================
 // AUTRES DOCUMENTS À VISER (plans, etc.)
 // ============================================================
-const CATEGORIES_DOCUMENTS = ['PAQ / PAE', 'Plan masse', 'Plan arrosage', 'Plan nivellement', 'Plan revêtements', 'Autre'];
+const CATEGORIES_DOCUMENTS = ['Plan', 'Coupe', "Document d'exécution", 'Sécurité', 'Planning'];
 
 async function _renderDocRequis() {
   const ch = state.currentChantier;
   const bloc = document.getElementById('doc-requis-bloc');
   const list = document.getElementById('doc-requis-list');
   if (!bloc || !list || !ch) return;
-  const { data: requis } = await db.from('chantier_documents_requis').select('categorie').eq('chantier_id', ch.id);
+  const { data: requis } = await db.from('chantier_documents_requis').select('categorie, nom').eq('chantier_id', ch.id);
+  state.docsRequis = requis || [];
   if (!requis?.length) { bloc.classList.add('hidden'); return; }
   bloc.classList.remove('hidden');
-  const envoyees = new Set((state.documentsViser || []).map(d => d.categorie).filter(Boolean));
-  list.innerHTML = requis.map(r => {
-    const ok = envoyees.has(r.categorie);
-    return `<span class="text-xs px-3 py-1.5 rounded-full ${ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ok ? '✅' : '⬜'} ${escHtml(r.categorie)}</span>`;
-  }).join('');
+  const envoyes = new Set((state.documentsViser || []).map(d => `${d.categorie}||${d.nom}`));
+  const byCat = {};
+  requis.forEach(r => { (byCat[r.categorie] ||= []).push(r); });
+  list.innerHTML = Object.entries(byCat).map(([cat, items]) => `
+    <div class="mb-2">
+      <div class="text-xs font-medium text-gray-500 mb-1">${escHtml(cat)}</div>
+      <div class="flex flex-wrap gap-2">
+        ${items.map(r => {
+          const ok = envoyes.has(`${r.categorie}||${r.nom}`);
+          return `<span class="text-xs px-3 py-1.5 rounded-full ${ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${ok ? '✅' : '⬜'} ${escHtml(r.nom)}</span>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function onDocViserCategorieChange() {
+  const cat = document.getElementById('doc-viser-categorie')?.value;
+  const nomInput = document.getElementById('doc-viser-nom');
+  const dl = document.getElementById('doc-viser-nom-suggestions');
+  if (!dl) return;
+  const envoyes = new Set((state.documentsViser || []).map(d => `${d.categorie}||${d.nom}`));
+  const suggestions = (state.docsRequis || []).filter(r => r.categorie === cat && !envoyes.has(`${r.categorie}||${r.nom}`));
+  dl.innerHTML = suggestions.map(r => `<option value="${escHtml(r.nom)}">`).join('');
 }
 
 async function loadDocumentsViser() {
@@ -11390,7 +11410,8 @@ async function loadDocumentsViser() {
   if (error) { el.innerHTML = `<p class="text-sm text-red-500">${error.message}</p>`; return; }
   state.documentsViser = data || [];
   _renderDocumentsViser();
-  _renderDocRequis();
+  await _renderDocRequis();
+  onDocViserCategorieChange();
 }
 
 function _renderDocumentsViser() {

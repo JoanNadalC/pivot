@@ -4536,30 +4536,50 @@ async function donnerVisa(dafId, type) {
 // ============================================================
 // AUTRES DOCUMENTS À VISER (plans, etc.) — même principe que le VISA DAF
 // ============================================================
-const CATEGORIES_DOCUMENTS = ['PAQ / PAE', 'Plan masse', 'Plan arrosage', 'Plan nivellement', 'Plan revêtements', 'Autre'];
+const CATEGORIES_DOCUMENTS = ['Plan', 'Coupe', "Document d'exécution", 'Sécurité', 'Planning'];
 state.filterDocuments = 'soumise';
 
 async function _renderDocRequisMoe() {
   const ch = state.currentChantier;
   const bloc = document.getElementById('doc-requis-moe-bloc');
   if (!bloc || !ch) return;
-  const { data: requis } = await db.from('chantier_documents_requis').select('*').eq('chantier_id', ch.id);
-  const current = new Set((requis || []).map(r => r.categorie));
+  const { data: requis } = await db.from('chantier_documents_requis').select('*').eq('chantier_id', ch.id).order('nom');
+  state.docsRequisMoe = requis || [];
   bloc.innerHTML = `
-    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Documents exigés pour ce chantier</div>
-    <div class="flex flex-wrap gap-2">
-      ${CATEGORIES_DOCUMENTS.filter(c => c !== 'Autre').map(c => `
-        <label class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer hover:bg-gray-50 ${current.has(c) ? 'bg-purple-50 border-purple-300' : ''}">
-          <input type="checkbox" class="rounded" ${current.has(c) ? 'checked' : ''} onchange="toggleDocRequisMoe('${escHtml(c)}', this.checked)">${escHtml(c)}
-        </label>`).join('')}
+    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Documents exigés pour ce chantier</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      ${CATEGORIES_DOCUMENTS.map(cat => {
+        const items = state.docsRequisMoe.filter(r => r.categorie === cat);
+        return `
+        <div class="border rounded-lg p-3">
+          <div class="text-sm font-medium mb-2">${escHtml(cat)}</div>
+          <div class="space-y-1 mb-2">
+            ${items.map(r => `
+              <div class="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded px-2 py-1">
+                <span>${escHtml(r.nom)}</span>
+                <button onclick="supprimerDocRequisMoe('${r.id}')" class="text-red-400 hover:text-red-600">✕</button>
+              </div>`).join('') || '<p class="text-xs text-gray-300 italic">Aucun document exigé</p>'}
+          </div>
+          <div class="flex gap-1">
+            <input type="text" placeholder="+ Ajouter un document…" class="flex-1 border rounded px-2 py-1 text-xs" onkeydown="if(event.key==='Enter'){ajouterDocRequisMoe('${escHtml(cat).replace(/'/g,"\\'")}', this); }">
+          </div>
+        </div>`;
+      }).join('')}
     </div>`;
 }
 
-async function toggleDocRequisMoe(categorie, checked) {
+async function ajouterDocRequisMoe(categorie, input) {
+  const nom = input.value.trim();
+  if (!nom) return;
   const ch = state.currentChantier;
   if (!ch) return;
-  if (checked) await db.from('chantier_documents_requis').insert({ chantier_id: ch.id, categorie });
-  else await db.from('chantier_documents_requis').delete().eq('chantier_id', ch.id).eq('categorie', categorie);
+  await db.from('chantier_documents_requis').insert({ chantier_id: ch.id, categorie, nom });
+  input.value = '';
+  _renderDocRequisMoe();
+}
+
+async function supprimerDocRequisMoe(id) {
+  await db.from('chantier_documents_requis').delete().eq('id', id);
   _renderDocRequisMoe();
 }
 
@@ -5339,15 +5359,7 @@ function ouvrirCreerChantier() {
           <input id="nc-fin" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" />
         </div>
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Documents exigés (PAQ/PAE, plans…)</label>
-        <div class="flex flex-wrap gap-2">
-          ${CATEGORIES_DOCUMENTS.filter(c => c !== 'Autre').map(c => `
-            <label class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer hover:bg-gray-50">
-              <input type="checkbox" class="nc-doc-requis rounded" value="${escHtml(c)}">${escHtml(c)}
-            </label>`).join('')}
-        </div>
-      </div>
+      <p class="text-xs text-gray-400 italic">Vous pourrez définir les documents exigés (plans, coupes…) dans l'onglet "Documents à viser" une fois le chantier créé.</p>
     </div>
     <div class="flex gap-3 mt-5">
       <button onclick="creerChantier()" class="flex-1 bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700">Créer le chantier</button>
@@ -5371,11 +5383,6 @@ async function creerChantier() {
     if (fin) payload.date_fin_prevue = fin;
     const { data, error } = await db.from('chantiers').insert(payload).select().single();
     if (error) throw error;
-
-    const docsRequis = [...document.querySelectorAll('.nc-doc-requis:checked')].map(cb => cb.value);
-    if (docsRequis.length) {
-      await db.from('chantier_documents_requis').insert(docsRequis.map(categorie => ({ chantier_id: data.id, categorie })));
-    }
 
     closeModal();
     toast(`Chantier "${affaire}" créé !`);
