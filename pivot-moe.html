@@ -525,7 +525,7 @@ async function inviterMembre() {
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
       const { error } = await db.from('team_invitations').insert({
         structure_id: state.structureId, email_invite: email,
-        token, statut: 'pending', invited_by: state.user.id
+        token, statut: 'pending', referent_id: state.user.id
       });
       if (error) throw error;
       const link = `${location.origin}${location.pathname}?team_invite=${token}`;

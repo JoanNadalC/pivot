@@ -826,7 +826,7 @@ async function sendInvitation(structId) {
   const hasLicence = document.getElementById('inv-licence')?.checked ?? true;
   if (!email) { toast('Saisissez un email', 'err'); return; }
   const { data, error } = await db.from('structure_invitations')
-    .insert({ structure_id: structId, email, role, has_licence: hasLicence, invited_by: state.user.id })
+    .insert({ structure_id: structId, email, role, has_licence: hasLicence })
     .select().single();
   if (error) { toast('Erreur : ' + error.message, 'err'); return; }
   const link = `${location.origin}/pivot-invitation.html?token=${data.token}`;
