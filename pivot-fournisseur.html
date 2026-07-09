@@ -114,6 +114,15 @@
       <button type="button" onclick="suggestPwd('reg-password')" class="text-xs text-blue-700 hover:text-blue-900 mb-3 flex items-center gap-1">🔑 Suggérer un mot de passe sécurisé</button>
       <button onclick="doRegister()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Créer mon compte</button>
     </div>
+    <div id="auth-team-invite" class="hidden">
+      <p class="text-sm text-gray-600 mb-4">Vous avez été invité à rejoindre une équipe sur Pivot. Renseignez votre nom pour créer votre compte — un email vous permettra de définir votre mot de passe.</p>
+      <div class="flex gap-2 mb-3">
+        <input id="ti-prenom" type="text" placeholder="Prénom *" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+        <input id="ti-nom" type="text" placeholder="Nom *" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <button id="ti-submit" onclick="submitTeamInviteSignup()" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Rejoindre l'équipe</button>
+      <p id="ti-success" class="text-green-600 text-sm mt-3 hidden">✅ Compte créé ! Vérifiez votre email pour définir votre mot de passe.</p>
+    </div>
     <p id="auth-error" class="text-red-500 text-sm mt-3 hidden"></p>
   </div>
 </div>
@@ -1122,6 +1131,24 @@ async function doRegister() {
   }
 }
 
+async function submitTeamInviteSignup() {
+  const prenom = document.getElementById('ti-prenom').value.trim();
+  const nom = document.getElementById('ti-nom').value.trim();
+  if (!prenom || !nom) return showAuthError('Veuillez renseigner votre prénom et nom.');
+  try {
+    const resp = await fetch('https://pivot-pdf.jncoutier.workers.dev/register-team-member', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prenom, nom, token: state.pendingTeamToken })
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) throw new Error(data.error || `Erreur ${resp.status}`);
+    document.getElementById('ti-submit').classList.add('hidden');
+    document.getElementById('ti-success').classList.remove('hidden');
+  } catch (err) {
+    showAuthError(err.message);
+  }
+}
+
 function showAuthError(msg) {
   const el = document.getElementById('auth-error');
   el.textContent = msg;
@@ -1255,6 +1282,15 @@ async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (session) {
     await _lancerApp(session.user);
+  } else if (teamToken) {
+    // Invitation d'équipe sans compte : formulaire de création dédié plutôt que la page de login
+    // (qui n'a aucune notion des invitations et ferait perdre le token).
+    _hideLoading();
+    document.getElementById('auth-view').classList.remove('hidden');
+    document.getElementById('auth-tabs').classList.add('hidden');
+    document.getElementById('auth-login').classList.add('hidden');
+    document.getElementById('auth-register').classList.add('hidden');
+    document.getElementById('auth-team-invite').classList.remove('hidden');
   } else {
     window.location.href = inviteToken
       ? `pivot-login-fournisseur.html?invite=${inviteToken}`

@@ -1254,6 +1254,66 @@ async function handleDeleteUser(request, env) {
   return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
 }
 
+// Création de compte pour un collègue invité via team_invitations (structure déjà abonnée,
+// pas de choix de plan) : tout se fait en une requête serveur (compte + rattachement à la
+// structure + invitation marquée acceptée), pour éviter de perdre le contexte de l'invitation
+// à travers la chaîne de redirections (email → définir mot de passe → portail).
+async function handleRegisterTeamMember(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const { prenom, nom, token } = await request.json();
+  if (!prenom || !nom || !token) {
+    return new Response(JSON.stringify({ error: 'Champs manquants' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+  const headers = {
+    'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+  };
+  try {
+    const invRes = await fetch(`${SUPABASE_URL}/rest/v1/team_invitations?token=eq.${encodeURIComponent(token)}&select=id,structure_id,email_invite,statut`, { headers });
+    const [inv] = await invRes.json();
+    if (!inv) return new Response(JSON.stringify({ error: 'Invitation introuvable' }), { status: 404, headers: { 'Content-Type': 'application/json', ...cors } });
+    if (inv.statut !== 'pending') return new Response(JSON.stringify({ error: 'Invitation déjà utilisée' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+    const structRes = await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${inv.structure_id}&select=type,nom`, { headers });
+    const [struct] = await structRes.json();
+    const portailMap = { entrepreneur: 'entreprise', fournisseur: 'fournisseur', moe: 'moe' };
+    const portail = portailMap[struct?.type] || struct?.type || 'entreprise';
+
+    const { userId, setPasswordLink } = await createSupabaseUser(env, { email: inv.email_invite, prenom, nom, societe: struct?.nom, portail });
+
+    await fetch(`${SUPABASE_URL}/rest/v1/structure_membres`, {
+      method: 'POST', headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ user_id: userId, structure_id: inv.structure_id, role: 'membre' }),
+    });
+    await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+      method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ structure_id: inv.structure_id }),
+    });
+    await fetch(`${SUPABASE_URL}/rest/v1/team_invitations?id=eq.${inv.id}`, {
+      method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ statut: 'accepted' }),
+    });
+
+    if (setPasswordLink) {
+      const portailLabel = portail === 'fournisseur' ? 'Fournisseur' : portail === 'moe' ? 'Maître d\'œuvre' : 'Entreprise';
+      await sendResendEmail(env, {
+        to: inv.email_invite,
+        subject: 'Bienvenue sur Pivot La Racine — définissez votre mot de passe',
+        html: notifEmailHtml({
+          title: `Votre compte Portail ${portailLabel} a bien été créé`,
+          message: `Vous avez rejoint l'équipe${struct?.nom ? ` « ${escHtml(struct.nom)} »` : ''}. Cliquez ci-dessous pour définir votre mot de passe et accéder à votre espace.`,
+          link: setPasswordLink,
+        }),
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+}
+
 async function handleRegisterFree(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
   const { prenom, nom, societe, email, portail, plan, inviteToken } = await request.json();
@@ -2071,6 +2131,7 @@ export default {
     try {
       if (url.pathname === '/create-checkout-session') return await handleCreateCheckout(request, env);
       if (url.pathname === '/register-free')           return await handleRegisterFree(request, env);
+      if (url.pathname === '/register-team-member')    return await handleRegisterTeamMember(request, env);
       if (url.pathname === '/delete-user')             return await handleDeleteUser(request, env);
       if (url.pathname === '/send-invitation')         return await handleSendInvitation(request, env);
       if (url.pathname === '/notify-event')            return await handleNotifyEvent(request, env);
