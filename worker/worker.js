@@ -1813,6 +1813,37 @@ async function handleScheduled(env) {
 }
 
 // ============================================================
+// INVITATION D'ÉQUIPE (team_invitations)
+// ============================================================
+async function handleSendTeamInvite(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const { email, token, portail, nom_referent, nom_structure } = await request.json();
+  if (!email || !token || !portail) {
+    return new Response(JSON.stringify({ error: 'Champs manquants' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+  const page = PORTAIL_URL[portail];
+  if (!page) return new Response(JSON.stringify({ error: 'Portail invalide' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+  const siteUrl = (env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '');
+  const lien = `${siteUrl}/${page}?team_invite=${token}`;
+
+  try {
+    await sendResendEmail(env, {
+      to: email,
+      subject: `${nom_referent || 'Un collègue'} vous invite à rejoindre son équipe sur Pivot`,
+      html: notifEmailHtml({
+        title: `👥 Invitation à rejoindre ${nom_structure ? `« ${nom_structure} »` : 'une équipe'}`,
+        message: `<strong>${escHtml(nom_referent || 'Un collègue')}</strong> vous invite à rejoindre son équipe sur Pivot. Connectez-vous ou créez un compte pour l'accepter.`,
+        link: lien,
+      }),
+    });
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+}
+
+// ============================================================
 // INVITE COLLABORATEUR PHOTOS
 // ============================================================
 async function handleInviteCollaborateur(request, env) {
@@ -2046,6 +2077,7 @@ export default {
       if (url.pathname === '/waitlist-confirm')        return await handleWaitlistConfirm(request, env);
       if (url.pathname === '/help-chat')               return await handleHelpChat(request, env);
       if (url.pathname === '/invite-collaborateur')    return await handleInviteCollaborateur(request, env);
+      if (url.pathname === '/send-team-invite')        return await handleSendTeamInvite(request, env);
       if (url.pathname === '/generate-daf') return await handleDAF(request, env);
       if (url.pathname === '/generate-doe') return await handleDOE(request, env);
       if (url.pathname === '/palettes')     return new Response(JSON.stringify(PALETTES), { headers: { 'Content-Type': 'application/json', ...cors } });

@@ -1697,7 +1697,13 @@ async function inviterMembre() {
       if (error) throw error;
       const link = `${location.origin}${location.pathname}?team_invite=${token}`;
       await navigator.clipboard.writeText(link).catch(() => {});
-      toast('Invitation créée — lien copié dans le presse-papiers');
+      const nomReferent = [state.profile?.prenom, state.profile?.nom].filter(Boolean).join(' ') || state.user?.email;
+      const { data: struct } = await db.from('structures').select('nom').eq('id', state.structureId).maybeSingle();
+      fetch(`${WORKER_URL}/send-team-invite`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, token, portail: 'entrepreneur', nom_referent: nomReferent, nom_structure: struct?.nom })
+      }).catch(() => {});
+      toast('Invitation envoyée par email — lien aussi copié dans le presse-papiers');
     }
     await openEquipeModal();
   } catch (err) { toast(err.message, 'err'); }
