@@ -1222,21 +1222,30 @@ async function handleDeleteUser(request, env) {
   const { userId, type } = await request.json();
   if (!userId) return new Response(JSON.stringify({ error: 'userId manquant' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-  // Authentification + autorisation : admin uniquement, ou l'utilisateur supprime son propre compte
+  // Authentification + autorisation : admin, l'utilisateur lui-même, ou le référent de la structure du membre visé
   const caller = await getAuthUser(request, env);
   if (!caller?.id) {
     return new Response(JSON.stringify({ error: 'Non authentifié' }), { status: 401, headers: { 'Content-Type': 'application/json', ...cors } });
   }
-  const callerRole = await getCallerRole(env, caller.id);
-  if (callerRole !== 'admin' && caller.id !== userId) {
-    return new Response(JSON.stringify({ error: 'Non autorisé' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
-  }
-
   const headers = {
     'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
     'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
     'Content-Type': 'application/json',
   };
+  const callerRole = await getCallerRole(env, caller.id);
+  let authorized = callerRole === 'admin' || caller.id === userId;
+  if (!authorized) {
+    const targetMemRes = await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?user_id=eq.${userId}&select=structure_id`, { headers });
+    const [targetMem] = await targetMemRes.json();
+    if (targetMem?.structure_id) {
+      const callerMemRes = await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?user_id=eq.${caller.id}&structure_id=eq.${targetMem.structure_id}&role=eq.referent&select=user_id`, { headers });
+      const [callerMem] = await callerMemRes.json();
+      authorized = !!callerMem;
+    }
+  }
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: 'Non autorisé' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
 
   // Supprimer dans la table métier selon le type
   const table = type === 'entrepreneur' ? 'compte_entrepreneur' : type === 'fournisseur' ? 'compte_fournisseur' : 'compte_moe';

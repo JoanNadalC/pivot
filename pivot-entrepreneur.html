@@ -1645,7 +1645,9 @@ async function openEquipeModal() {
           <p class="text-xs text-gray-500">${escHtml(u.email || m.user_id)}</p>
         </div>
         <span class="text-xs px-2 py-0.5 rounded-full font-medium ${isReferent ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">${isReferent ? '👑 Responsable Pivot' : 'Membre'}</span>
-        ${canRemove ? `<button onclick="retirerMembre('${m.user_id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">Retirer</button>` : ''}
+        ${canRemove ? `
+        <button onclick="retirerMembre('${m.user_id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50" title="Désocie le membre de l'équipe, son compte reste utilisable">Retirer</button>
+        <button onclick="supprimerCompteMembre('${m.user_id}')" class="text-red-600 hover:text-white hover:bg-red-600 border border-red-300 text-xs px-2 py-1 rounded" title="Supprime définitivement le compte et l'accès">🗑 Supprimer le compte</button>` : ''}
       </div>`;
     }).join('');
 
@@ -1976,6 +1978,23 @@ async function _execRetirerMembre(userId) {
     if (error) throw error;
     await db.from('profiles').update({ structure_id: null }).eq('id', userId);
     toast('Membre retiré');
+    closeModal();
+    await openEquipeModal();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function supprimerCompteMembre(userId) {
+  if (!await showConfirm('Supprimer définitivement ce compte ? Cette action est irréversible : la personne perdra tout accès à Pivot.')) return;
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch(`${WORKER_URL}/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ userId, type: 'entrepreneur' }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    toast('Compte supprimé');
     closeModal();
     await openEquipeModal();
   } catch (err) { toast(err.message, 'err'); }
