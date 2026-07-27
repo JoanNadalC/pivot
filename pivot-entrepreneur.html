@@ -1638,7 +1638,7 @@ async function openEquipeModal() {
       const u = userMap[m.user_id] || {};
       const isSelf = m.user_id === state.user.id;
       const isReferent = m.role === 'referent';
-      const canRemove = !isSelf && !isReferent;
+      const canRemove = !isSelf && !isReferent && state.isReferent;
       return `<div class="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-gray-800">${escHtml([u.prenom, u.nom].filter(Boolean).join(' ') || '—')}${isSelf ? ' <span class="text-gray-400 font-normal">(vous)</span>' : ''}</p>
@@ -1678,7 +1678,7 @@ async function openEquipeModal() {
       <div class="mb-2">${membresHtml}</div>
       ${invitationsHtml}
       <div class="mt-4 pt-4 border-t border-gray-100 flex flex-col gap-2">
-        ${canInvite
+        ${!state.isReferent ? '' : canInvite
           ? `<button onclick="openInviterMembreModal()" class="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">+ Inviter un membre</button>`
           : `<p class="text-center text-sm text-orange-500">Limite de licences atteinte. Contactez l'administrateur Pivot pour augmenter votre quota.</p>`}
         <button onclick="openGererChantiersEquipe()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">🏗 Gérer les chantiers de l'équipe</button>

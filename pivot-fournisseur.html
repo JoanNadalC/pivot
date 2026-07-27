@@ -5411,6 +5411,9 @@ function ouvrirModalInviter() {
   document.getElementById('inv-nom').value = '';
   document.getElementById('inv-email').value = '';
   document.getElementById('inv-err').classList.add('hidden');
+  // Seul le référent peut inviter un membre du portail (licence) ; un membre simple ne peut
+  // inviter que des collaborateurs photos.
+  document.getElementById('inv-role-membre').classList.toggle('hidden', !state.isReferent);
   _setInvRole('photos');
   document.getElementById('modal-inviter').classList.remove('hidden');
 }
@@ -5438,6 +5441,7 @@ async function envoyerInvitationUnifiee() {
   errEl.classList.add('hidden');
   if (!email) { errEl.textContent = 'Email requis.'; errEl.classList.remove('hidden'); return; }
   if (role === 'photos' && !nom) { errEl.textContent = 'Nom requis pour un collaborateur photos.'; errEl.classList.remove('hidden'); return; }
+  if (role === 'membre' && !state.isReferent) { errEl.textContent = 'Seul le référent peut inviter un membre du portail.'; errEl.classList.remove('hidden'); return; }
 
   btn.disabled = true; btn.textContent = 'Envoi…';
   try {
