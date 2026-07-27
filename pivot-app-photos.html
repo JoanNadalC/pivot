@@ -388,7 +388,7 @@ async function chargerDemandes() {
   show('screen-loading');
 
   let query = db.from('demandes_photos')
-    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, type, fourniture_reponses, fourniture_termine, consultations(titre, entrepreneur_id, chantiers(affaire))')
+    .select('id, statut, message, created_at, fourniture_ids, assignee_ids, fourniture_commentaires, fournisseur_id, consultation_id, catalogue_ref, type, fourniture_reponses, fourniture_termine, consultations(titre, entrepreneur_id, chantiers!chantier_id(affaire))')
     .neq('statut', 'terminé')
     .order('created_at', { ascending: false });
 
