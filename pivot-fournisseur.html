@@ -689,55 +689,73 @@
         </div>
 
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
-          <h3 class="font-semibold mb-3">Informations entreprise</h3>
+          <h3 class="font-semibold mb-3">Informations personnelles</h3>
           <label class="block text-xs text-gray-500 mb-1">Nom complet</label>
           <input id="p-nom" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
-          <label class="block text-xs text-gray-500 mb-1">Nom de l'entreprise</label>
-          <input id="p-entreprise" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
-          <label class="block text-xs text-gray-500 mb-1">Téléphone</label>
-          <input id="p-tel" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
-          <label class="block text-xs text-gray-500 mb-1">Adresse</label>
-          <input id="p-adresse" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="N° et rue">
-          <div class="grid grid-cols-3 gap-2 mb-3">
-            <div class="col-span-1">
-              <label class="block text-xs text-gray-500 mb-1">Code postal</label>
-              <input id="p-cp" type="text" class="w-full border rounded px-3 py-2 text-sm">
-            </div>
-            <div class="col-span-2">
-              <label class="block text-xs text-gray-500 mb-1">Ville</label>
-              <input id="p-ville" type="text" class="w-full border rounded px-3 py-2 text-sm">
-            </div>
-          </div>
-          <label class="block text-xs text-gray-500 mb-1">Pays</label>
-          <input id="p-pays" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="France">
-          <div class="grid grid-cols-2 gap-2 mb-3">
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">SIRET</label>
-              <input id="p-siret" type="text" class="w-full border rounded px-3 py-2 text-sm">
-            </div>
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">N° TVA intracommunautaire</label>
-              <input id="p-tva" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="FR00000000000">
-            </div>
-          </div>
-          <label class="block text-xs text-gray-500 mb-1">Forme juridique</label>
-          <input id="p-forme-juridique" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : SARL, SAS, EI…">
           <label class="block text-xs text-gray-500 mb-1">Fonction</label>
-          <input id="p-fonction" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : Responsable commercial">
-          <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4">
-            <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
-            <p class="text-xs text-blue-600 mb-2">Ce que les entreprises voient de vous quand elles vous cherchent.</p>
-            <select id="p-visibilite" class="w-full border rounded px-3 py-2 text-sm bg-white">
-              <option value="societe_fonction">Société + Fonction</option>
-              <option value="societe_prenom">Société + Contact</option>
-              <option value="societe_initiale">Société + Contact (initiale) — recommandé</option>
-              <option value="societe_nom">Société + Contact (nom complet)</option>
-              <option value="societe_complet">Société + Contact + Téléphone + Email</option>
-            </select>
+          <input id="p-fonction" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="ex : Responsable commercial">
+        </div>
+
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+          <h3 class="font-semibold mb-3">Téléphone professionnel</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Fixe</label>
+              <input id="p-tel-fixe-direct" type="text" class="w-full border rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Portable</label>
+              <input id="p-tel-portable" type="text" class="w-full border rounded px-3 py-2 text-sm">
+            </div>
           </div>
-          <label class="block text-xs text-gray-500 mb-1">Logo (apparaît dans les PDFs)</label>
-          <div id="p-logo-preview-wrap" class="mb-2 hidden"><img id="p-logo-preview" class="h-16 object-contain rounded border" /></div>
-          <input id="p-logo-file" type="file" accept="image/*" class="text-xs text-gray-600 mb-1" onchange="previewProfilLogo(this)" />
+        </div>
+
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">Informations entreprise</h3>
+            <span id="entreprise-info-lock" class="hidden text-xs text-gray-400 italic">🔒 Modifiable par le référent uniquement</span>
+          </div>
+          <div id="entreprise-info-fields">
+            <label class="block text-xs text-gray-500 mb-1">Nom de l'entreprise</label>
+            <input id="p-entreprise" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+            <label class="block text-xs text-gray-500 mb-1">Téléphone standard</label>
+            <input id="p-tel" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+            <label class="block text-xs text-gray-500 mb-1">Adresse</label>
+            <input id="p-adresse" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="N° et rue">
+            <div class="grid grid-cols-3 gap-2 mb-3">
+              <div class="col-span-1">
+                <label class="block text-xs text-gray-500 mb-1">Code postal</label>
+                <input id="p-cp" type="text" class="w-full border rounded px-3 py-2 text-sm">
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs text-gray-500 mb-1">Ville</label>
+                <input id="p-ville" type="text" class="w-full border rounded px-3 py-2 text-sm">
+              </div>
+            </div>
+            <label class="block text-xs text-gray-500 mb-1">Pays</label>
+            <input id="p-pays" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="France">
+            <div class="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">SIRET</label>
+                <input id="p-siret" type="text" class="w-full border rounded px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 mb-1">N° TVA intracommunautaire</label>
+                <input id="p-tva" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="FR00000000000">
+              </div>
+            </div>
+            <label class="block text-xs text-gray-500 mb-1">Forme juridique</label>
+            <input id="p-forme-juridique" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : SARL, SAS, EI…">
+            <label class="block text-xs text-gray-500 mb-1">Logo (apparaît dans les PDFs)</label>
+            <div id="p-logo-preview-wrap" class="mb-2 hidden"><img id="p-logo-preview" class="h-16 object-contain rounded border" /></div>
+            <input id="p-logo-file" type="file" accept="image/*" class="text-xs text-gray-600 mb-1" onchange="previewProfilLogo(this)" />
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
+          <h3 class="font-semibold mb-1">👁 Visibilité dans les recherches</h3>
+          <p class="text-xs text-gray-500 mb-3">Sélectionnez ce que les entreprises voient de vous quand elles vous cherchent sur la plateforme.</p>
+          <div id="p-visibilite-champs" class="flex flex-wrap gap-2"></div>
         </div>
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
           <h3 class="font-semibold mb-3">Préférences mails de notifications</h3>
@@ -1517,7 +1535,8 @@ function fillProfil(p) {
   document.getElementById('p-tva').value = p.tva || '';
   document.getElementById('p-forme-juridique').value = p.forme_juridique || '';
   document.getElementById('p-fonction').value = p.fonction || '';
-  document.getElementById('p-visibilite').value = p.visibilite || 'societe_initiale';
+  document.getElementById('p-tel-fixe-direct').value = p.tel_fixe_direct || '';
+  document.getElementById('p-tel-portable').value = p.tel_portable || '';
   document.getElementById('p-notif').value = p.notif_preference || 'each';
   const emailEl = document.getElementById('email-actuel');
   if (emailEl) emailEl.textContent = state.user?.email || '';
@@ -1527,6 +1546,49 @@ function fillProfil(p) {
     img.src = p.logo_url;
     wrap?.classList.remove('hidden');
   }
+
+  // "Informations entreprise" : modifiable seulement par le référent (données communes à l'équipe)
+  const isRef = !!state.isReferent;
+  document.getElementById('entreprise-info-lock').classList.toggle('hidden', isRef);
+  document.getElementById('entreprise-info-fields').querySelectorAll('input').forEach(inp => { inp.disabled = !isRef; });
+  document.getElementById('entreprise-info-fields').classList.toggle('opacity-60', !isRef);
+
+  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'ville', 'nom_initiale'];
+  renderVisibiliteChamps();
+}
+
+const VISIBILITE_CHAMPS_OPTIONS = [
+  ['entreprise', 'Entreprise'],
+  ['ville', 'Ville'],
+  ['pays', 'Pays'],
+  ['nom', 'Nom'],
+  ['prenom', 'Prénom'],
+  ['nom_initiale', 'Nom (initiale)'],
+  ['prenom_initiale', 'Prénom (initiale)'],
+  ['siret', 'SIRET'],
+  ['tel_standard', 'Tél. standard'],
+  ['portable', 'Portable'],
+  ['email', 'Email'],
+];
+
+function renderVisibiliteChamps() {
+  const el = document.getElementById('p-visibilite-champs');
+  if (!el) return;
+  const selected = new Set(state._visibiliteChamps || []);
+  el.innerHTML = VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
+    const on = selected.has(key);
+    return `<button type="button" onclick="toggleVisibiliteChamp('${key}')"
+      class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'}">
+      ${on ? '✓ ' : ''}${escHtml(label)}
+    </button>`;
+  }).join('');
+}
+
+function toggleVisibiliteChamp(key) {
+  const set = new Set(state._visibiliteChamps || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  state._visibiliteChamps = [...set];
+  renderVisibiliteChamps();
 }
 
 function previewProfilLogo(input) {
@@ -1622,20 +1684,27 @@ async function saveProfil() {
 
     const profilData = {
       nom: document.getElementById('p-nom').value.trim(),
-      nom_entreprise: document.getElementById('p-entreprise').value.trim(),
-      tel: document.getElementById('p-tel').value.trim(),
-      adresse: document.getElementById('p-adresse').value.trim(),
-      cp: document.getElementById('p-cp').value.trim(),
-      ville: document.getElementById('p-ville').value.trim(),
-      pays: document.getElementById('p-pays').value.trim(),
-      siret: document.getElementById('p-siret').value.trim(),
-      tva: document.getElementById('p-tva').value.trim(),
-      forme_juridique: document.getElementById('p-forme-juridique').value.trim(),
       fonction: document.getElementById('p-fonction').value.trim(),
-      visibilite: document.getElementById('p-visibilite').value,
+      tel_fixe_direct: document.getElementById('p-tel-fixe-direct').value.trim(),
+      tel_portable: document.getElementById('p-tel-portable').value.trim(),
+      visibilite_champs: state._visibiliteChamps || [],
       notif_preference: document.getElementById('p-notif').value,
-      logo_url
     };
+    // "Informations entreprise" : seul le référent peut les modifier (données communes à l'équipe)
+    if (state.isReferent) {
+      Object.assign(profilData, {
+        nom_entreprise: document.getElementById('p-entreprise').value.trim(),
+        tel: document.getElementById('p-tel').value.trim(),
+        adresse: document.getElementById('p-adresse').value.trim(),
+        cp: document.getElementById('p-cp').value.trim(),
+        ville: document.getElementById('p-ville').value.trim(),
+        pays: document.getElementById('p-pays').value.trim(),
+        siret: document.getElementById('p-siret').value.trim(),
+        tva: document.getElementById('p-tva').value.trim(),
+        forme_juridique: document.getElementById('p-forme-juridique').value.trim(),
+        logo_url
+      });
+    }
     const { error: updateErr } = await db.from('compte_fournisseur').update(profilData).eq('id', state.user.id);
     if (updateErr) throw new Error('Erreur profil : ' + updateErr.message);
 
