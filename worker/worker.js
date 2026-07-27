@@ -1281,19 +1281,26 @@ async function handleRegisterTeamMember(request, env) {
     const portail = portailMap[struct?.type] || struct?.type || 'entreprise';
 
     const { userId, setPasswordLink } = await createSupabaseUser(env, { email: inv.email_invite, prenom, nom, societe: struct?.nom, portail });
+    if (!userId) throw new Error('Création du compte : identifiant utilisateur manquant');
 
-    await fetch(`${SUPABASE_URL}/rest/v1/structure_membres`, {
+    const membreRes = await fetch(`${SUPABASE_URL}/rest/v1/structure_membres`, {
       method: 'POST', headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ user_id: userId, structure_id: inv.structure_id, role: 'membre' }),
     });
-    await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+    if (!membreRes.ok) throw new Error(`Rattachement à l'équipe : ${await membreRes.text()}`);
+
+    const profilRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
       method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ structure_id: inv.structure_id }),
     });
-    await fetch(`${SUPABASE_URL}/rest/v1/team_invitations?id=eq.${inv.id}`, {
+    if (!profilRes.ok) throw new Error(`Mise à jour du profil : ${await profilRes.text()}`);
+
+    // On ne marque l'invitation acceptée qu'une fois tout le reste confirmé réussi.
+    const invUpdRes = await fetch(`${SUPABASE_URL}/rest/v1/team_invitations?id=eq.${inv.id}`, {
       method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ statut: 'accepted' }),
     });
+    if (!invUpdRes.ok) throw new Error(`Mise à jour de l'invitation : ${await invUpdRes.text()}`);
 
     if (setPasswordLink) {
       const portailLabel = portail === 'fournisseur' ? 'Fournisseur' : portail === 'moe' ? 'Maître d\'œuvre' : 'Entreprise';
