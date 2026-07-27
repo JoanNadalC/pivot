@@ -3330,6 +3330,7 @@ async function supprimerCompteMembre(userId) {
 }
 
 async function annulerTeamInvite(invId) {
+  if (!state.isReferent) return toast('Seul le référent peut annuler une invitation', 'err');
   const { error } = await db.from('team_invitations').update({ statut: 'cancelled' }).eq('id', invId);
   if (error) return toast(error.message, 'err');
   toast('Invitation annulée');
@@ -5569,6 +5570,7 @@ async function envoyerInvitationUnifiee() {
 async function envoyerInvitation() { return envoyerInvitationUnifiee(); }
 
 async function supprimerCollaborateur(id) {
+  if (!state.isReferent) return toast('Seul le référent peut supprimer un collaborateur', 'err');
   if (!await showConfirm('Supprimer ce collaborateur ?')) return;
   await db.from('collaborateurs').delete().eq('id', id);
   await loadCollaborateurs();
