@@ -1297,13 +1297,14 @@ async function handleRegisterTeamMember(request, env) {
 
     if (setPasswordLink) {
       const portailLabel = portail === 'fournisseur' ? 'Fournisseur' : portail === 'moe' ? 'Maître d\'œuvre' : 'Entreprise';
+      const siteUrl = (env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '');
       await sendResendEmail(env, {
         to: inv.email_invite,
         subject: 'Bienvenue sur Pivot La Racine — définissez votre mot de passe',
-        html: notifEmailHtml({
-          title: `Votre compte Portail ${portailLabel} a bien été créé`,
-          message: `Vous avez rejoint l'équipe${struct?.nom ? ` « ${escHtml(struct.nom)} »` : ''}. Cliquez ci-dessous pour définir votre mot de passe et accéder à votre espace.`,
-          link: setPasswordLink,
+        html: teamInviteWelcomeEmailHtml({
+          prenom, structureNom: struct?.nom, portailLabel,
+          actionLink: setPasswordLink,
+          permanentLink: `${siteUrl}/${PORTAIL_URL[portail === 'entreprise' ? 'entrepreneur' : portail]}`,
         }),
       });
     }
@@ -1443,6 +1444,70 @@ function notifEmailHtml({ title, message, link, portail }) {
         <p style="font-size:12px;color:#9CA3AF;margin:32px 0 0;">Vous recevez cet email car vos préférences de notification sont réglées sur "Immédiat". Vous pouvez les modifier dans votre espace Pivot, section "Mon compte".</p>
       </div>
     </div>`;
+}
+
+function teamInviteWelcomeEmailHtml({ prenom, structureNom, portailLabel, actionLink, permanentLink }) {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5F0E8;font-family:'Inter',Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F0E8;padding:40px 16px">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+
+        <!-- HEADER -->
+        <tr><td style="background:#1C3A2A;border-radius:12px 12px 0 0;padding:32px 40px 28px">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="font-family:Georgia,'Playfair Display','Times New Roman',serif;font-size:26px;font-weight:900;color:#F5F0E8;letter-spacing:-0.02em;line-height:1">Pivot</td>
+            <td style="font-family:Georgia,'Playfair Display','Times New Roman',serif;font-size:26px;font-weight:900;color:#B87333;letter-spacing:-0.02em;line-height:1;padding-right:6px">.</td>
+            <td style="font-family:Georgia,'Playfair Display','Times New Roman',serif;font-size:13px;font-weight:400;color:rgba(245,240,232,0.38);font-style:italic;vertical-align:bottom;padding-bottom:3px">la racine</td>
+          </tr></table>
+          <div style="margin-top:20px">
+            <div style="display:inline-block;background:rgba(184,115,51,0.15);border:1px solid rgba(184,115,51,0.3);color:#B87333;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:4px 12px;border-radius:20px">
+              Invitation d'équipe
+            </div>
+          </div>
+          <h1 style="margin:14px 0 0;font-size:24px;font-weight:700;color:#F5F0E8;line-height:1.2;font-family:Georgia,serif">
+            Bienvenue sur Pivot${portailLabel ? `<br>Portail ${escHtml(portailLabel)}` : ''}
+          </h1>
+        </td></tr>
+
+        <!-- BODY -->
+        <tr><td style="background:#FAFAF7;padding:32px 40px">
+          <p style="margin:0 0 8px;font-size:15px;color:#1C3A2A;font-weight:600">Bonjour ${escHtml(prenom)},</p>
+          <p style="margin:0 0 28px;font-size:14px;color:#6B7280;line-height:1.7">
+            Votre compte a bien été créé et vous avez rejoint l'équipe${structureNom ? ` <strong style="color:#1C3A2A">${escHtml(structureNom)}</strong>` : ''} sur Pivot La Racine.
+            Cliquez ci-dessous pour définir votre mot de passe et accéder à votre espace.
+          </p>
+
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td align="center" style="padding-bottom:20px">
+              <a href="${actionLink}"
+                style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;letter-spacing:0.01em">
+                Définir mon mot de passe →
+              </a>
+            </td></tr>
+          </table>
+
+          ${permanentLink ? `
+          <div style="background:#F5F0E8;border-radius:8px;padding:16px 20px;text-align:center">
+            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#1C3A2A;letter-spacing:0.05em;text-transform:uppercase">Votre lien de connexion permanent</p>
+            <a href="${permanentLink}" style="font-size:14px;color:#B87333;font-weight:600;text-decoration:none;word-break:break-all">${permanentLink}</a>
+          </div>` : ''}
+        </td></tr>
+
+        <!-- FOOTER -->
+        <tr><td style="background:#1C3A2A;border-radius:0 0 12px 12px;padding:20px 40px;text-align:center">
+          <p style="margin:0;font-size:11px;color:rgba(245,240,232,0.4);letter-spacing:0.04em">
+            PIVOT LA RACINE · pivotlaracine.com
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 async function handleNotifyEvent(request, env) {
