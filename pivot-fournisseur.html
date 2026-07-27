@@ -243,15 +243,6 @@
         <!-- DROITE : cartes -->
         <div class="w-72 flex-shrink-0 space-y-3 lg:sticky lg:top-24">
 
-          <!-- Mon équipe -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-bold text-gray-800">👥 Mon équipe</h3>
-              <button onclick="ouvrirModalInviter()" class="text-xs bg-green-800 text-white px-2.5 py-1 rounded-lg hover:bg-green-900">+ Inviter</button>
-            </div>
-            <div id="dash-equipe-list"></div>
-          </div>
-
           <!-- Catalogue (mini-card retirée, voir vue Catalogue) -->
           <div class="hidden bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -721,6 +712,15 @@
             <div id="abonnement-badge" class="text-sm font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-700">—</div>
             <div id="abonnement-desc" class="text-xs text-gray-500"></div>
           </div>
+        </div>
+
+        <!-- Mon équipe -->
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4 border border-gray-100">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">👥 Mon équipe</h3>
+            <button onclick="ouvrirModalInviter()" class="text-xs bg-green-800 text-white px-2.5 py-1 rounded-lg hover:bg-green-900">+ Inviter</button>
+          </div>
+          <div id="dash-equipe-list"></div>
         </div>
 
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
@@ -1400,7 +1400,7 @@ function renderDashEquipe() {
           <div class="text-xs text-gray-400 truncate">${escHtml(m.profil.email || '')}</div>
         </div>
         <span class="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">Actif</span>
-        ${!isSelf && state.isReferent ? `<button onclick="retirerMembre('${m.user_id}')" class="text-gray-200 hover:text-red-400 text-base leading-none">×</button>` : ''}
+        ${!isSelf && state.isReferent ? `<button onclick="retirerMembre('${m.user_id}')" class="text-red-400 hover:text-red-600 text-lg leading-none font-bold px-1" title="Retirer">×</button>` : ''}
       </div>`;
     }).join('');
     html += invs.map(inv => `
@@ -1409,7 +1409,7 @@ function renderDashEquipe() {
         <div class="flex-1 min-w-0 text-xs text-gray-400 truncate">${escHtml(inv.email_invite)}</div>
         <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">En attente</span>
         <button onclick="copyTeamLink('${inv.token}')" class="text-blue-300 hover:text-blue-500 text-xs" title="Copier le lien">📋</button>
-        <button onclick="annulerTeamInvite('${inv.id}').then(loadCollaborateurs)" class="text-gray-200 hover:text-red-400 text-base leading-none">×</button>
+        <button onclick="annulerTeamInvite('${inv.id}').then(loadCollaborateurs)" class="text-red-400 hover:text-red-600 text-lg leading-none font-bold px-1" title="Retirer">×</button>
       </div>`).join('');
   }
 
@@ -1425,7 +1425,7 @@ function renderDashEquipe() {
         </div>
         <span class="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 whitespace-nowrap" title="Photos validées depuis le 21 juin">📷 ${_compteurEffectif(c)}</span>
         <span class="text-xs px-1.5 py-0.5 rounded-full ${c.compte_actif ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-600'}">${c.compte_actif ? 'Actif' : 'En attente'}</span>
-        <button onclick="supprimerCollaborateur('${c.id}')" class="text-gray-200 hover:text-red-400 text-base leading-none">×</button>
+        <button onclick="supprimerCollaborateur('${c.id}')" class="text-red-400 hover:text-red-600 text-lg leading-none font-bold px-1" title="Retirer">×</button>
       </div>`).join('');
   }
 
@@ -2179,6 +2179,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'photos') loadDemandesPhotos();
   if (tab === 'photos-cons') loadDemandesPhotosForConsultation();
   if (tab === 'profil' && state.profile) fillProfil(state.profile);
+  if (tab === 'profil') loadCollaborateurs();
 }
 
 function showTabBadge(tabName) {
