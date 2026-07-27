@@ -1424,7 +1424,7 @@ function renderDashEquipe() {
           <div class="text-xs text-gray-400 truncate">${escHtml(c.email)}</div>
         </div>
         <span class="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 whitespace-nowrap" title="Photos validées depuis le 21 juin">📷 ${_compteurEffectif(c)}</span>
-        <span class="text-xs px-1.5 py-0.5 rounded-full ${c.auth_user_id ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-600'}">${c.auth_user_id ? 'Actif' : 'En attente'}</span>
+        <span class="text-xs px-1.5 py-0.5 rounded-full ${c.compte_actif ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-600'}">${c.compte_actif ? 'Actif' : 'En attente'}</span>
         <button onclick="supprimerCollaborateur('${c.id}')" class="text-gray-200 hover:text-red-400 text-base leading-none">×</button>
       </div>`).join('');
   }
@@ -5373,7 +5373,7 @@ function copyPhotoLink(url) {
 async function loadCollaborateurs() {
   // Collaborateurs photos
   const { data: collabs } = await db.from('collaborateurs')
-    .select('id, nom, email, auth_user_id, photos_validees_count, photos_validees_last_at')
+    .select('id, nom, email, auth_user_id, compte_actif, photos_validees_count, photos_validees_last_at')
     .eq('fournisseur_id', state.user.id)
     .order('nom');
   state.collaborateurs = collabs || [];
@@ -5418,7 +5418,7 @@ function renderEquipe() {
         <div class="text-sm font-medium truncate">${escHtml(c.nom)}</div>
         <div class="text-xs text-gray-400 truncate">${escHtml(c.email)}</div>
       </div>
-      <span class="text-xs px-2 py-0.5 rounded-full ${c.auth_user_id ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">${c.auth_user_id ? 'Actif' : 'En attente'}</span>
+      <span class="text-xs px-2 py-0.5 rounded-full ${c.compte_actif ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">${c.compte_actif ? 'Actif' : 'En attente'}</span>
       <button onclick="supprimerCollaborateur('${c.id}')" class="text-gray-300 hover:text-red-400 text-lg leading-none ml-1">×</button>
     </div>`).join('');
 }
