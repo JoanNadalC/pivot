@@ -1585,6 +1585,49 @@ async function sendResendEmail(env, { to, subject, html }) {
 }
 
 // ============================================================
+// NOTIFICATIONS ADMIN — réglages par catégorie (chat / inscription / résiliation)
+// ============================================================
+const ADMIN_NOTIF_LABEL = { chat: 'Nouvelle conversation chat', inscription: 'Nouvelle inscription', resiliation: 'Résiliation' };
+
+async function getAdminNotifSetting(env, categorie) {
+  const headers = { 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/admin_notif_settings?categorie=eq.${categorie}&select=actif,frequence`, { headers });
+    const [row] = await r.json();
+    return row || { actif: true, frequence: 'each' };
+  } catch (_) {
+    return { actif: true, frequence: 'each' };
+  }
+}
+
+// Insère une notification admin (alimente la cloche du portail admin) et envoie un email immédiat
+// si la catégorie est active et réglée sur "each" — sinon la notification reste en base pour un
+// éventuel récap différé (daily/weekly), sans email immédiat.
+async function notifyAdmin(env, { categorie, message, structureId }) {
+  const setting = await getAdminNotifSetting(env, categorie);
+  if (!setting.actif) return;
+  const headers = {
+    'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=minimal',
+  };
+  await fetch(`${SUPABASE_URL}/rest/v1/notifications_admin`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ type: categorie, message, structure_id: structureId || null, read: false }),
+  });
+  if (setting.frequence === 'each') {
+    try {
+      await sendResendEmail(env, {
+        to: env.ADMIN_EMAIL || 'jncoutier@gmail.com',
+        subject: `[Pivot Admin] ${ADMIN_NOTIF_LABEL[categorie] || categorie}`,
+        html: notifEmailHtml({ title: ADMIN_NOTIF_LABEL[categorie] || categorie, message, link: null }),
+      });
+    } catch (err) { console.error('notifyAdmin email error', err); }
+  }
+}
+
+// ============================================================
 // WAITLIST — confirmation d'inscription à la liste d'attente
 // ============================================================
 const WAITLIST_ROLE_LABEL = { entrepreneur: 'Entreprise', fournisseur: 'Fournisseur', moe: 'Maître d\'œuvre' };
@@ -1707,6 +1750,11 @@ async function handleHelpChat(request, env) {
     const data = await res.json();
     const reply = (data.content || []).map(b => b.text || '').join('').trim() || 'Désolé, je n\'ai pas pu générer de réponse. Écrivez-nous à contact@pivotlaracine.com.';
     const persistResult = await _persistHelpConversation(env, sessionId, context, [...safeMessages, { role: 'assistant', content: reply }]);
+    // Notifie l'admin seulement au premier échange d'une nouvelle conversation (pas à chaque message)
+    if (safeMessages.length === 1) {
+      const firstMsg = (safeMessages[0]?.content || '').slice(0, 200);
+      notifyAdmin(env, { categorie: 'chat', message: `Nouvelle conversation chat${context ? ` (${context})` : ''} : « ${firstMsg} »` }).catch(() => {});
+    }
     const debugPayload = request.headers.get('x-debug') === '1' ? { persistResult } : {};
     return new Response(JSON.stringify({ reply, ...debugPayload }), { headers: { 'Content-Type': 'application/json', ...cors } });
   } catch (err) {
@@ -1731,11 +1779,21 @@ async function handleWaitlistConfirm(request, env) {
     console.error('waitlist email error', err);
   }
   try {
-    await sendResendEmail(env, {
-      to: env.ADMIN_EMAIL || 'jncoutier@gmail.com',
-      subject: `Nouvelle inscription waitlist — ${prenom}`,
-      html: waitlistAdminEmailHtml(prenom, email, role),
-    });
+    const setting = await getAdminNotifSetting(env, 'inscription');
+    if (setting.actif) {
+      const headers = { 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+      await fetch(`${SUPABASE_URL}/rest/v1/notifications_admin`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ type: 'inscription', message: `Nouvelle inscription waitlist — ${prenom} (${email}, ${role})`, read: false }),
+      });
+      if (setting.frequence === 'each') {
+        await sendResendEmail(env, {
+          to: env.ADMIN_EMAIL || 'jncoutier@gmail.com',
+          subject: `Nouvelle inscription waitlist — ${prenom}`,
+          html: waitlistAdminEmailHtml(prenom, email, role),
+        });
+      }
+    }
   } catch (err) {
     console.error('waitlist admin email error', err);
   }

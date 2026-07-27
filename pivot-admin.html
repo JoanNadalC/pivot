@@ -134,6 +134,8 @@
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">👋 Liste d'attente</button>
       <button id="admin-tab-helpchat" onclick="switchAdminTab('helpchat')"
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">💬 Conversations aide</button>
+      <button id="admin-tab-notif" onclick="switchAdminTab('notif')"
+        class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🔔 Notifications</button>
     </div>
   </div>
 
@@ -306,6 +308,15 @@
       </div>
     </div>
   </div><!-- /admin-view-helpchat -->
+
+  <!-- VUE NOTIFICATIONS -->
+  <div id="admin-view-notif" class="hidden space-y-5">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h2 class="font-semibold text-gray-800 mb-1">🔔 Notifications</h2>
+      <p class="text-xs text-gray-500 mb-5">Choisissez les événements qui déclenchent une notification, et à quelle fréquence vous les recevez par email.</p>
+      <div id="notif-settings-list" class="space-y-4"></div>
+    </div>
+  </div><!-- /admin-view-notif -->
 
 </div><!-- /max-w-7xl -->
 </div><!-- /app-view -->
@@ -1653,7 +1664,7 @@ init();
 
 // ─── NAVIGATION ONGLETS ADMIN ─────────────────────────────────
 function switchAdminTab(tab) {
-  ['users','tela','waitlist','helpchat'].forEach(t => {
+  ['users','tela','waitlist','helpchat','notif'].forEach(t => {
     document.getElementById(`admin-view-${t}`)?.classList.toggle('hidden', t !== tab);
     const btn = document.getElementById(`admin-tab-${t}`);
     if (btn) {
@@ -1666,6 +1677,7 @@ function switchAdminTab(tab) {
   if (tab === 'tela') _telaLoadCount();
   if (tab === 'waitlist') loadWaitlist();
   if (tab === 'helpchat') loadHelpConversations();
+  if (tab === 'notif') loadAdminNotifSettings();
 }
 
 async function loadWaitlist() {
@@ -1722,6 +1734,72 @@ function openHelpConversation(idx) {
     <p class="text-xs text-gray-400 mb-3">Contexte : ${escHtml(c.context || '—')}</p>
     <div style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y-auto">${bubbles}</div>
   `);
+}
+
+// ============================================================
+// NOTIFICATIONS — réglages
+// ============================================================
+const ADMIN_NOTIF_CATEGORIES = [
+  { key: 'chat', icon: '💬', label: 'Conversation sur le chat', desc: "Un visiteur ou utilisateur démarre une nouvelle conversation avec l'assistant d'aide." },
+  { key: 'inscription', icon: '👋', label: 'Inscription', desc: "Un nouveau prospect s'inscrit sur la liste d'attente." },
+  { key: 'resiliation', icon: '⚠️', label: 'Résiliation', desc: "Un abonnement est résilié ou arrive à échéance sans renouvellement." },
+];
+const ADMIN_NOTIF_FREQ_OPTIONS = [
+  ['each', 'Immédiat (à chaque événement)'],
+  ['daily', 'Quotidien (récap 8h)'],
+  ['weekly', 'Hebdomadaire (lundi 8h)'],
+  ['none', 'Aucun email (juste la cloche)'],
+];
+
+async function loadAdminNotifSettings() {
+  const el = document.getElementById('notif-settings-list');
+  el.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">Chargement…</p>';
+  const { data, error } = await db.from('admin_notif_settings').select('*');
+  if (error) { el.innerHTML = `<p class="text-sm text-red-500">${escHtml(error.message)}</p>`; return; }
+  const byCat = {};
+  (data || []).forEach(r => { byCat[r.categorie] = r; });
+  window._adminNotifSettings = byCat;
+  renderAdminNotifSettings();
+}
+
+function renderAdminNotifSettings() {
+  const el = document.getElementById('notif-settings-list');
+  const byCat = window._adminNotifSettings || {};
+  el.innerHTML = ADMIN_NOTIF_CATEGORIES.map(cat => {
+    const s = byCat[cat.key] || { actif: true, frequence: 'each' };
+    return `
+    <div class="border rounded-xl p-4 ${s.actif ? 'border-gray-200' : 'border-gray-100 bg-gray-50 opacity-70'}">
+      <div class="flex items-center justify-between gap-3 mb-1">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">${cat.icon}</span>
+          <span class="font-semibold text-gray-800 text-sm">${escHtml(cat.label)}</span>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" ${s.actif ? 'checked' : ''} onchange="toggleAdminNotifActif('${cat.key}', this.checked)">
+          <div class="w-9 h-5 bg-gray-200 peer-checked:bg-indigo-600 rounded-full transition-colors"></div>
+          <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4"></div>
+        </label>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">${escHtml(cat.desc)}</p>
+      <select ${s.actif ? '' : 'disabled'} onchange="setAdminNotifFrequence('${cat.key}', this.value)"
+        class="w-full border rounded-lg px-3 py-1.5 text-sm ${s.actif ? 'bg-white' : 'bg-gray-100 text-gray-400'}">
+        ${ADMIN_NOTIF_FREQ_OPTIONS.map(([v, l]) => `<option value="${v}" ${s.frequence === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+async function toggleAdminNotifActif(categorie, actif) {
+  const { error } = await db.from('admin_notif_settings').update({ actif }).eq('categorie', categorie);
+  if (error) { toast(error.message, 'err'); return; }
+  window._adminNotifSettings[categorie] = { ...(window._adminNotifSettings[categorie] || {}), actif };
+  renderAdminNotifSettings();
+}
+
+async function setAdminNotifFrequence(categorie, frequence) {
+  const { error } = await db.from('admin_notif_settings').update({ frequence }).eq('categorie', categorie);
+  if (error) { toast(error.message, 'err'); return; }
+  window._adminNotifSettings[categorie] = { ...(window._adminNotifSettings[categorie] || {}), frequence };
 }
 
 let _telaSearchTimer;
