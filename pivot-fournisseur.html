@@ -209,65 +209,30 @@
         </div>
       </div>
 
-      <div class="flex gap-5 items-start">
-
-        <!-- GAUCHE : Recherche + Consultations -->
-        <div class="flex-1 min-w-0">
-
-          <!-- Outil de recherche / filtre -->
-          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-4">
-            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🔍 Rechercher</div>
-            <div class="grid grid-cols-2 gap-2">
-              <input id="filter-entreprise" type="text" placeholder="Entreprise…" oninput="_applyConsFilter()"
-                class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
-              <input id="filter-consultant" type="text" placeholder="Nom consultant…" oninput="_applyConsFilter()"
-                class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
-              <input id="filter-ville" type="text" placeholder="Ville chantier…" oninput="_applyConsFilter()"
-                class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
-              <input id="filter-chantier" type="text" placeholder="Nom chantier…" oninput="_applyConsFilter()"
-                class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
-            </div>
-            <div id="filter-count" class="text-xs text-gray-400 mt-2 hidden"></div>
-          </div>
-
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold text-gray-800">Mes consultations</h2>
-            <button onclick="ouvrirModalCreerConsultation()"
-              class="flex items-center gap-1.5 bg-green-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-900">
-              + Importer une consultation
-            </button>
-          </div>
-          <div id="consultations-list" class="space-y-2"></div>
+      <!-- Recherche + Consultations (pleine largeur) -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-4">
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🔍 Rechercher</div>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="filter-entreprise" type="text" placeholder="Entreprise…" oninput="_applyConsFilter()"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
+          <input id="filter-consultant" type="text" placeholder="Nom consultant…" oninput="_applyConsFilter()"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
+          <input id="filter-ville" type="text" placeholder="Ville chantier…" oninput="_applyConsFilter()"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
+          <input id="filter-chantier" type="text" placeholder="Nom chantier…" oninput="_applyConsFilter()"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
         </div>
-
-        <!-- DROITE : cartes -->
-        <div class="w-72 flex-shrink-0 space-y-3 lg:sticky lg:top-24">
-
-          <!-- Catalogue (mini-card retirée, voir vue Catalogue) -->
-          <div class="hidden bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <h3 class="text-sm font-bold text-gray-800">📚 Catalogue</h3>
-              <div class="flex gap-1.5">
-                <button onclick="switchDashMode('catalogue')" class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg hover:bg-amber-200 font-medium">📷 Photos</button>
-                <button onclick="openAddCatalogueModal()" class="text-xs bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700">+ Ajouter</button>
-              </div>
-            </div>
-            <div class="px-3 py-2">
-              <div class="flex gap-2 mb-2">
-                <input id="cat-card-search" type="text" placeholder="Rechercher…" oninput="renderCatalogueCard()"
-                  class="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400">
-                <label class="cursor-pointer text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded" title="Import CSV">
-                  📂<input type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
-                </label>
-              </div>
-              <div id="catalogue-card-list" class="space-y-1 max-h-52 overflow-y-auto text-sm"></div>
-              <div id="catalogue-card-more" class="text-xs text-blue-500 mt-2 hidden"></div>
-            </div>
-          </div>
-
-
-        </div>
+        <div id="filter-count" class="text-xs text-gray-400 mt-2 hidden"></div>
       </div>
+
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-bold text-gray-800">Mes consultations</h2>
+        <button onclick="ouvrirModalCreerConsultation()"
+          class="flex items-center gap-1.5 bg-green-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-900">
+          + Importer une consultation
+        </button>
+      </div>
+      <div id="consultations-list" class="space-y-2"></div>
     </div>
 
     <!-- VUE PROSPECTION -->
@@ -1060,8 +1025,8 @@ function statutBadge(statut) {
 
 function chantierStatutBadge(statut) {
   const map = {
-    appel_offre:   'bg-orange-100 text-orange-700',
-    en_cours:      'bg-blue-100 text-blue-700',
+    appel_offre:   'bg-blue-100 text-blue-700',
+    en_cours:      'bg-red-100 text-red-700',
     termine:       'bg-green-100 text-green-700',
     parachevement: 'bg-purple-100 text-purple-700'
   };
