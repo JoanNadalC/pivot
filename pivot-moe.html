@@ -1665,6 +1665,11 @@ function _formatSearchRow(r) {
   const parts = [];
   if (r.fonction) parts.push(r.fonction);
   if (nomLigne && r.societe) parts.push(nomLigne);
+  // Ville / pays / SIRET sont renvoyés par les RPC de recherche selon les champs que le compte
+  // a choisi de rendre visibles : sans ces lignes, cocher "Ville" ou "SIRET" n'avait aucun effet.
+  const lieu = [r.ville, r.pays].filter(Boolean).join(', ');
+  if (lieu) parts.push(lieu);
+  if (r.siret) parts.push('SIRET ' + r.siret);
   if (r.telephone) parts.push(r.telephone);
   if (r.email) parts.push(r.email);
   return { titre, sousTitre: parts.join(' · ') };
@@ -1975,6 +1980,59 @@ function _ctRenderGrid(rows) {
     if (!window._ctRows[r]) window._ctRows[r] = [];
     window._ctRows[r][c] = td.innerText.trim();
   });
+}
+
+// Fusionne les fournitures partageant le même N° de poste + désignation : la première ligne est
+// conservée avec la somme des quantités, les autres sont supprimées.
+async function ctFusionnerDoublons() {
+  const fournitures = (state.fournitures || []).filter(f => !f.is_variante);
+  const groupes = new Map();
+  for (const f of fournitures) {
+    const key = `${(f.numero_poste || '').trim()}__${(f.designation || '').trim().toLowerCase()}`;
+    if (!groupes.has(key)) groupes.set(key, []);
+    groupes.get(key).push(f);
+  }
+  const aFusionner = [...groupes.values()].filter(g => g.length > 1);
+  if (!aFusionner.length) return toast('Aucun doublon trouvé');
+
+  const nbFusions = aFusionner.length;
+  const nbSuppr = aFusionner.reduce((s, g) => s + g.length - 1, 0);
+  if (!await showConfirm(`${nbFusions} groupe(s) de doublons trouvé(s).\n${nbSuppr} ligne(s) seront supprimées, les quantités additionnées.\n\nContinuer ?`)) return;
+
+  const aSupprimer = [];
+  const updates = [];
+  for (const groupe of aFusionner) {
+    const totalQte = groupe.reduce((s, f) => s + (parseFloat(f.qte) || 0), 0);
+    updates.push({ id: groupe[0].id, qte: totalQte || null });
+    aSupprimer.push(...groupe.slice(1));
+  }
+
+  pushUndo('fusionner', {
+    keepers: updates.map(u => ({ id: u.id, qteOrigine: fournitures.find(f => f.id === u.id)?.qte ?? null })),
+    deleted: aSupprimer
+  });
+
+  try {
+    // Supabase renvoie les erreurs au lieu de les lever : on les teste explicitement, sinon une
+    // fusion refusée passerait pour un succès et l'affichage divergerait de la base.
+    const resultats = await Promise.all([
+      ...updates.map(u => db.from('fournitures').update({ qte: u.qte }).eq('id', u.id)),
+      ...aSupprimer.map(f => db.from('fournitures').delete().eq('id', f.id))
+    ]);
+    const echec = resultats.find(r => r.error);
+    if (echec) throw echec.error;
+
+    updates.forEach(u => {
+      const f = state.fournitures.find(x => x.id === u.id);
+      if (f) f.qte = u.qte;
+    });
+    aSupprimer.forEach(f => {
+      const idx = state.fournitures.findIndex(x => x.id === f.id);
+      if (idx >= 0) state.fournitures.splice(idx, 1);
+    });
+    renderFournitures();
+    toast(`${nbFusions} fusion(s) effectuée(s), ${nbSuppr} ligne(s) supprimée(s)`);
+  } catch (err) { toast(err.message, 'err'); }
 }
 
 async function ctSupprimerLignes(mode = 'both') {
@@ -3337,6 +3395,22 @@ async function undoLast() {
       sortFournitures();
       renderFournitures();
       toast(`${entry.data.length} fourniture(s) restaurée(s)`);
+    } else if (entry.action === 'fusionner') {
+      const { keepers, deleted } = entry.data;
+      // Restaurer les quantités d'origine des lignes conservées
+      for (const { id, qteOrigine } of keepers) {
+        await db.from('fournitures').update({ qte: qteOrigine }).eq('id', id);
+        const f = state.fournitures.find(x => x.id === id);
+        if (f) f.qte = qteOrigine;
+      }
+      const COLS = ['id','chantier_id','lot_id','famille_id','numero_poste','designation','description','reference','unite','qte','prix_etude_ht','ordre','is_variante','parent_id','caracteristiques','fiches_techniques'];
+      const rows = deleted.map(f => Object.fromEntries(COLS.filter(k => k in f).map(k => [k, f[k]])));
+      const { error } = await db.from('fournitures').insert(rows);
+      if (error) throw error;
+      _registerFournitures(deleted);
+      sortFournitures();
+      renderFournitures();
+      toast(`Fusion annulée — ${deleted.length} ligne(s) restaurée(s)`);
     } else if (entry.action === 'affecter') {
       for (const { id, famille_id } of entry.data) {
         await db.from('fournitures').update({ famille_id }).eq('id', id);
@@ -4443,8 +4517,8 @@ async function renderDafVisa() {
               ${statutBadge(d.statut)}${supersededBadge}
               <span class="text-xs text-gray-400">v${d.version}</span>
             </div>
-            <h3 class="font-semibold text-sm ${d.pdf_url ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}" ${d.pdf_url ? `onclick="window.open('${d.pdf_url}','_blank')"` : ''}>${d.designation || ''}</h3>
-            <p class="text-xs text-gray-400 mt-1">${d.reference ? 'Réf : ' + d.reference : ''} ${d.fabricant ? '· ' + d.fabricant : ''}</p>
+            <h3 class="font-semibold text-sm ${d.pdf_url ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}" ${d.pdf_url ? `onclick="window.open('${escHtml(d.pdf_url)}','_blank')"` : ''}>${escHtml(d.designation || '')}</h3>
+            <p class="text-xs text-gray-400 mt-1">${d.reference ? 'Réf : ' + escHtml(d.reference) : ''} ${d.fabricant ? '· ' + escHtml(d.fabricant) : ''}</p>
           </div>
           <div class="flex gap-2 ml-4 flex-wrap justify-end">
             ${d.pdf_url ? `<a href="${d.pdf_url}" target="_blank" class="text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded hover:bg-blue-50">📄 Voir DAF</a>` : ''}

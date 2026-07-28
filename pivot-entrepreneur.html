@@ -1293,6 +1293,11 @@ function _formatSearchRow(r) {
   const parts = [];
   if (r.fonction) parts.push(r.fonction);
   if (nomLigne && r.societe) parts.push(nomLigne);
+  // Ville / pays / SIRET sont renvoyés par les RPC de recherche selon les champs que le compte
+  // a choisi de rendre visibles : sans ces lignes, cocher "Ville" ou "SIRET" n'avait aucun effet.
+  const lieu = [r.ville, r.pays].filter(Boolean).join(', ');
+  if (lieu) parts.push(lieu);
+  if (r.siret) parts.push('SIRET ' + r.siret);
   if (r.telephone) parts.push(r.telephone);
   if (r.email) parts.push(r.email);
   return { titre, sousTitre: parts.join(' · ') };
@@ -2632,6 +2637,7 @@ async function loadFournisseursCarnet() {
     const { data, error } = await db.from('fournisseurs')
       .select('*')
       .eq('entrepreneur_id', state.user.id)
+      .eq('archive', false)
       .order('nom');
     state.fournisseurs = (data || []).map(f => ({
       ...f,
@@ -3883,6 +3889,7 @@ async function loadFournisseursChantier() {
     const { data } = await db.from('fournisseurs')
       .select('*')
       .eq('entrepreneur_id', ownerId)
+      .eq('archive', false)
       .order('nom');
     state.fournisseurs = data || [];
     renderCarnetFournisseurs();
@@ -3900,8 +3907,8 @@ function renderFournisseursChantier() {
   el.innerHTML = state.fournisseurs.map(f => `
     <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
       <div>
-        <p class="text-sm font-medium">${f.nom}</p>
-        <p class="text-xs text-gray-400">${f.email || ''} ${f.siret ? '· SIRET ' + f.siret : ''}</p>
+        <p class="text-sm font-medium">${escHtml(f.nom || '')}</p>
+        <p class="text-xs text-gray-400">${escHtml(f.email || '')} ${f.siret ? '· SIRET ' + escHtml(f.siret) : ''}</p>
       </div>
       <div class="flex items-center gap-2">
         ${f.type_fournisseur === 'portail' ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Portail</span>' : '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Invité</span>'}
@@ -3952,8 +3959,8 @@ function renderCarnetFournisseurs() {
         ${items.map(f => `
           <div class="px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-gray-50">
             <div>
-              <p class="text-sm font-medium">${f.nom}</p>
-              <p class="text-xs text-gray-400 flex items-center gap-1 flex-wrap">${f.email || ''} ${f.siret ? '· ' + f.siret : ''} ${_contactLigne(f)}</p>
+              <p class="text-sm font-medium">${escHtml(f.nom || '')}</p>
+              <p class="text-xs text-gray-400 flex items-center gap-1 flex-wrap">${escHtml(f.email || '')} ${f.siret ? '· ' + escHtml(f.siret) : ''} ${_contactLigne(f)}</p>
             </div>
             <div class="flex items-center gap-2 ml-2 shrink-0">
               ${f.statut === 'pending'
@@ -4025,13 +4032,17 @@ async function searchCarnetAutocomplete(query) {
     if (!results.length) { box.classList.add('hidden'); return; }
 
     box.innerHTML = results.map(r => {
-      const label = r.nom_entreprise ? `${r.nom_entreprise} <span class="text-gray-400 font-normal">(${r.nom})</span>` : r.nom;
+      // Ces champs proviennent du compte d'un AUTRE fournisseur : sans échappement, un nom
+      // d'entreprise contenant du HTML s'exécuterait dans le navigateur de l'entreprise (XSS stocké).
+      const label = r.nom_entreprise
+        ? `${escHtml(r.nom_entreprise)} <span class="text-gray-400 font-normal">(${escHtml(r.nom || '')})</span>`
+        : escHtml(r.nom || '');
       return `<div class="flex items-center gap-3 px-3 py-2.5 hover:bg-green-50 cursor-pointer border-b last:border-0 transition-colors"
-          onclick="selectPortailFournisseur(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+          onclick="selectPortailFournisseur(${escHtml(JSON.stringify(r))})">
         <span class="text-green-500 flex-shrink-0">🟢</span>
         <div class="min-w-0">
           <div class="text-sm font-medium truncate">${label}</div>
-          <div class="text-xs text-gray-400 truncate">${r.email || ''}</div>
+          <div class="text-xs text-gray-400 truncate">${escHtml(r.email || '')}</div>
         </div>
         <span class="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">Portail</span>
       </div>`;
@@ -4158,12 +4169,18 @@ async function saveEditFournisseur(id) {
 }
 
 async function deleteFournisseur(id) {
-  if (!await showConfirm('Supprimer ce fournisseur du carnet ?')) return;
+  if (!await showConfirm('Retirer ce fournisseur du carnet ? Les consultations et commandes déjà enregistrées dans vos chantiers seront conservées.')) return;
   try {
-    await db.from('fournisseurs').delete().eq('id', id);
+    // Archivage plutôt que suppression : les consultations, réponses, DAF et commandes référencent
+    // ce fournisseur, et les chantiers doivent garder leur historique. Le test d'erreur est
+    // indispensable — supabase-js RENVOIE l'erreur au lieu de la lever, donc sans lui un refus
+    // passait inaperçu et le fournisseur réapparaissait au rechargement.
+    const { error } = await db.from('fournisseurs').update({ archive: true }).eq('id', id);
+    if (error) throw error;
     state.fournisseurs = state.fournisseurs.filter(f => f.id !== id);
     renderCarnetFournisseurs();
     renderFournisseursChantier();
+    toast('Fournisseur retiré du carnet');
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -4273,6 +4290,25 @@ async function _notifierDemandeRelation(compteId, nom) {
 
 async function addPortailFournisseurToCarnet(compteId, nom) {
   try {
+    // Ce fournisseur a peut-être déjà été retiré du carnet (archivé) : on réactive sa fiche
+    // existante au lieu d'en créer une seconde, pour ne pas dupliquer son historique.
+    const { data: archive } = await db.from('fournisseurs')
+      .select('*')
+      .eq('entrepreneur_id', state.user.id)
+      .eq('archive', true)
+      .or(`compte_fournisseur_id.eq.${compteId},fournisseur_portail_id.eq.${compteId}`)
+      .maybeSingle();
+    if (archive) {
+      const { error: unErr } = await db.from('fournisseurs').update({ archive: false }).eq('id', archive.id);
+      if (unErr) throw unErr;
+      state.fournisseurs.push({ ...archive, archive: false });
+      renderCarnetFournisseurs();
+      document.getElementById('carnet-search').value = '';
+      document.getElementById('carnet-search-results').classList.add('hidden');
+      toast(`${nom} réintégré au carnet`);
+      return;
+    }
+
     const auto = await _fournisseurAccepteAuto(compteId);
     const cached = window._portailSearchCache?.[compteId];
     const { data, error } = await db.from('fournisseurs').insert({
@@ -7417,15 +7453,15 @@ async function addFournisseursToConsultation(consultationId) {
   const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
   let envoyes = 0;
 
+  const sansEmail = [];
+  const echecs = [];
   try {
   for (const fid of ids) {
-    console.log('[invite] fid:', fid);
     const four = state.fournisseurs.find(f => f.id === fid);
-    console.log('[invite] four:', four, 'email:', four?.email);
-    if (!four?.email) { console.warn('[invite] pas d\'email, skip'); continue; }
+    if (!four?.email) { sansEmail.push(four?.nom || 'Fournisseur inconnu'); continue; }
     const token = crypto.randomUUID();
     const { error: upsertErr } = await db.from('consultation_fournisseurs').upsert({ consultation_id: consultationId, fournisseur_id: fid, entrepreneur_id: state.user.id });
-    console.log('[invite] upsert consultation_fournisseurs:', upsertErr);
+    if (upsertErr) { echecs.push(four.nom); continue; }
     const { error: insertErr } = await db.from('invitations').insert({
       consultation_id: consultationId,
       fournisseur_id: fid,
@@ -7434,11 +7470,10 @@ async function addFournisseursToConsultation(consultationId) {
       token,
       expires_at: new Date(Date.now() + 60*24*3600*1000).toISOString(),
     });
-    console.log('[invite] insert invitations:', insertErr);
+    if (insertErr) { echecs.push(four.nom); continue; }
 
     const { data: profil } = await db.from('compte_fournisseur').select('id').eq('id', fid).maybeSingle();
     const portail = profil ? 'existant' : 'nouveau';
-    console.log('[invite] portail:', portail, '— appel worker...');
 
     if (portail === 'existant') {
       // Fournisseur déjà inscrit : notification in-app + email selon ses préférences (pas de lien magique)
@@ -7472,13 +7507,25 @@ async function addFournisseursToConsultation(consultationId) {
           portail,
         }),
       });
-      const result = await resp.json();
-      console.log('[invite] worker response:', resp.status, result);
+      if (!resp.ok) { echecs.push(four.nom); continue; }
       envoyes++;
     }
   }
-  } catch(e) { console.error('[invite] ERREUR:', e); }
-  toast(`${envoyes} invitation(s) envoyée(s) par email`);
+  } catch(e) {
+    console.error('[invite] erreur:', e);
+    toast('Erreur pendant l\'envoi des invitations : ' + e.message, 'err');
+    await loadConsultations();
+    return;
+  }
+  // Un envoi partiel doit être signalé : auparavant le compteur s'incrémentait même en cas
+  // d'échec et les fournisseurs sans email étaient ignorés sans que l'utilisateur le sache.
+  const details = [];
+  if (sansEmail.length) details.push(`${sansEmail.length} sans adresse email (${sansEmail.join(', ')})`);
+  if (echecs.length)    details.push(`${echecs.length} en échec (${echecs.join(', ')})`);
+  toast(
+    `${envoyes} invitation(s) envoyée(s)` + (details.length ? ` — ${details.join(' · ')}` : ''),
+    details.length ? 'err' : undefined
+  );
   await loadConsultations();
 }
 
@@ -7653,7 +7700,7 @@ async function createConsultation() {
               token,
               portail,
             }),
-          }).then(r => r.json()).then(r => console.log('[invite] worker:', r)).catch(e => console.error('[invite] worker error:', e));
+          }).catch(e => console.error('[invite] worker error:', e));
         }
       }
     }
@@ -9626,10 +9673,14 @@ async function ctFusionnerDoublons() {
   });
 
   try {
-    await Promise.all([
+    // Supabase renvoie les erreurs au lieu de les lever : sans ce test, une fusion refusée
+    // s'affichait comme réussie et le tableau divergeait de la base jusqu'au rechargement.
+    const resultats = await Promise.all([
       ...updates.map(u => db.from('fournitures').update({ qte: u.qte }).eq('id', u.id)),
       ...aSupprimer.map(f => db.from('fournitures').delete().eq('id', f.id))
     ]);
+    const echec = resultats.find(r => r.error);
+    if (echec) throw echec.error;
     // Mettre à jour le state
     updates.forEach(u => {
       const f = state.fournitures.find(x => x.id === u.id);
