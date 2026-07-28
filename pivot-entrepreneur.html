@@ -3930,7 +3930,9 @@ function renderCarnetFournisseurs() {
               <p class="text-xs text-gray-400">${f.email || ''} ${f.siret ? '· ' + f.siret : ''}</p>
             </div>
             <div class="flex items-center gap-2 ml-2 shrink-0">
-              ${f.type_fournisseur === 'portail'
+              ${f.statut === 'pending'
+                ? '<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">⏳ En attente</span>'
+                : f.type_fournisseur === 'portail'
                 ? '<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Portail ✓</span>'
                 : '<span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">Invité</span>'}
               <button onclick="openEditFournisseurCarnetModal('${f.id}')" class="text-blue-400 hover:text-blue-600 text-xs">✏️</button>
@@ -4038,6 +4040,8 @@ async function addFournisseurCarnet() {
   if (!nom)   return toast('Nom obligatoire', 'err');
   if (!siret) return toast('SIRET / identifiant obligatoire', 'err');
   try {
+    const portailId = window._selectedPortailId || null;
+    const auto = portailId ? await _fournisseurAccepteAuto(portailId) : true;
     const { data, error } = await db.from('fournisseurs').insert({
       entrepreneur_id: state.user.id,
       nom,
@@ -4047,15 +4051,21 @@ async function addFournisseurCarnet() {
       adresse:          document.getElementById('f-adresse').value.trim() || null,
       pays:             document.getElementById('f-pays').value.trim() || null,
       familles:         document.getElementById('f-famille').value ? [document.getElementById('f-famille').value] : [],
-      type_fournisseur: window._selectedPortailId ? 'portail' : 'invite',
-      fournisseur_portail_id: window._selectedPortailId || null
+      type_fournisseur: portailId ? 'portail' : 'invite',
+      fournisseur_portail_id: portailId,
+      statut: portailId && !auto ? 'pending' : 'accepted'
     }).select('*').single();
     if (error) throw error;
     data.familles_fournitures = state.familles.find(f => f.id === data.famille_id) || null;
     state.fournisseurs.push(data);
     renderCarnetFournisseurs();
     closeModal();
-    toast('Fournisseur ajouté !');
+    if (portailId && !auto) {
+      await _notifierDemandeRelation(portailId, nom);
+      toast(`Demande envoyée à ${nom}, en attente de sa validation`);
+    } else {
+      toast('Fournisseur ajouté !');
+    }
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -4207,20 +4217,47 @@ async function searchFournisseurs(q) {
   }, 300);
 }
 
+// Renvoie true si ce fournisseur accepte automatiquement les demandes de mise en relation,
+// false s'il faut lui envoyer une demande en attente de validation.
+async function _fournisseurAccepteAuto(compteId) {
+  try {
+    const { data, error } = await db.rpc('get_fournisseur_acceptation_auto', { p_compte_id: compteId });
+    if (error) throw error;
+    return data !== false;
+  } catch (e) { return true; }
+}
+
+async function _notifierDemandeRelation(compteId, nom) {
+  const nomEnt = state.profile?.societe || state.profile?.nom || 'Une entreprise';
+  await db.from('notifications').insert({
+    user_id: compteId,
+    type: 'demande_relation',
+    message: `${nomEnt} souhaite vous ajouter à son carnet fournisseur`,
+    read: false
+  });
+}
+
 async function addPortailFournisseurToCarnet(compteId, nom) {
   try {
+    const auto = await _fournisseurAccepteAuto(compteId);
     const { data, error } = await db.from('fournisseurs').insert({
       entrepreneur_id: state.user.id,
       nom,
       compte_fournisseur_id: compteId,
-      type_fournisseur: 'portail'
+      type_fournisseur: 'portail',
+      statut: auto ? 'accepted' : 'pending'
     }).select('*').single();
     if (error) throw error;
     state.fournisseurs.push(data);
     renderCarnetFournisseurs();
     document.getElementById('carnet-search').value = '';
     document.getElementById('carnet-search-results').classList.add('hidden');
-    toast(`${nom} ajouté au carnet (portail) !`);
+    if (auto) {
+      toast(`${nom} ajouté au carnet (portail) !`);
+    } else {
+      await _notifierDemandeRelation(compteId, nom);
+      toast(`Demande envoyée à ${nom}, en attente de sa validation`);
+    }
   } catch (err) { toast(err.message, 'err'); }
 }
 

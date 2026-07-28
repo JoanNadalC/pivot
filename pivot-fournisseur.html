@@ -688,6 +688,30 @@
           <div id="dash-equipe-list"></div>
         </div>
 
+        <!-- Demandes de mise en relation -->
+        <div id="demandes-relation-card" class="bg-white rounded-xl p-5 shadow-sm mb-4 border border-gray-100 hidden">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">🤝 Demandes de mise en relation</h3>
+            <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+              Acceptation automatique
+              <input id="p-accept-auto" type="checkbox" onchange="saveAcceptationAuto(this.checked)" class="w-4 h-4">
+            </label>
+          </div>
+          <p class="text-xs text-gray-500 mb-3">Quand une entreprise vous ajoute à son carnet fournisseur, elle est acceptée automatiquement si activé ci-dessus, sinon vous devez valider chaque demande.</p>
+          <div id="demandes-relation-list"></div>
+        </div>
+
+        <!-- Filigrane des photos -->
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4 border border-gray-100">
+          <h3 class="font-semibold mb-1">📸 Filigrane des photos</h3>
+          <p class="text-xs text-gray-500 mb-3">"Pivot la racine" apparaît toujours en bas à gauche des photos prises via l'appli. Choisissez les informations complémentaires à afficher (réglage propre à votre compte).</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-sm"><input id="p-filigrane-date" type="checkbox" class="w-4 h-4"> Date</label>
+            <label class="flex items-center gap-2 text-sm"><input id="p-filigrane-heure" type="checkbox" class="w-4 h-4"> Heure</label>
+            <label class="flex items-center gap-2 text-sm"><input id="p-filigrane-localisation" type="checkbox" class="w-4 h-4"> Localisation</label>
+          </div>
+        </div>
+
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
           <h3 class="font-semibold mb-3">Informations personnelles</h3>
           <label class="block text-xs text-gray-500 mb-1">Nom complet</label>
@@ -1553,6 +1577,15 @@ function fillProfil(p) {
   document.getElementById('entreprise-info-fields').querySelectorAll('input').forEach(inp => { inp.disabled = !isRef; });
   document.getElementById('entreprise-info-fields').classList.toggle('opacity-60', !isRef);
 
+  // Demandes de mise en relation : réglage et suivi individuels, propres à chaque compte
+  document.getElementById('demandes-relation-card')?.classList.remove('hidden');
+  const acceptAutoEl = document.getElementById('p-accept-auto');
+  if (acceptAutoEl) acceptAutoEl.checked = p.acceptation_auto_relations !== false;
+
+  document.getElementById('p-filigrane-date').checked = p.filigrane_date !== false;
+  document.getElementById('p-filigrane-heure').checked = p.filigrane_heure !== false;
+  document.getElementById('p-filigrane-localisation').checked = p.filigrane_localisation !== false;
+
   state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'ville', 'nom_initiale'];
   renderVisibiliteChamps();
 }
@@ -1599,6 +1632,59 @@ function previewProfilLogo(input) {
   const img = document.getElementById('p-logo-preview');
   img.src = URL.createObjectURL(file);
   wrap?.classList.remove('hidden');
+}
+
+async function saveAcceptationAuto(checked) {
+  try {
+    const { error } = await db.from('compte_fournisseur').update({ acceptation_auto_relations: checked }).eq('id', state.user.id);
+    if (error) throw error;
+    state.profile = { ...state.profile, acceptation_auto_relations: checked };
+    toast(checked ? 'Acceptation automatique activée' : 'Validation manuelle activée');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function loadDemandesRelation() {
+  try {
+    const { data, error } = await db.from('fournisseurs')
+      .select('id, nom, entrepreneur_id, created_at')
+      .or(`compte_fournisseur_id.eq.${state.user.id},fournisseur_portail_id.eq.${state.user.id}`)
+      .eq('statut', 'pending');
+    if (error) throw error;
+    renderDemandesRelation(data || []);
+  } catch (err) { console.error('loadDemandesRelation', err); }
+}
+
+function renderDemandesRelation(demandes) {
+  const el = document.getElementById('demandes-relation-list');
+  if (!el) return;
+  if (!demandes.length) { el.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune demande en attente.</p>'; return; }
+  el.innerHTML = demandes.map(d => `
+    <div class="flex items-center justify-between py-2 border-t first:border-t-0">
+      <p class="text-sm">${escHtml(d.nom || 'Une entreprise')}</p>
+      <div class="flex items-center gap-2 shrink-0">
+        <button onclick="accepterDemandeRelation('${d.id}')" class="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700">Accepter</button>
+        <button onclick="refuserDemandeRelation('${d.id}')" class="text-xs border border-red-200 text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50">Refuser</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function accepterDemandeRelation(id) {
+  try {
+    const { error } = await db.from('fournisseurs').update({ statut: 'accepted' }).eq('id', id);
+    if (error) throw error;
+    toast('Mise en relation acceptée');
+    loadDemandesRelation();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function refuserDemandeRelation(id) {
+  try {
+    const { error } = await db.from('fournisseurs').delete().eq('id', id);
+    if (error) throw error;
+    toast('Demande refusée');
+    loadDemandesRelation();
+  } catch (err) { toast(err.message, 'err'); }
 }
 
 function ouvrirModalChangeEmail() {
@@ -1690,6 +1776,9 @@ async function saveProfil() {
       tel_portable: document.getElementById('p-tel-portable').value.trim(),
       visibilite_champs: state._visibiliteChamps || [],
       notif_preference: document.getElementById('p-notif').value,
+      filigrane_date: document.getElementById('p-filigrane-date').checked,
+      filigrane_heure: document.getElementById('p-filigrane-heure').checked,
+      filigrane_localisation: document.getElementById('p-filigrane-localisation').checked,
     };
     // "Informations entreprise" : seul le référent peut les modifier (données communes à l'équipe)
     if (state.isReferent) {
@@ -2215,6 +2304,7 @@ function setTab(tab, _noHistory) {
   if (tab === 'photos-cons') loadDemandesPhotosForConsultation();
   if (tab === 'profil' && state.profile) fillProfil(state.profile);
   if (tab === 'profil') loadCollaborateurs();
+  if (tab === 'profil') loadDemandesRelation();
 }
 
 function showTabBadge(tabName) {

@@ -258,6 +258,8 @@ let state = {
   photosPrises: {},
   currentFournitureId: null,
   stream: null,
+  filigrane: { date: true, heure: true, localisation: true },
+  localisationTexte: null,
 };
 
 function show(id) {
@@ -373,7 +375,51 @@ async function lancerApp(user) {
   }
 
   document.getElementById('btn-logout').classList.remove('hidden');
+  await chargerFiligraneSettings();
   await chargerDemandes();
+}
+
+// Résout le réglage de filigrane à appliquer : celui du compte fournisseur qui se connecte
+// directement, ou celui du fournisseur propriétaire pour un collaborateur photos dédié
+// (ces comptes-là n'ont pas de profil pour régler ça eux-mêmes).
+async function chargerFiligraneSettings() {
+  try {
+    const targetId = state.isFournisseur ? state.user.id : null;
+    let data = null;
+    if (targetId) {
+      ({ data } = await db.from('compte_fournisseur')
+        .select('filigrane_date, filigrane_heure, filigrane_localisation')
+        .eq('id', targetId).maybeSingle());
+    } else if (state.collaborateur?.fournisseur_id) {
+      ({ data } = await db.from('compte_fournisseur')
+        .select('filigrane_date, filigrane_heure, filigrane_localisation')
+        .eq('fournisseur_id', state.collaborateur.fournisseur_id).limit(1).maybeSingle());
+    }
+    if (data) {
+      state.filigrane = {
+        date: data.filigrane_date !== false,
+        heure: data.filigrane_heure !== false,
+        localisation: data.filigrane_localisation !== false,
+      };
+    }
+  } catch (err) { console.error('chargerFiligraneSettings', err); }
+  if (state.filigrane.localisation) _resoudreLocalisation();
+}
+
+async function _resoudreLocalisation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const { latitude, longitude } = pos.coords;
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`);
+      const j = await r.json();
+      const a = j.address || {};
+      const ville = a.city || a.town || a.village || a.municipality || '';
+      state.localisationTexte = ville ? `${ville}${a.country ? ', ' + a.country : ''}` : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+    } catch (err) {
+      state.localisationTexte = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+    }
+  }, () => { state.localisationTexte = null; }, { timeout: 8000 });
 }
 
 async function logout() {
@@ -693,11 +739,39 @@ async function compresserImage(file, maxPx = 1920, qualite = 0.82) {
       }
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      _dessinerFiligrane(ctx, width, height);
       canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', qualite);
     };
     img.onerror = () => resolve(file);
     img.src = URL.createObjectURL(file);
+  });
+}
+
+function _dessinerFiligrane(ctx, width, height) {
+  const lignes = ['Pivot la racine'];
+  const now = new Date();
+  if (state.filigrane.date) lignes.push(now.toLocaleDateString('fr-FR'));
+  if (state.filigrane.heure) lignes.push(now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+  if (state.filigrane.localisation && state.localisationTexte) lignes.push(state.localisationTexte);
+
+  const pad = Math.max(10, Math.round(width * 0.015));
+  const fontSize = Math.max(12, Math.round(width * 0.028));
+  ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+  ctx.textBaseline = 'bottom';
+  const largeurTexte = Math.max(...lignes.map(l => ctx.measureText(l).width));
+  const ligneHeight = fontSize * 13 / 10;
+  const boxHeight = lignes.length * ligneHeight + pad;
+  const boxWidth = largeurTexte + pad * 2;
+
+  ctx.fillStyle = 'rgba(28,58,42,0.55)';
+  ctx.fillRect(0, height - boxHeight, boxWidth, boxHeight);
+
+  ctx.fillStyle = '#FAFAF7';
+  lignes.forEach((ligne, i) => {
+    const y = height - pad / 2 - (lignes.length - 1 - i) * ligneHeight;
+    ctx.fillText(ligne, pad, y);
   });
 }
 
