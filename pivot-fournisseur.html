@@ -1580,7 +1580,7 @@ function fillProfil(p) {
   // Demandes de mise en relation : réglage et suivi individuels, propres à chaque compte
   document.getElementById('demandes-relation-card')?.classList.remove('hidden');
   const acceptAutoEl = document.getElementById('p-accept-auto');
-  if (acceptAutoEl) acceptAutoEl.checked = p.acceptation_auto_relations !== false;
+  if (acceptAutoEl) acceptAutoEl.checked = p.acceptation_auto_relations === true;
 
   document.getElementById('p-filigrane-date').checked = p.filigrane_date !== false;
   document.getElementById('p-filigrane-heure').checked = p.filigrane_heure !== false;

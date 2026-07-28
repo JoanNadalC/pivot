@@ -4223,8 +4223,8 @@ async function _fournisseurAccepteAuto(compteId) {
   try {
     const { data, error } = await db.rpc('get_fournisseur_acceptation_auto', { p_compte_id: compteId });
     if (error) throw error;
-    return data !== false;
-  } catch (e) { return true; }
+    return data === true;
+  } catch (e) { return false; }
 }
 
 async function _notifierDemandeRelation(compteId, nom) {
