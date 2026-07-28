@@ -1016,6 +1016,10 @@ function openCompteModal() {
         <input id="cpt-adr" type="text" value="${escHtml(p.adresse || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
       </div>
       <div>
+        <label class="block text-xs text-gray-500 mb-1">Ville</label>
+        <input id="cpt-ville" type="text" value="${escHtml(p.ville || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+      </div>
+      <div>
         <label class="block text-xs text-gray-500 mb-1">SIRET</label>
         <input id="cpt-siret" type="text" value="${escHtml(p.siret || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
       </div>
@@ -1026,9 +1030,7 @@ function openCompteModal() {
       <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
         <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
         <p class="text-xs text-blue-600 mb-2">Ce que les autres voient de vous quand ils vous cherchent.</p>
-        <select id="cpt-visibilite" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-          ${_visibiliteOptions(p.visibilite)}
-        </select>
+        <div id="cpt-visibilite-champs" class="flex flex-wrap gap-2"></div>
       </div>
       <div>
         <label class="block text-xs text-gray-500 mb-1">Logo (PDF)</label>
@@ -1092,6 +1094,8 @@ function openCompteModal() {
       </div>
     </div>
   `);
+  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'nom_initiale'];
+  renderVisibiliteChamps();
 }
 
 async function changePassword() {
@@ -1143,9 +1147,10 @@ async function saveCompte() {
   const nom = document.getElementById('cpt-nom')?.value.trim() || '';
   const telephone = document.getElementById('cpt-tel')?.value.trim() || '';
   const adresse = document.getElementById('cpt-adr')?.value.trim() || '';
+  const ville = document.getElementById('cpt-ville')?.value.trim() || '';
   const siret = document.getElementById('cpt-siret')?.value.trim() || '';
   const fonction = document.getElementById('cpt-fonction')?.value.trim() || '';
-  const visibilite = document.getElementById('cpt-visibilite')?.value || 'societe_initiale';
+  const visibilite_champs = state._visibiliteChamps || [];
   const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
   const file = document.getElementById('cpt-logo-file')?.files?.[0];
   try {
@@ -1161,8 +1166,8 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    await db.from('compte_moe').update({ nom: nom || undefined, fonction, visibilite, notif_preference }).eq('id', state.user.id);
-    state.profile = { ...state.profile, nom, telephone, adresse, siret, fonction, visibilite, notif_preference, logo_url };
+    await db.from('compte_moe').update({ nom: nom || undefined, tel: telephone, ville, fonction, visibilite_champs, notif_preference }).eq('id', state.user.id);
+    state.profile = { ...state.profile, nom, telephone, adresse, ville, siret, fonction, visibilite_champs, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
     closeModal();
@@ -1614,16 +1619,29 @@ const LOT_STATUT_STYLE = { invited: 'bg-amber-50 text-amber-600', accepted: 'bg-
 const LOT_STATUT_LABEL = { invited: 'Invitée', accepted: 'Connectée', refused: 'Refusée' };
 
 // ── Visibilité recherche (préférence utilisateur) ──
-const VISIBILITE_LEVELS = [
-  ['societe_fonction',  'Société + Fonction'],
-  ['societe_prenom',    'Société + Prénom'],
-  ['societe_initiale',  'Société + Prénom + Initiale du nom (recommandé)'],
-  ['societe_nom',       'Société + Prénom + Nom'],
-  ['societe_complet',   'Société + Prénom + Nom + Téléphone + Email']
+const VISIBILITE_CHAMPS_OPTIONS = [
+  ['entreprise', 'Entreprise'], ['ville', 'Ville'],
+  ['nom', 'Nom'], ['nom_initiale', 'Nom (initiale)'],
+  ['fonction', 'Fonction'],
+  ['siret', 'SIRET'], ['telephone', 'Téléphone'], ['email', 'Email'],
 ];
-function _visibiliteOptions(cur) {
-  const c = cur || 'societe_initiale';
-  return VISIBILITE_LEVELS.map(([v, l]) => `<option value="${v}" ${v === c ? 'selected' : ''}>${l}</option>`).join('');
+function renderVisibiliteChamps() {
+  const el = document.getElementById('cpt-visibilite-champs');
+  if (!el) return;
+  const selected = new Set(state._visibiliteChamps || []);
+  el.innerHTML = VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
+    const on = selected.has(key);
+    return `<button type="button" onclick="toggleVisibiliteChamp('${key}')"
+      class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'}">
+      ${on ? '✓ ' : ''}${escHtml(label)}
+    </button>`;
+  }).join('');
+}
+function toggleVisibiliteChamp(key) {
+  const set = new Set(state._visibiliteChamps || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  state._visibiliteChamps = [...set];
+  renderVisibiliteChamps();
 }
 // {titre, sousTitre} depuis une ligne de recherche masquée (RPC)
 function _formatSearchRow(r) {

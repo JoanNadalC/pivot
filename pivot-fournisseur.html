@@ -1590,14 +1590,14 @@ function fillProfil(p) {
   renderVisibiliteChamps();
 }
 
+// Pas de colonne "prénom" séparée côté compte_fournisseur (seul "nom" existe, en nom complet) :
+// pas d'option Prénom / Prénom (initiale) ici, contrairement aux portails entreprise/MOE.
 const VISIBILITE_CHAMPS_OPTIONS = [
   ['entreprise', 'Entreprise'],
   ['ville', 'Ville'],
   ['pays', 'Pays'],
   ['nom', 'Nom'],
-  ['prenom', 'Prénom'],
   ['nom_initiale', 'Nom (initiale)'],
-  ['prenom_initiale', 'Prénom (initiale)'],
   ['fonction', 'Fonction'],
   ['siret', 'SIRET'],
   ['tel_standard', 'Tél. standard'],
