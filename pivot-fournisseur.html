@@ -1855,6 +1855,17 @@ function showDashboard() {
 
 function switchDashMode(mode, _silent) {
   state._dashMode = mode;
+  // Les boutons de mode (Consultations/Catalogue/Prospection/Réponses photos) peuvent être cliqués
+  // directement depuis un autre onglet (ex : Mon profil) sans repasser par showDashboard() : il faut
+  // donc aussi masquer les .tab-content ici, sinon leur contenu reste affiché en plus du dashboard.
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('tab-active');
+    btn.classList.add('text-gray-500');
+  });
+  document.getElementById('cons-tab-bar')?.classList.add('hidden');
+  document.getElementById('dash-mode-bar')?.classList.remove('hidden');
+  document.getElementById('btn-back-dashboard')?.classList.add('hidden');
   const views = { consultations: 'view-dashboard', catalogue: 'view-catalogue', prospection: 'view-prospection', 'reponses-photos': 'view-reponses-photos' };
   const btns  = { consultations: 'dash-btn-cons', catalogue: 'dash-btn-cat', prospection: 'dash-btn-prosp', 'reponses-photos': 'dash-btn-rep' };
   Object.entries(views).forEach(([m, id]) => document.getElementById(id)?.classList.toggle('hidden', m !== mode));
