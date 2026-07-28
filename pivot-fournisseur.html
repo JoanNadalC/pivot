@@ -714,8 +714,16 @@
 
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
           <h3 class="font-semibold mb-3">Informations personnelles</h3>
-          <label class="block text-xs text-gray-500 mb-1">Nom complet</label>
-          <input id="p-nom" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3">
+          <div class="grid grid-cols-2 gap-2 mb-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Prénom</label>
+              <input id="p-prenom" type="text" class="w-full border rounded px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Nom</label>
+              <input id="p-nom" type="text" class="w-full border rounded px-3 py-2 text-sm">
+            </div>
+          </div>
           <label class="block text-xs text-gray-500 mb-1">Fonction</label>
           <input id="p-fonction" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="ex : Responsable commercial">
         </div>
@@ -1549,6 +1557,7 @@ async function loadProfile() {
 function fillProfil(p) {
   if (!p) return;
   document.getElementById('p-nom').value = p.nom || '';
+  document.getElementById('p-prenom').value = p.prenom || '';
   document.getElementById('p-entreprise').value = p.nom_entreprise || '';
   document.getElementById('p-tel').value = p.tel || '';
   document.getElementById('p-adresse').value = p.adresse || '';
@@ -1590,14 +1599,14 @@ function fillProfil(p) {
   renderVisibiliteChamps();
 }
 
-// Pas de colonne "prénom" séparée côté compte_fournisseur (seul "nom" existe, en nom complet) :
-// pas d'option Prénom / Prénom (initiale) ici, contrairement aux portails entreprise/MOE.
 const VISIBILITE_CHAMPS_OPTIONS = [
   ['entreprise', 'Entreprise'],
   ['ville', 'Ville'],
   ['pays', 'Pays'],
   ['nom', 'Nom'],
+  ['prenom', 'Prénom'],
   ['nom_initiale', 'Nom (initiale)'],
+  ['prenom_initiale', 'Prénom (initiale)'],
   ['fonction', 'Fonction'],
   ['siret', 'SIRET'],
   ['tel_standard', 'Tél. standard'],
@@ -1771,6 +1780,7 @@ async function saveProfil() {
 
     const profilData = {
       nom: document.getElementById('p-nom').value.trim(),
+      prenom: document.getElementById('p-prenom').value.trim(),
       fonction: document.getElementById('p-fonction').value.trim(),
       tel_fixe_direct: document.getElementById('p-tel-fixe-direct').value.trim(),
       tel_portable: document.getElementById('p-tel-portable').value.trim(),

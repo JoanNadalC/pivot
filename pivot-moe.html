@@ -1003,9 +1003,15 @@ function openCompteModal() {
   showModal(`
     <h2 class="text-lg font-semibold text-gray-800 mb-4">👤 Mon compte</h2>
     <div class="space-y-3">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1">Nom / Entreprise</label>
-        <input id="cpt-nom" type="text" value="${escHtml(p.nom || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Prénom</label>
+          <input id="cpt-prenom" type="text" value="${escHtml(p.prenom || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Nom / Entreprise</label>
+          <input id="cpt-nom" type="text" value="${escHtml(p.nom || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
+        </div>
       </div>
       <div>
         <label class="block text-xs text-gray-500 mb-1">Téléphone</label>
@@ -1144,6 +1150,7 @@ async function changeEmail() {
 }
 
 async function saveCompte() {
+  const prenom = document.getElementById('cpt-prenom')?.value.trim() || '';
   const nom = document.getElementById('cpt-nom')?.value.trim() || '';
   const telephone = document.getElementById('cpt-tel')?.value.trim() || '';
   const adresse = document.getElementById('cpt-adr')?.value.trim() || '';
@@ -1166,8 +1173,8 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    await db.from('compte_moe').update({ nom: nom || undefined, tel: telephone, ville, fonction, visibilite_champs, notif_preference }).eq('id', state.user.id);
-    state.profile = { ...state.profile, nom, telephone, adresse, ville, siret, fonction, visibilite_champs, notif_preference, logo_url };
+    await db.from('compte_moe').update({ nom: nom || undefined, prenom, tel: telephone, ville, fonction, visibilite_champs, notif_preference }).eq('id', state.user.id);
+    state.profile = { ...state.profile, nom, prenom, telephone, adresse, ville, siret, fonction, visibilite_champs, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
     closeModal();
@@ -1621,7 +1628,8 @@ const LOT_STATUT_LABEL = { invited: 'Invitée', accepted: 'Connectée', refused:
 // ── Visibilité recherche (préférence utilisateur) ──
 const VISIBILITE_CHAMPS_OPTIONS = [
   ['entreprise', 'Entreprise'], ['ville', 'Ville'],
-  ['nom', 'Nom'], ['nom_initiale', 'Nom (initiale)'],
+  ['nom', 'Nom'], ['prenom', 'Prénom'],
+  ['nom_initiale', 'Nom (initiale)'], ['prenom_initiale', 'Prénom (initiale)'],
   ['fonction', 'Fonction'],
   ['siret', 'SIRET'], ['telephone', 'Téléphone'], ['email', 'Email'],
 ];
