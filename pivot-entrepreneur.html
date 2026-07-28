@@ -3911,6 +3911,11 @@ function renderFournisseursChantier() {
   `).join('');
 }
 
+function _contactLigne(f) {
+  const contact = [f.contact_prenom, f.contact_nom].filter(Boolean).join(' ');
+  return contact ? `<span class="text-gray-400">· 👤 ${escHtml(contact)}</span>` : '';
+}
+
 function renderCarnetFournisseurs() {
   const el = document.getElementById('carnet-familles');
   if (!el) return;
@@ -3948,7 +3953,7 @@ function renderCarnetFournisseurs() {
           <div class="px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-gray-50">
             <div>
               <p class="text-sm font-medium">${f.nom}</p>
-              <p class="text-xs text-gray-400">${f.email || ''} ${f.siret ? '· ' + f.siret : ''}</p>
+              <p class="text-xs text-gray-400 flex items-center gap-1 flex-wrap">${f.email || ''} ${f.siret ? '· ' + f.siret : ''} ${_contactLigne(f)}</p>
             </div>
             <div class="flex items-center gap-2 ml-2 shrink-0">
               ${f.statut === 'pending'
@@ -4012,7 +4017,7 @@ async function searchCarnetAutocomplete(query) {
   clearTimeout(_autocompleteTimer);
   _autocompleteTimer = setTimeout(async () => {
     const { data } = await db.from('compte_fournisseur')
-      .select('id, nom, nom_entreprise, email, siret, telephone, adresse')
+      .select('id, prenom, nom, nom_entreprise, email, siret, telephone, adresse')
       .or(`nom.ilike.%${query}%,nom_entreprise.ilike.%${query}%`)
       .limit(8);
 
@@ -4037,6 +4042,8 @@ async function searchCarnetAutocomplete(query) {
 
 function selectPortailFournisseur(r) {
   window._selectedPortailId = r.id;
+  window._selectedPortailPrenom = r.prenom || null;
+  window._selectedPortailNomContact = r.nom || null;
   document.getElementById('f-nom').value = r.nom_entreprise || r.nom;
   document.getElementById('f-siret').value = r.siret || '';
   document.getElementById('f-email').value = r.email || '';
@@ -4052,6 +4059,8 @@ function selectPortailFournisseur(r) {
 
 function clearPortailSelection() {
   window._selectedPortailId = null;
+  window._selectedPortailPrenom = null;
+  window._selectedPortailNomContact = null;
   document.getElementById('f-portail-badge')?.classList.add('hidden');
 }
 
@@ -4074,7 +4083,9 @@ async function addFournisseurCarnet() {
       familles:         document.getElementById('f-famille').value ? [document.getElementById('f-famille').value] : [],
       type_fournisseur: portailId ? 'portail' : 'invite',
       fournisseur_portail_id: portailId,
-      statut: portailId && !auto ? 'pending' : 'accepted'
+      statut: portailId && !auto ? 'pending' : 'accepted',
+      contact_prenom: portailId ? (window._selectedPortailPrenom || null) : null,
+      contact_nom: portailId ? (window._selectedPortailNomContact || null) : null
     }).select('*').single();
     if (error) throw error;
     data.familles_fournitures = state.familles.find(f => f.id === data.famille_id) || null;
@@ -4211,7 +4222,9 @@ async function searchFournisseurs(q) {
       </div>`;
     }).join('');
 
+    window._portailSearchCache = window._portailSearchCache || {};
     const portailHtml = portailFiltered.map(p => {
+      window._portailSearchCache[p.id] = p;
       const { titre, sousTitre } = _formatSearchRow(p);
       const safeNom = (titre || '').replace(/'/g, "\\'");
       return `
@@ -4261,12 +4274,15 @@ async function _notifierDemandeRelation(compteId, nom) {
 async function addPortailFournisseurToCarnet(compteId, nom) {
   try {
     const auto = await _fournisseurAccepteAuto(compteId);
+    const cached = window._portailSearchCache?.[compteId];
     const { data, error } = await db.from('fournisseurs').insert({
       entrepreneur_id: state.user.id,
       nom,
       compte_fournisseur_id: compteId,
       type_fournisseur: 'portail',
-      statut: auto ? 'accepted' : 'pending'
+      statut: auto ? 'accepted' : 'pending',
+      contact_prenom: cached?.prenom || null,
+      contact_nom: cached?.nom || null
     }).select('*').single();
     if (error) throw error;
     state.fournisseurs.push(data);
@@ -7377,7 +7393,7 @@ async function openAddFournisseurModal(consultationId) {
     .filter(f => !knownIds.includes(f.id))
     .map(f => `<label class="flex items-center gap-2 text-sm p-1 rounded hover:bg-gray-50 cursor-pointer">
       <input type="checkbox" name="add-fours" value="${f.id}">
-      <span>${escHtml(f.nom)}</span><span class="text-gray-400 text-xs">${escHtml(f.email || '')}</span>
+      <span>${escHtml(f.nom)}</span><span class="text-gray-400 text-xs">${escHtml(f.email || '')} ${_contactLigne(f)}</span>
     </label>`).join('');
   showModal(`
     <h2 class="text-lg font-bold mb-3">Inviter des fournisseurs</h2>
@@ -7468,7 +7484,7 @@ async function addFournisseursToConsultation(consultationId) {
 
 function openNewConsultationModal() {
   const foursOptions = state.fournisseurs.map(f =>
-    `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cf" value="${f.id}"> ${f.nom} <span class="text-gray-400">${f.email || ''}</span></label>`
+    `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cf" value="${f.id}"> ${f.nom} <span class="text-gray-400">${f.email || ''}</span> ${_contactLigne(f)}</label>`
   ).join('');
 
   // Familles présentes sur le chantier (actives + utilisées)
