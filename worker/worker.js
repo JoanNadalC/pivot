@@ -1391,15 +1391,57 @@ async function handleStripeWebhook(request, env) {
   if (!ok) return new Response('Signature invalide', { status: 400 });
 
   const event = JSON.parse(body);
+  const serviceHeaders = {
+    'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+  };
+
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     const { prenom, nom, societe, email, portail, plan, licences } = session.metadata || {};
     if (email) {
       try {
+        const nbLicences = parseInt(licences) || 1;
         const { userId, setPasswordLink } = await createSupabaseUser(env, {
           email, prenom: prenom || '', nom: nom || '', societe: societe || '',
-          portail: portail || 'entreprise', plan, licences: parseInt(licences) || 1,
+          portail: portail || 'entreprise', plan, licences: nbLicences,
         });
+
+        // Crée la structure de facturation (référent + licences + lien vers l'abonnement Stripe),
+        // jusqu'ici faite manuellement par l'admin faute de lien Stripe ↔ structure.
+        if (userId) {
+          try {
+            const structRes = await fetch(`${SUPABASE_URL}/rest/v1/structures`, {
+              method: 'POST',
+              headers: { ...serviceHeaders, 'Prefer': 'return=representation' },
+              body: JSON.stringify({
+                nom: societe || `${prenom || ''} ${nom || ''}`.trim() || email,
+                type: portail || 'entreprise',
+                referent_id: userId,
+                nb_licences_max: nbLicences,
+                statut_abonnement: 'actif',
+                mode_paiement: 'stripe',
+                stripe_customer_id: session.customer || null,
+                stripe_subscription_id: session.subscription || null,
+              }),
+            });
+            const [struct] = await structRes.json();
+            if (struct?.id) {
+              await fetch(`${SUPABASE_URL}/rest/v1/structure_membres`, {
+                method: 'POST', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ structure_id: struct.id, user_id: userId, role: 'referent' }),
+              });
+              await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+                method: 'PATCH', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
+                body: JSON.stringify({ structure_id: struct.id }),
+              });
+            }
+          } catch (e) {
+            console.error('création structure Stripe error:', e.message);
+          }
+        }
+
         if (setPasswordLink) {
           const portailLabel = portail === 'fournisseur' ? 'Fournisseur' : portail === 'moe' ? 'Maître d\'œuvre' : 'Entreprise';
           const html = `
@@ -1425,6 +1467,28 @@ async function handleStripeWebhook(request, env) {
       }
     }
   }
+
+  // Résiliation : l'abonnement Stripe a été annulé (immédiatement, ou en fin de période selon le
+  // réglage du client). On retrouve la structure via le stripe_subscription_id sauvegardé au paiement.
+  if (event.type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/structures?stripe_subscription_id=eq.${sub.id}&select=id,nom`, { headers: serviceHeaders });
+      const [struct] = await r.json();
+      if (struct) {
+        await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${struct.id}`, {
+          method: 'PATCH', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ statut_abonnement: 'resilie' }),
+        });
+        await notifyAdmin(env, { categorie: 'resiliation', message: `Résiliation d'abonnement — ${struct.nom}`, structureId: struct.id });
+      } else {
+        console.warn('subscription.deleted: structure introuvable pour', sub.id);
+      }
+    } catch (e) {
+      console.error('subscription.deleted error:', e.message);
+    }
+  }
+
   return new Response('ok', { status: 200 });
 }
 
