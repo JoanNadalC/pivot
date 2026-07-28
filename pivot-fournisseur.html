@@ -1614,6 +1614,13 @@ const VISIBILITE_CHAMPS_OPTIONS = [
   ['email', 'Email'],
 ];
 
+function _formatChampLabel(key, label) {
+  if (key === 'nom_initiale' || key === 'prenom_initiale') {
+    const mot = key === 'nom_initiale' ? 'Nom' : 'Prénom';
+    return `${mot[0]}<span class="opacity-40">${escHtml(mot.slice(1))}</span> (initiale)`;
+  }
+  return escHtml(label);
+}
 function renderVisibiliteChamps() {
   const el = document.getElementById('p-visibilite-champs');
   if (!el) return;
@@ -1622,7 +1629,7 @@ function renderVisibiliteChamps() {
     const on = selected.has(key);
     return `<button type="button" onclick="toggleVisibiliteChamp('${key}')"
       class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'}">
-      ${on ? '✓ ' : ''}${escHtml(label)}
+      ${on ? '✓ ' : ''}${_formatChampLabel(key, label)}
     </button>`;
   }).join('');
 }
