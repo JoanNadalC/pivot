@@ -2,165 +2,21 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pivot. Inscription</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --vert: #1C3A2A; --vert-md: #2D5940; --vert-lt: #3E7A58;
-      --ecru: #F5F0E8; --cuivre: #B87333; --blanc: #FAFAF7; --gris: #6B7280;
-    }
-    body { font-family: 'Inter', sans-serif; background: var(--vert); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .card {
-      background: var(--blanc); border-radius: 20px; padding: 48px 44px;
-      width: 100%; max-width: 480px;
-      box-shadow: 0 24px 60px rgba(0,0,0,0.25);
-    }
-    .logo { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 900; color: var(--vert); letter-spacing: -0.02em; margin-bottom: 4px; }
-    .logo span { color: var(--cuivre); }
-    .subtitle { font-size: 13px; color: var(--gris); margin-bottom: 32px; }
-    h1 { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--vert); margin-bottom: 8px; }
-    .pitch { font-size: 13px; color: var(--gris); margin-bottom: 28px; line-height: 1.5; }
-    .row { display: flex; gap: 12px; }
-    .field { margin-bottom: 16px; flex: 1; }
-    label { display: block; font-size: 12px; font-weight: 500; color: #374151; margin-bottom: 5px; }
-    input {
-      width: 100%; border: 1px solid #d1d5db; border-radius: 10px;
-      padding: 11px 14px; font-size: 14px; font-family: 'Inter', sans-serif;
-      transition: border-color 0.15s, box-shadow 0.15s; background: #fff;
-    }
-    input:focus { outline: none; border-color: var(--cuivre); box-shadow: 0 0 0 3px rgba(184,115,51,0.15); }
-    .btn {
-      width: 100%; background: var(--vert); color: var(--ecru);
-      border: none; border-radius: 12px; padding: 14px;
-      font-size: 15px; font-weight: 600; font-family: 'Inter', sans-serif;
-      cursor: pointer; transition: background 0.15s; margin-top: 8px;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
-    .btn:hover { background: var(--vert-md); }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .error { color: #dc2626; font-size: 13px; margin-top: 12px; display: none; }
-    .error.visible { display: block; }
-    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
-    .prix-box {
-      background: rgba(28,58,42,0.04); border: 1px solid rgba(28,58,42,0.1);
-      border-radius: 12px; padding: 16px 18px; margin-bottom: 24px;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .prix-label { font-size: 13px; color: var(--gris); }
-    .prix-val { font-size: 20px; font-weight: 700; color: var(--vert); }
-    .prix-val span { font-size: 13px; font-weight: 400; color: var(--gris); }
-    .mention { font-size: 12px; color: #9ca3af; text-align: center; margin-top: 16px; line-height: 1.5; }
-    .mention a { color: var(--cuivre); }
-    .back { display: block; text-align: center; font-size: 13px; color: var(--gris); margin-top: 20px; }
-    .back a { color: var(--vert); font-weight: 500; }
-    .stripe-badge { display: flex; align-items: center; justify-content: center; gap-6px; margin-top: 16px; opacity: 0.5; }
-    .stripe-badge svg { height: 20px; }
-  </style>
+  <meta name="robots" content="noindex">
+  <script>
+    // Ancienne page d'inscription entreprise, remplacée par pivot-inscription-entreprise.html
+    // (choix du nombre de licences, prix affiché, garde bêta). Elle restait atteignable depuis la
+    // page tarifs et permettait de s'abonner sans passer par la liste d'attente, avec un prix
+    // masqué et 1 licence imposée en silence. On redirige en conservant les paramètres d'URL
+    // pour que les liens existants (dont ?beta=1) continuent de fonctionner.
+    window.location.replace('pivot-inscription-entreprise.html' + window.location.search + window.location.hash);
+  </script>
+  <meta http-equiv="refresh" content="0; url=pivot-inscription-entreprise.html">
 </head>
 <body>
-  <div class="card">
-    <div class="logo">Pivot<span>.</span> <span style="font-family:'Playfair Display',serif;font-size:13px;font-weight:400;font-style:italic;color:#9ca3af">la racine</span></div>
-    <p class="subtitle">Portail Entreprise</p>
-
-    <h1>Créer votre compte</h1>
-    <p class="pitch">Accédez à la gestion complète de vos chantiers : DAF, DOE, consultations fournisseurs et visa MOE.</p>
-
-    <div class="prix-box">
-      <div>
-        <div class="prix-label">Abonnement mensuel</div>
-        <div style="font-size:11px;color:#9ca3af;margin-top:2px">Sans engagement · Résiliable à tout moment</div>
-      </div>
-      <div class="prix-val" id="prix-display">— <span>/ mois</span></div>
-    </div>
-
-    <div class="row">
-      <div class="field">
-        <label for="prenom">Prénom *</label>
-        <input id="prenom" type="text" placeholder="Jean" autocomplete="given-name">
-      </div>
-      <div class="field">
-        <label for="nom">Nom *</label>
-        <input id="nom" type="text" placeholder="Dupont" autocomplete="family-name">
-      </div>
-    </div>
-    <div class="field">
-      <label for="societe">Entreprise *</label>
-      <input id="societe" type="text" placeholder="Bâtiment Dupont SARL" autocomplete="organization">
-    </div>
-    <div class="field">
-      <label for="email">Email professionnel *</label>
-      <input id="email" type="email" placeholder="jean@entreprise.fr" autocomplete="email">
-    </div>
-
-    <button class="btn" id="btn-payer" onclick="demarrerPaiement()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-      Continuer vers le paiement
-    </button>
-
-    <p class="error" id="error-msg"></p>
-
-    <p class="mention">
-      En continuant, vous acceptez nos <a href="#">CGU</a> et notre <a href="#">politique de confidentialité</a>.<br>
-      Paiement sécurisé par Stripe. Vous recevrez un email pour définir votre mot de passe après paiement.
-    </p>
-
-    <hr class="divider">
-    <p class="back">Déjà un compte ? <a href="pivot-login-entreprise.html">Se connecter</a></p>
-  </div>
-
-  <script>
-    const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
-
-    // Charger le prix depuis Stripe (optionnel — affichage statique pour l'instant)
-    document.getElementById('prix-display').innerHTML = '&mdash; <span>/ mois</span>';
-
-    function showError(msg) {
-      const el = document.getElementById('error-msg');
-      el.textContent = msg;
-      el.classList.add('visible');
-    }
-
-    async function demarrerPaiement() {
-      const prenom  = document.getElementById('prenom').value.trim();
-      const nom     = document.getElementById('nom').value.trim();
-      const societe = document.getElementById('societe').value.trim();
-      const email   = document.getElementById('email').value.trim();
-
-      document.getElementById('error-msg').classList.remove('visible');
-
-      if (!prenom || !nom || !societe || !email) {
-        showError('Veuillez remplir tous les champs obligatoires.');
-        return;
-      }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        showError('Adresse email invalide.');
-        return;
-      }
-
-      const btn = document.getElementById('btn-payer');
-      btn.disabled = true;
-      btn.textContent = 'Redirection vers le paiement…';
-
-      try {
-        const resp = await fetch(`${WORKER_URL}/create-checkout-session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prenom, nom, societe, email }),
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error);
-        window.location.href = data.url;
-      } catch (err) {
-        showError('Erreur : ' + err.message);
-        btn.disabled = false;
-        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Continuer vers le paiement`;
-      }
-    }
-
-    // Soumettre avec Entrée
-    document.addEventListener('keydown', e => { if (e.key === 'Enter') demarrerPaiement(); });
-  </script>
+  <p style="font-family:Inter,sans-serif;padding:24px">
+    Redirection vers <a href="pivot-inscription-entreprise.html">la page d'inscription</a>…
+  </p>
 </body>
 </html>

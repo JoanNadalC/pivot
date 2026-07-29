@@ -1470,15 +1470,50 @@ async function handleStripeWebhook(request, env) {
 
   // Résiliation : l'abonnement Stripe a été annulé (immédiatement, ou en fin de période selon le
   // réglage du client). On retrouve la structure via le stripe_subscription_id sauvegardé au paiement.
+  // Résiliation programmée : le client a annulé, mais l'abonnement court jusqu'à la fin de la
+  // période payée. C'est le seul moment où l'on connaît la date de fin AVANT qu'elle arrive, donc
+  // le bon moment pour prévenir. On ne réagit qu'à la bascule de cancel_at_period_end vers true,
+  // sinon chaque mise à jour d'abonnement renverrait l'email.
+  if (event.type === 'customer.subscription.updated') {
+    const sub = event.data.object;
+    const vientDEtreAnnule = sub.cancel_at_period_end === true
+      && event.data.previous_attributes?.cancel_at_period_end === false;
+    if (vientDEtreAnnule) {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/structures?stripe_subscription_id=eq.${sub.id}&select=id,nom,type,referent_id`, { headers: serviceHeaders });
+        const [struct] = await r.json();
+        if (struct) {
+          await envoyerEmailResiliation(env, {
+            structure: struct,
+            finTs: sub.cancel_at || sub.current_period_end,
+            future: true,
+            headers: serviceHeaders,
+          });
+          await notifyAdmin(env, { categorie: 'resiliation', message: `Résiliation demandée — ${struct.nom}`, structureId: struct.id });
+        } else {
+          console.warn('subscription.updated: structure introuvable pour', sub.id);
+        }
+      } catch (e) {
+        console.error('subscription.updated error:', e.message);
+      }
+    }
+  }
+
   if (event.type === 'customer.subscription.deleted') {
     const sub = event.data.object;
     try {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/structures?stripe_subscription_id=eq.${sub.id}&select=id,nom`, { headers: serviceHeaders });
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/structures?stripe_subscription_id=eq.${sub.id}&select=id,nom,type,referent_id`, { headers: serviceHeaders });
       const [struct] = await r.json();
       if (struct) {
         await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${struct.id}`, {
           method: 'PATCH', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
           body: JSON.stringify({ statut_abonnement: 'resilie' }),
+        });
+        await envoyerEmailResiliation(env, {
+          structure: struct,
+          finTs: sub.ended_at || sub.current_period_end,
+          future: false,
+          headers: serviceHeaders,
         });
         await notifyAdmin(env, { categorie: 'resiliation', message: `Résiliation d'abonnement — ${struct.nom}`, structureId: struct.id });
       } else {
@@ -1522,6 +1557,80 @@ function notifEmailHtml({ title, message, link, portail }) {
         <p style="font-size:14px;color:#374151;margin:0 0 24px;line-height:1.6;">${message}</p>
         ${safeLink ? `<a href="${escHtml(safeLink)}" style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:500;">Voir sur Pivot →</a>` : ''}
         <p style="font-size:12px;color:#9CA3AF;margin:32px 0 0;">Vous recevez cet email car vos préférences de notification sont réglées sur "Immédiat". Vous pouvez les modifier dans votre espace Pivot, section "Mon compte".</p>
+      </div>
+    </div>`;
+}
+
+// Délai laissé au client, après la fin de son abonnement, pour récupérer ses dossiers.
+const RESILIATION_JOURS_TELECHARGEMENT = 30;
+
+function _dateFr(ts) {
+  return new Date(ts * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Prévient le référent de la structure que son abonnement se termine (ou s'est terminé), en lui
+// indiquant jusqu'à quand ses dossiers restent téléchargeables.
+// `finTs` = timestamp Stripe (secondes) de fin d'abonnement ; `future` = l'échéance est à venir.
+async function envoyerEmailResiliation(env, { structure, finTs, future, headers }) {
+  if (!finTs) { console.warn('résiliation: pas de date de fin, email non envoyé'); return; }
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${structure.referent_id}&select=email`,
+      { headers }
+    );
+    const [referent] = await r.json();
+    if (!referent?.email) { console.warn('résiliation: email du référent introuvable', structure.id); return; }
+
+    const finMs = finTs * 1000;
+    const limiteTs = Math.floor((finMs + RESILIATION_JOURS_TELECHARGEMENT * 86400000) / 1000);
+    const portail = PORTAIL_URL[structure.type] || PORTAIL_URL.entrepreneur;
+
+    await sendResendEmail(env, {
+      to: referent.email,
+      subject: future ? 'Votre abonnement Pivot prendra fin prochainement' : 'Votre abonnement Pivot a pris fin',
+      html: resiliationEmailHtml({
+        structureNom: structure.nom || 'votre structure',
+        dateEffet: _dateFr(finTs),
+        dateLimite: _dateFr(limiteTs),
+        future,
+        lien: `${(env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '')}/${portail}`,
+      }),
+    });
+  } catch (e) {
+    console.error('envoyerEmailResiliation:', e.message);
+  }
+}
+
+// Email de résiliation. `dateEffet` = date de fin d'abonnement, `dateLimite` = fin du délai pendant
+// lequel les dossiers restent téléchargeables. `future` distingue l'annonce (résiliation demandée,
+// effet à venir) de la confirmation (abonnement déjà terminé).
+function resiliationEmailHtml({ structureNom, dateEffet, dateLimite, future, lien }) {
+  const titre = future
+    ? `Votre abonnement Pivot prendra fin le ${dateEffet}`
+    : `Votre abonnement Pivot a pris fin le ${dateEffet}`;
+  const intro = future
+    ? `Nous confirmons la résiliation de l'abonnement de <strong>${escHtml(structureNom)}</strong>. Vous conservez l'accès complet à Pivot jusqu'au <strong>${escHtml(dateEffet)}</strong>.`
+    : `L'abonnement de <strong>${escHtml(structureNom)}</strong> a pris fin le <strong>${escHtml(dateEffet)}</strong>.`;
+  return `
+    <div style="font-family:'Inter',Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1C3A2A;">
+      <div style="background:#1C3A2A;padding:32px 40px 24px;">
+        <span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#F5F0E8;">Pivot</span><span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#B87333;">.</span><span style="font-family:Georgia,serif;font-size:16px;font-style:italic;color:rgba(245,240,232,0.55);margin-left:6px;">la racine</span>
+      </div>
+      <div style="padding:40px;background:#F5F0E8;">
+        <p style="font-size:17px;margin:0 0 20px;font-weight:600;">${escHtml(titre)}</p>
+        <p style="font-size:14px;color:#374151;margin:0 0 20px;line-height:1.6;">${intro}</p>
+        <div style="background:#FFFFFF;border-left:3px solid #B87333;padding:16px 20px;margin:0 0 24px;">
+          <p style="font-size:14px;color:#374151;margin:0;line-height:1.6;">
+            Vos données restent accessibles en téléchargement jusqu'au <strong>${escHtml(dateLimite)}</strong>.
+            Nous vous invitons à récupérer d'ici là les dossiers de vos chantiers : consultations,
+            devis fournisseurs, commandes et documents.
+          </p>
+        </div>
+        ${lien ? `<a href="${escHtml(lien)}" style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:500;">Accéder à mes dossiers →</a>` : ''}
+        <p style="font-size:13px;color:#6B7280;margin:28px 0 0;line-height:1.6;">
+          Vous changez d'avis ? Vous pouvez souscrire à nouveau à tout moment depuis votre espace.
+          Pour toute question, écrivez-nous à <a href="mailto:contact@pivotlaracine.com" style="color:#1C3A2A;">contact@pivotlaracine.com</a>.
+        </p>
       </div>
     </div>`;
 }
