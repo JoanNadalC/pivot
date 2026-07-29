@@ -2489,7 +2489,10 @@ export default {
     const cors = {
       'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+      // 'Authorization' est indispensable : les endpoints qui identifient l'appelant par son JWT
+      // (/create-portal-session, /delete-user) l'envoient, et le navigateur refusait le preflight
+      // sans lui — l'appel échouait côté client par un « Failed to fetch » sans trace serveur.
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, stripe-signature',
     };
 
     if (request.method === 'OPTIONS') {
