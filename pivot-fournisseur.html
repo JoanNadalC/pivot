@@ -671,6 +671,7 @@
             <div class="flex items-center gap-2">
               <a href="pivot-tarifs-fournisseur.html" target="_blank" class="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2">Voir les tarifs</a>
               <button onclick="openChangerOffre(null)" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50">Changer d'offre</button>
+              <button id="btn-portail-facturation" onclick="ouvrirPortailFacturation(this)" class="hidden text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50">Gérer mon abonnement</button>
             </div>
           </div>
           <div class="flex items-center gap-3">
@@ -1586,6 +1587,9 @@ function fillProfil(p) {
   document.getElementById('entreprise-info-fields').querySelectorAll('input').forEach(inp => { inp.disabled = !isRef; });
   document.getElementById('entreprise-info-fields').classList.toggle('opacity-60', !isRef);
 
+  // La gestion de l'abonnement (changement d'offre, résiliation, factures) est réservée au référent.
+  document.getElementById('btn-portail-facturation')?.classList.toggle('hidden', !isRef);
+
   // Demandes de mise en relation : réglage et suivi individuels, propres à chaque compte
   document.getElementById('demandes-relation-card')?.classList.remove('hidden');
   const acceptAutoEl = document.getElementById('p-accept-auto');
@@ -1648,6 +1652,27 @@ function previewProfilLogo(input) {
   const img = document.getElementById('p-logo-preview');
   img.src = URL.createObjectURL(file);
   wrap?.classList.remove('hidden');
+}
+
+// Ouvre le portail de facturation hébergé par Stripe : changement d'offre, résiliation, moyen de
+// paiement et factures. Le worker vérifie que l'appelant est bien le référent de sa structure.
+async function ouvrirPortailFacturation(btn) {
+  const libelle = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Ouverture…'; }
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch('https://pivot-pdf.jncoutier.workers.dev/create-portal-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ return_url: window.location.href }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.url) throw new Error(data.error || 'Portail de facturation indisponible.');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = libelle; }
+  }
 }
 
 async function saveAcceptationAuto(checked) {

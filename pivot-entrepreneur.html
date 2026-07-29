@@ -1395,6 +1395,27 @@ async function _loadLogoBase64() {
   } catch { state.logoBase64 = null; return null; }
 }
 
+// Ouvre le portail de facturation hébergé par Stripe : changement d'offre, résiliation, moyen de
+// paiement et factures. Le worker vérifie que l'appelant est bien le référent de sa structure.
+async function ouvrirPortailFacturation(btn) {
+  const libelle = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Ouverture…'; }
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch(`${WORKER_URL}/create-portal-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ return_url: window.location.href }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.url) throw new Error(data.error || 'Portail de facturation indisponible.');
+    window.location.href = data.url;
+  } catch (err) {
+    toast(err.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = libelle; }
+  }
+}
+
 function openCompteModal() {
   const p = state.profile || {};
   const logoHtml = p.logo_url
@@ -1414,7 +1435,10 @@ function openCompteModal() {
           }</span>
         </div>
       </div>
-      <a href="pivot-tarifs-entreprise.html" target="_blank" class="text-xs text-blue-600 hover:underline whitespace-nowrap">Voir les tarifs</a>
+      <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+        ${state.isReferent ? `<button onclick="ouvrirPortailFacturation(this)" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50 whitespace-nowrap">Gérer mon abonnement</button>` : ''}
+        <a href="pivot-tarifs-entreprise.html" target="_blank" class="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 whitespace-nowrap">Voir les tarifs</a>
+      </div>
     </div>
     <div class="space-y-3">
       <div>

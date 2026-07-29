@@ -1217,6 +1217,49 @@ async function getAuthUser(request, env) {
   return r.json();
 }
 
+// Ouvre le portail de facturation Stripe (changement d'offre, résiliation, moyen de paiement,
+// factures). Tout est hébergé par Stripe : rien de sensible ne transite par l'application.
+// L'accès est réservé au référent, seul responsable de l'abonnement de sa structure.
+async function handleCreatePortalSession(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const json = (body, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+
+  const user = await getAuthUser(request, env);
+  if (!user?.id) return json({ error: 'Non authentifié.' }, 401);
+
+  const headers = {
+    'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  };
+  // On repart de l'identité vérifiée par le JWT, jamais d'un identifiant fourni par le client :
+  // sinon n'importe qui pourrait ouvrir le portail de facturation d'une autre structure.
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/structures?referent_id=eq.${user.id}&select=id,nom,stripe_customer_id`,
+    { headers }
+  );
+  const [struct] = await r.json();
+  if (!struct) return json({ error: "Seul le référent de la structure peut gérer l'abonnement." }, 403);
+  if (!struct.stripe_customer_id) {
+    return json({ error: "Aucun abonnement Stripe n'est rattaché à cette structure. Contactez contact@pivotlaracine.com." }, 400);
+  }
+
+  // L'URL de retour vient du navigateur : on la restreint au site pour éviter une redirection ouverte.
+  const siteUrl = (env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '');
+  const { return_url } = await request.json().catch(() => ({}));
+  const retour = typeof return_url === 'string' && return_url.startsWith(siteUrl) ? return_url : siteUrl;
+
+  const session = await stripeRequest(env, 'POST', '/billing_portal/sessions', {
+    customer: struct.stripe_customer_id,
+    return_url: retour,
+  });
+  if (!session?.url) {
+    console.error('billing_portal error:', JSON.stringify(session?.error || session));
+    return json({ error: session?.error?.message || 'Impossible d\'ouvrir le portail de facturation.' }, 502);
+  }
+  return json({ url: session.url });
+}
+
 async function getCallerRole(env, userId) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role`, {
     headers: { 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` }
@@ -2462,6 +2505,7 @@ export default {
 
     try {
       if (url.pathname === '/create-checkout-session') return await handleCreateCheckout(request, env);
+      if (url.pathname === '/create-portal-session')   return await handleCreatePortalSession(request, env);
       if (url.pathname === '/register-free')           return await handleRegisterFree(request, env);
       if (url.pathname === '/register-team-member')    return await handleRegisterTeamMember(request, env);
       if (url.pathname === '/delete-user')             return await handleDeleteUser(request, env);
