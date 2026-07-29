@@ -1088,12 +1088,20 @@ async function createSupabaseUser(env, { email, prenom, nom, societe, portail = 
 }
 
 const PRIX_ENTREPRISE  = (n) => n <= 1 ? 30 : n <= 5 ? 25 : 20;
-const PRIX_FOURNISSEUR = {
-  essentiel: () => 10,
-  studio:    (n) => n <= 1 ? 30 : n <= 5 ? 25 : 20,
-  marche:    (n) => n <= 1 ? 50 : n <= 5 ? 40 : 30,
+
+// Portail fournisseur : prix par utilisateur affiché sur la page tarifs (= tarif pour 1 utilisateur),
+// auquel s'applique une remise par volume. Une seule règle plutôt qu'une grille par formule, pour
+// que le prix annoncé et le prix facturé ne puissent plus diverger (Studio était vendu 20 € et
+// facturé 30 €). Toute modification ici doit être répercutée dans pivot-inscription-fournisseur.html,
+// qui recalcule le même montant côté navigateur pour l'afficher avant paiement.
+const PRIX_BASE_FOURNISSEUR = { decouverte: 0, essentiel: 10, studio: 20, marche: 50 };
+const REMISE_VOLUME = (n) => n >= 10 ? 0.4 : n >= 4 ? 0.2 : 0;
+const PRIX_FOURNISSEUR = (plan, n) => {
+  const base = PRIX_BASE_FOURNISSEUR[plan];
+  return base == null ? null : Math.round(base * (1 - REMISE_VOLUME(n)));
 };
-const PRIX_MOE = (n) => 10;
+// Même règle de remise que le portail fournisseur, sur un prix de base de 10 € par utilisateur.
+const PRIX_MOE = (n) => Math.round(10 * (1 - REMISE_VOLUME(n)));
 
 function getPlanLabel(portail, plan) {
   if (portail === 'entreprise') return 'Portail Entreprise · Pivot La Racine';
@@ -1119,8 +1127,8 @@ async function handleCreateCheckout(request, env) {
     unitAmountCents = PRIX_ENTREPRISE(licences) * 100;
     qty = licences;
   } else if (portail === 'fournisseur') {
-    const fn = PRIX_FOURNISSEUR[plan];
-    unitAmountCents = fn ? fn(licences) * 100 : 0;
+    const pu = PRIX_FOURNISSEUR(plan, licences);
+    unitAmountCents = (pu || 0) * 100;
     qty = licences;
   } else if (portail === 'moe') {
     unitAmountCents = PRIX_MOE(licences) * 100;
@@ -1417,7 +1425,10 @@ async function handleStripeWebhook(request, env) {
               headers: { ...serviceHeaders, 'Prefer': 'return=representation' },
               body: JSON.stringify({
                 nom: societe || `${prenom || ''} ${nom || ''}`.trim() || email,
-                type: portail || 'entreprise',
+                // structures.type n'accepte que 'entrepreneur' | 'fournisseur' | 'moe', alors que le
+                // portail entreprise se nomme 'entreprise' partout ailleurs : sans cette conversion
+                // la contrainte CHECK rejetait l'insertion et aucune structure n'était créée.
+                type: portail === 'entreprise' ? 'entrepreneur' : (portail || 'entrepreneur'),
                 referent_id: userId,
                 nb_licences_max: nbLicences,
                 statut_abonnement: 'actif',
@@ -1426,8 +1437,10 @@ async function handleStripeWebhook(request, env) {
                 stripe_subscription_id: session.subscription || null,
               }),
             });
+            if (!structRes.ok) throw new Error(await structRes.text());
             const [struct] = await structRes.json();
-            if (struct?.id) {
+            if (!struct?.id) throw new Error('structure créée sans identifiant renvoyé');
+            {
               await fetch(`${SUPABASE_URL}/rest/v1/structure_membres`, {
                 method: 'POST', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
                 body: JSON.stringify({ structure_id: struct.id, user_id: userId, role: 'referent' }),
@@ -1438,7 +1451,14 @@ async function handleStripeWebhook(request, env) {
               });
             }
           } catch (e) {
+            // Un paiement encaissé sans structure = pas de référent, pas de licences et pas de lien
+            // vers l'abonnement Stripe (donc résiliation indétectable). Ça doit alerter, pas rester
+            // dans les logs : c'est ce silence qui avait masqué un type de structure invalide.
             console.error('création structure Stripe error:', e.message);
+            await notifyAdmin(env, {
+              categorie: 'inscription',
+              message: `⚠️ Paiement encaissé mais structure non créée pour ${email} — ${e.message}`,
+            }).catch(() => {});
           }
         }
 

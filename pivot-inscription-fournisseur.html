@@ -135,7 +135,7 @@
       <button class="plan-card" onclick="selectPlan('studio', this)">
         <span class="plan-emoji">🪴</span>
         <span class="plan-name">Studio</span>
-        <span class="plan-prix">30 € / mois</span>
+        <span class="plan-prix">20 € / mois</span>
         <span class="plan-desc">Historique + catalogue + photos mobile</span>
       </button>
       <button class="plan-card" onclick="selectPlan('marche', this)">
@@ -212,18 +212,17 @@
 <script>
   const WORKER_URL = 'https://pivot-pdf.jncoutier.workers.dev';
 
-  const PRIX = {
-    decouverte: () => 0,
-    essentiel:  () => 10,
-    studio:     (n) => n <= 1 ? 30 : n <= 5 ? 25 : 20,
-    marche:     (n) => n <= 1 ? 50 : n <= 5 ? 40 : 30,
-  };
+  // Doit rester identique à PRIX_BASE_FOURNISSEUR / REMISE_VOLUME dans worker/worker.js :
+  // ce calcul n'affiche que le montant, c'est le worker qui facture.
+  const PRIX_BASE = { decouverte: 0, essentiel: 10, studio: 20, marche: 50 };
+  const REMISE_VOLUME = (n) => n >= 10 ? 0.4 : n >= 4 ? 0.2 : 0;
+  const PRIX = (plan, n) => Math.round((PRIX_BASE[plan] ?? 0) * (1 - REMISE_VOLUME(n)));
 
   let planActif = 'decouverte';
   let nbLicences = 1;
   let customMode = false;
 
-  function getPu() { return PRIX[planActif] ? PRIX[planActif](nbLicences) : 0; }
+  function getPu() { return PRIX(planActif, nbLicences); }
   function getTotal() { return getPu() * (planActif === 'decouverte' ? 1 : nbLicences); }
 
   function selectPlan(plan, btn) {

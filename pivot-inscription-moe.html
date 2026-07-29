@@ -251,8 +251,10 @@
       document.getElementById('prix-detail').textContent = 'Sans engagement · Résiliable à tout moment';
       document.getElementById('btn-label').textContent = 'Créer mon compte gratuit';
     } else {
-      const total = 10 * nbLicences;
-      document.getElementById('prix-detail').textContent = `${nbLicences} utilisateur${nbLicences > 1 ? 's' : ''} · 10 € / utilisateur`;
+      // Doit rester identique à PRIX_MOE / REMISE_VOLUME dans worker/worker.js, qui facture.
+      const pu = Math.round(10 * (nbLicences >= 10 ? 0.6 : nbLicences >= 4 ? 0.8 : 1));
+      const total = pu * nbLicences;
+      document.getElementById('prix-detail').textContent = `${nbLicences} utilisateur${nbLicences > 1 ? 's' : ''} · ${pu} € / utilisateur`;
       document.getElementById('prix-val').innerHTML = `${total} <span>€ / mois</span>`;
       document.getElementById('btn-label').textContent = 'Continuer vers le paiement';
     }
