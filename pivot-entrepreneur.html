@@ -1726,6 +1726,39 @@ function openInviterMembreModal() {
     <button onclick="inviterMembre()" class="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Envoyer l'invitation</button>`;
 }
 
+// Un compte Pivot existant ne peut pas être rattaché à une équipe depuis l'application : seul
+// le support peut le faire, après avoir vérifié que la personne est d'accord et qu'elle ne
+// dépend pas déjà d'une autre structure.
+function afficherDemandeRattachement(email) {
+  const nomStruct = state.profile?.raison_sociale || state.profile?.societe || '';
+  const sujet = encodeURIComponent('Demande de rattachement de compte');
+  const corps = encodeURIComponent(
+    `Bonjour,\n\nJe souhaite rattacher le compte suivant à mon équipe :\n\n` +
+    `Compte à rattacher : ${email}\n` +
+    `Ma structure : ${nomStruct}\n` +
+    `Mon compte : ${state.user?.email || ''}\n\n` +
+    `Merci d'avance.`
+  );
+  document.getElementById('modal-content').innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-800">Ce compte existe déjà</h2>
+      <button onclick="openEquipeModal()" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <p class="text-sm text-gray-600 mb-3">
+      <strong>${escHtml(email)}</strong> possède déjà un compte Pivot. Pour des raisons de sécurité,
+      un compte existant ne peut pas être rattaché automatiquement à une équipe : il pourrait déjà
+      appartenir à une autre structure.
+    </p>
+    <p class="text-sm text-gray-600 mb-4">
+      Écrivez-nous et nous procéderons au rattachement après accord de la personne concernée.
+    </p>
+    <a href="mailto:contact@pivotlaracine.com?subject=${sujet}&body=${corps}"
+       class="block w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 text-center">
+      ✉️ Écrire à contact@pivotlaracine.com
+    </a>
+    <button onclick="openInviterMembreModal()" class="w-full border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 mt-2">Retour</button>`;
+}
+
 async function inviterMembre() {
   const email = document.getElementById('invite-email')?.value.trim().toLowerCase();
   if (!email) return toast('Entrez un email', 'err');
@@ -1737,23 +1770,10 @@ async function inviterMembre() {
       const { data: alreadyMember } = await db.from('structure_membres')
         .select('id').eq('user_id', existing.id).eq('structure_id', state.structureId).maybeSingle();
       if (alreadyMember) return toast('Cette personne est déjà membre de l\'équipe', 'err');
-      // Rattachement direct d'un compte existant : aucun email n'est envoyé dans ce cas, la personne
-      // est ajoutée immédiatement. La contrainte d'unicité sur structure_membres.user_id empêche de
-      // capter quelqu'un qui appartient déjà à une autre équipe (son profil serait sinon détaché).
-      const { error } = await db.from('structure_membres').insert({ user_id: existing.id, structure_id: state.structureId, role: 'membre' });
-      if (error) {
-        if (error.code === '23505') return toast('Cette personne appartient déjà à une autre équipe. Elle doit la quitter avant de vous rejoindre.', 'err');
-        throw error;
-      }
-      const { error: profErr } = await db.from('profiles').update({ structure_id: state.structureId }).eq('id', existing.id);
-      if (profErr) throw profErr;
-      // Sans notification, la personne rejoint une équipe sans jamais en être informée.
-      const { data: st } = await db.from('structures').select('nom').eq('id', state.structureId).maybeSingle();
-      await db.from('notifications').insert({
-        user_id: existing.id, type: 'ajout_equipe', read: false,
-        message: `Vous avez été ajouté à l'équipe ${st?.nom || ''}`.trim()
-      });
-      toast('Membre ajouté — il en a été informé dans son espace');
+      // Un compte existant n'est jamais rattaché automatiquement : il peut déjà appartenir à une
+      // autre structure (dont il est peut-être le référent), et le rattacher écraserait son
+      // profiles.structure_id à son insu. Le rattachement passe donc par l'équipe Pivot.
+      return afficherDemandeRattachement(email);
     } else {
       // Créer une invitation
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
