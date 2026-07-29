@@ -1737,11 +1737,23 @@ async function inviterMembre() {
       const { data: alreadyMember } = await db.from('structure_membres')
         .select('id').eq('user_id', existing.id).eq('structure_id', state.structureId).maybeSingle();
       if (alreadyMember) return toast('Cette personne est déjà membre de l\'équipe', 'err');
-      // Ajouter directement
+      // Rattachement direct d'un compte existant : aucun email n'est envoyé dans ce cas, la personne
+      // est ajoutée immédiatement. La contrainte d'unicité sur structure_membres.user_id empêche de
+      // capter quelqu'un qui appartient déjà à une autre équipe (son profil serait sinon détaché).
       const { error } = await db.from('structure_membres').insert({ user_id: existing.id, structure_id: state.structureId, role: 'membre' });
-      if (error) throw error;
-      await db.from('profiles').update({ structure_id: state.structureId }).eq('id', existing.id);
-      toast('Membre ajouté avec succès');
+      if (error) {
+        if (error.code === '23505') return toast('Cette personne appartient déjà à une autre équipe. Elle doit la quitter avant de vous rejoindre.', 'err');
+        throw error;
+      }
+      const { error: profErr } = await db.from('profiles').update({ structure_id: state.structureId }).eq('id', existing.id);
+      if (profErr) throw profErr;
+      // Sans notification, la personne rejoint une équipe sans jamais en être informée.
+      const { data: st } = await db.from('structures').select('nom').eq('id', state.structureId).maybeSingle();
+      await db.from('notifications').insert({
+        user_id: existing.id, type: 'ajout_equipe', read: false,
+        message: `Vous avez été ajouté à l'équipe ${st?.nom || ''}`.trim()
+      });
+      toast('Membre ajouté — il en a été informé dans son espace');
     } else {
       // Créer une invitation
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
@@ -2047,6 +2059,17 @@ async function processTeamInvite() {
       .select('*').eq('token', token).maybeSingle();
     if (error || !inv) return toast('Lien d\'invitation invalide ou expiré', 'err');
     if (inv.statut !== 'pending') return toast('Cette invitation a déjà été utilisée', 'err');
+
+    // Une invitation ne peut être consommée que par son destinataire. Ouvrir le lien depuis une
+    // autre session (celle du référent qui vient de l'envoyer, typiquement) la marquait "acceptée"
+    // au profit du mauvais compte : le vrai destinataire se voyait ensuite refuser son inscription
+    // avec "Invitation déjà utilisée".
+    const emailInvite = (inv.email_invite || '').toLowerCase();
+    const emailConnecte = (state.user?.email || '').toLowerCase();
+    if (emailInvite && emailConnecte && emailInvite !== emailConnecte) {
+      state.pendingTeamToken = null;
+      return toast(`Cette invitation est destinée à ${inv.email_invite}. Déconnectez-vous puis rouvrez le lien pour l'accepter.`, 'err');
+    }
 
     // Vérifier si déjà membre
     const { data: alreadyMember } = await db.from('structure_membres')
