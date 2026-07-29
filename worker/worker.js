@@ -1539,8 +1539,15 @@ async function handleStripeWebhook(request, env) {
   // sinon chaque mise à jour d'abonnement renverrait l'email.
   if (event.type === 'customer.subscription.updated') {
     const sub = event.data.object;
-    const vientDEtreAnnule = sub.cancel_at_period_end === true
-      && event.data.previous_attributes?.cancel_at_period_end === false;
+    const prev = event.data.previous_attributes || {};
+    // Deux formes selon la version d'API : historiquement cancel_at_period_end passait à true ;
+    // depuis 2026-05-27 c'est cancel_at qui reçoit la date de fin, cancel_at_period_end restant
+    // à false. On détecte donc l'apparition d'une date d'annulation, pas un booléen.
+    // Se limiter à previous_attributes évite de renvoyer l'email à chaque mise à jour ultérieure
+    // (Stripe émet un second événement juste après, pour le motif d'annulation saisi par le client).
+    const vientDEtreAnnule =
+      ('cancel_at' in prev && !prev.cancel_at && !!sub.cancel_at) ||
+      ('cancel_at_period_end' in prev && prev.cancel_at_period_end === false && sub.cancel_at_period_end === true);
     if (vientDEtreAnnule) {
       try {
         const r = await fetch(`${SUPABASE_URL}/rest/v1/structures?stripe_subscription_id=eq.${sub.id}&select=id,nom,type,referent_id`, { headers: serviceHeaders });
@@ -1574,7 +1581,9 @@ async function handleStripeWebhook(request, env) {
         });
         await envoyerEmailResiliation(env, {
           structure: struct,
-          finTs: sub.ended_at || sub.current_period_end,
+          // current_period_end a migré vers les lignes d'abonnement dans les versions récentes :
+          // on se rabat sur la date du jour plutôt que d'envoyer un email sans date d'effet.
+          finTs: sub.ended_at || sub.cancel_at || sub.current_period_end || Math.floor(Date.now() / 1000),
           future: false,
           headers: serviceHeaders,
         });
