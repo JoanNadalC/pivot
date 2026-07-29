@@ -341,6 +341,15 @@
     const lienConnexion = document.getElementById('lien-connexion');
     if (lienConnexion) lienConnexion.href = `pivot-login-fournisseur.html?invite=${inviteToken}`;
   })();
+
+  // Pré-sélection de la formule cliquée sur la page tarifs (?plan=decouverte|essentiel|studio|marche).
+  (function () {
+    const plan = new URLSearchParams(location.search).get('plan');
+    if (!plan) return;
+    const btn = [...document.querySelectorAll('.plan-card')]
+      .find(b => (b.getAttribute('onclick') || '').includes(`'${plan}'`));
+    if (btn) selectPlan(plan, btn);
+  })();
 </script>
 </body>
 </html>

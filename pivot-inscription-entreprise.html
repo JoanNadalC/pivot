@@ -262,6 +262,16 @@
 
   document.addEventListener('keydown', e => { if (e.key === 'Enter') demarrerPaiement(); });
   updatePrix();
+
+  // Pré-sélection du palier cliqué sur la page tarifs (?licences=1|5|10), pour que le prix affiché
+  // corresponde à celui qui vient d'être annoncé au visiteur.
+  (function () {
+    const lic = new URLSearchParams(location.search).get('licences');
+    if (!lic) return;
+    const btn = [...document.querySelectorAll('.lic-btn')]
+      .find(b => (b.getAttribute('onclick') || '').includes(`setLicences(${lic},`));
+    if (btn) setLicences(parseInt(lic, 10), btn);
+  })();
 </script>
 </body>
 </html>

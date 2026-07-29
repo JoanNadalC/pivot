@@ -301,6 +301,15 @@
   }
 
   document.addEventListener('keydown', e => { if (e.key === 'Enter') demarrerInscription(); });
+
+  // Pré-sélection de la formule cliquée sur la page tarifs (?plan=consultant|pilote).
+  (function () {
+    const plan = new URLSearchParams(location.search).get('plan');
+    if (!plan) return;
+    const btn = [...document.querySelectorAll('.plan-card')]
+      .find(b => (b.getAttribute('onclick') || '').includes(`'${plan}'`));
+    if (btn) selectPlan(plan, btn);
+  })();
 </script>
 </body>
 </html>
