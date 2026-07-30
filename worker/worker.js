@@ -1320,6 +1320,20 @@ async function handlePurgerStructure(request, env) {
     if (!r.ok) throw new Error(`${table} : ${await r.text()}`);
     supprimees[table] = ((await r.json()) || []).length;
   };
+  const lire = async (chemin) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${chemin}`, { headers });
+    return r.ok ? (await r.json()) || [] : [];
+  };
+
+  // Les adresses des fichiers vivent DANS les lignes que l'on s'apprête à supprimer : il faut les
+  // relever avant, sinon les PDF et photos resteraient indéfiniment dans le Storage sans que rien
+  // ne permette plus de les retrouver.
+  const fichiers = new Set();
+  const releverUrl = (u) => {
+    if (!u || typeof u !== 'string') return;
+    const m = u.match(/\/object\/(?:public|sign)\/([^/]+)\/([^?]+)/);
+    if (m) fichiers.add(`${m[1]}::${decodeURIComponent(m[2])}`);
+  };
 
   try {
     if (userIds.length) {
@@ -1332,6 +1346,28 @@ async function handlePurgerStructure(request, env) {
 
       if (chantierIds.length) {
         const chListe = `in.(${chantierIds.join(',')})`;
+
+        // Relevé des pièces jointes, avant toute suppression.
+        for (const d of await lire(`daf?chantier_id=${chListe}&select=pdf_url,pdf_visa_url`)) {
+          releverUrl(d.pdf_url); releverUrl(d.pdf_visa_url);
+        }
+        for (const d of await lire(`documents_viser?chantier_id=${chListe}&select=url,pdf_url,pdf_visa_url`)) {
+          releverUrl(d.url); releverUrl(d.pdf_url); releverUrl(d.pdf_visa_url);
+        }
+        for (const r of await lire(`reponses_fournisseurs?entrepreneur_id=${liste}&select=devis_pdf_url`)) {
+          releverUrl(r.devis_pdf_url);
+        }
+        // fiches_techniques est un tableau JSON d'objets { nom, url }.
+        for (const f of await lire(`fournitures?chantier_id=${chListe}&select=fiches_techniques`)) {
+          (f.fiches_techniques || []).forEach(ft => releverUrl(ft?.url));
+        }
+        const consIds = (await lire(`consultations?chantier_id=${chListe}&select=id`)).map(c => c.id);
+        if (consIds.length) {
+          for (const p of await lire(`photos_fournitures?consultation_id=in.(${consIds.join(',')})&select=url`)) {
+            releverUrl(p.url);
+          }
+        }
+
         await del('reponses_fournisseurs', `entrepreneur_id=${liste}`);
         await del('comparatif_selections', `chantier_id=${chListe}`);
         await del('commande_lignes', `chantier_id=${chListe}`);
@@ -1345,6 +1381,27 @@ async function handlePurgerStructure(request, env) {
       await del('fournisseurs', `entrepreneur_id=${liste}`);
       await del('notifications', `user_id=${liste}`);
     }
+
+    // Suppression des fichiers relevés, regroupés par bucket. La clé de service contourne le RLS,
+    // y compris la politique qui rend les visas inaltérables pour les comptes utilisateurs.
+    const parBucket = {};
+    for (const entree of fichiers) {
+      const [bucket, chemin] = entree.split('::');
+      (parBucket[bucket] ||= []).push(chemin);
+    }
+    let fichiersSupprimes = 0;
+    for (const [bucket, chemins] of Object.entries(parBucket)) {
+      // L'API accepte une liste ; on la découpe pour éviter des requêtes démesurées.
+      for (let i = 0; i < chemins.length; i += 100) {
+        const lot = chemins.slice(i, i + 100);
+        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
+          method: 'DELETE', headers, body: JSON.stringify({ prefixes: lot }),
+        });
+        if (r.ok) fichiersSupprimes += lot.length;
+        else console.error(`purge storage ${bucket}:`, await r.text());
+      }
+    }
+    if (fichiersSupprimes) supprimees.fichiers = fichiersSupprimes;
 
     await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
       method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
