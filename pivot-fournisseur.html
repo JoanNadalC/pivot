@@ -1678,6 +1678,32 @@ function _nomFichierSafe(s, defaut) {
   return net || defaut;
 }
 
+// Les URL stockées en base pointent vers /object/public/… , servi sans contrôle d'accès.
+// Pour les buckets passés en privé, on regénère une URL signée à la volée, valable une heure.
+// L'URL stockée reste inchangée : elle sert d'identifiant stable, aucune migration n'est requise.
+// En cas d'échec on renvoie l'URL d'origine : le code fonctionne que le bucket soit public ou privé.
+async function _urlSignee(url, bucket, secondes = 3600) {
+  if (!url || typeof url !== 'string') return url;
+  const m = url.match(/\/object\/public\/([^/]+)\/(.+)$/);
+  if (!m) return url;
+  const [, bucketDetecte, cheminBrut] = m;
+  if (bucket && bucket !== bucketDetecte) return url;
+  const chemin = decodeURIComponent(cheminBrut.split('?')[0]);
+  try {
+    const { data, error } = await db.storage.from(bucketDetecte).createSignedUrl(chemin, secondes);
+    return (!error && data?.signedUrl) ? data.signedUrl : url;
+  } catch { return url; }
+}
+
+// Ouvre un fichier protégé dans un nouvel onglet. La fenêtre est ouverte AVANT l'await :
+// un window.open différé serait bloqué comme popup par le navigateur.
+async function ouvrirFichierProtege(url, bucket) {
+  const onglet = window.open('', '_blank');
+  const signee = await _urlSignee(url, bucket);
+  if (onglet) onglet.location = signee;
+  else window.location.href = signee;
+}
+
 // Écrit un classeur Excel dans l'archive. On préfère le .xlsx au .csv : pas de question de
 // séparateur ni d'encodage à l'ouverture, et les colonnes sont dimensionnées.
 function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
@@ -1708,7 +1734,8 @@ async function exporterMesDonnees(btn) {
   const ajouterFichier = async (dossier, url, nom) => {
     if (!url) return;
     try {
-      const r = await fetch(url);
+      // Signée si le bucket est privé ; sinon _urlSignee renvoie l'URL telle quelle.
+      const r = await fetch(await _urlSignee(url));
       if (!r.ok) throw new Error('HTTP ' + r.status);
       dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
     } catch (e) { echecs.push(`${nom} — ${e.message}`); }
