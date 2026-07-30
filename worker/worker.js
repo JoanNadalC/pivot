@@ -1268,6 +1268,102 @@ async function getCallerRole(env, userId) {
   return row?.role || null;
 }
 
+// Purge les données métier d'une structure résiliée, une fois le délai de conservation écoulé.
+// Irréversible, donc jamais automatique : déclenchée à la main depuis le portail admin.
+// La ligne `structures` est conservée — elle porte la trace comptable (nom, dates, identifiants
+// Stripe) que la facturation impose de garder, alors que le RGPD demande d'effacer le reste.
+async function handlePurgerStructure(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const json = (body, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+
+  const caller = await getAuthUser(request, env);
+  if (!caller?.id) return json({ error: 'Non authentifié.' }, 401);
+  if ((await getCallerRole(env, caller.id)) !== 'admin') return json({ error: 'Réservé à l\'administrateur.' }, 403);
+
+  const { structureId } = await request.json().catch(() => ({}));
+  if (!structureId) return json({ error: 'structureId manquant.' }, 400);
+
+  const headers = {
+    'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+    'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+  };
+
+  // Garde-fou serveur : on ne purge que ce qui est réellement résilié et hors délai. Un identifiant
+  // envoyé par erreur depuis l'interface ne doit pas pouvoir effacer une structure active.
+  const sRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}&select=id,nom,statut_abonnement,resilie_le,donnees_supprimees_le`,
+    { headers }
+  );
+  const [struct] = await sRes.json();
+  if (!struct) return json({ error: 'Structure introuvable.' }, 404);
+  if (struct.donnees_supprimees_le) return json({ error: 'Les données de cette structure ont déjà été supprimées.' }, 409);
+  if (struct.statut_abonnement !== 'resilie') return json({ error: 'Cette structure n\'est pas résiliée.' }, 409);
+
+  const joursEcoules = struct.resilie_le
+    ? Math.floor((Date.now() - new Date(struct.resilie_le).getTime()) / 86400000)
+    : null;
+  if (joursEcoules === null || joursEcoules < JOURS_AVANT_SUPPRESSION) {
+    return json({ error: `Délai non écoulé : ${joursEcoules ?? '?'} jour(s) depuis la résiliation, ${JOURS_AVANT_SUPPRESSION} requis.` }, 409);
+  }
+
+  // Membres de la structure : c'est par eux qu'on retrouve les données métier.
+  const mRes = await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?structure_id=eq.${structureId}&select=user_id`, { headers });
+  const userIds = ((await mRes.json()) || []).map(m => m.user_id).filter(Boolean);
+
+  const supprimees = {};
+  const del = async (table, filtre) => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filtre}`, {
+      method: 'DELETE', headers: { ...headers, 'Prefer': 'return=representation' },
+    });
+    if (!r.ok) throw new Error(`${table} : ${await r.text()}`);
+    supprimees[table] = ((await r.json()) || []).length;
+  };
+
+  try {
+    if (userIds.length) {
+      const liste = `in.(${userIds.join(',')})`;
+      // Ordre imposé par les clés étrangères : on part des feuilles vers les racines.
+      const { data: chantiers } = await fetch(
+        `${SUPABASE_URL}/rest/v1/chantiers?entrepreneur_id=${liste}&select=id`, { headers }
+      ).then(async r => ({ data: await r.json() }));
+      const chantierIds = (chantiers || []).map(c => c.id);
+
+      if (chantierIds.length) {
+        const chListe = `in.(${chantierIds.join(',')})`;
+        await del('reponses_fournisseurs', `entrepreneur_id=${liste}`);
+        await del('comparatif_selections', `chantier_id=${chListe}`);
+        await del('commande_lignes', `chantier_id=${chListe}`);
+        await del('commandes', `chantier_id=${chListe}`);
+        await del('daf', `chantier_id=${chListe}`);
+        await del('documents_viser', `chantier_id=${chListe}`);
+        await del('fournitures', `chantier_id=${chListe}`);
+        await del('consultations', `chantier_id=${chListe}`);
+        await del('chantiers', `id=${chListe}`);
+      }
+      await del('fournisseurs', `entrepreneur_id=${liste}`);
+      await del('notifications', `user_id=${liste}`);
+    }
+
+    await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
+      method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ donnees_supprimees_le: new Date().toISOString() }),
+    });
+
+    await notifyAdmin(env, {
+      categorie: 'resiliation',
+      message: `Données supprimées — ${struct.nom} (${Object.entries(supprimees).map(([t, n]) => `${t}: ${n}`).join(', ') || 'aucune donnée'})`,
+      structureId,
+    });
+
+    return json({ ok: true, supprimees });
+  } catch (e) {
+    console.error('purge structure:', e.message);
+    return json({ error: 'Suppression interrompue : ' + e.message }, 500);
+  }
+}
+
 async function handleDeleteUser(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
   const { userId, type } = await request.json();
@@ -2606,6 +2702,7 @@ export default {
       if (url.pathname === '/register-free')           return await handleRegisterFree(request, env);
       if (url.pathname === '/register-team-member')    return await handleRegisterTeamMember(request, env);
       if (url.pathname === '/delete-user')             return await handleDeleteUser(request, env);
+      if (url.pathname === '/purger-structure')        return await handlePurgerStructure(request, env);
       if (url.pathname === '/send-invitation')         return await handleSendInvitation(request, env);
       if (url.pathname === '/notify-event')            return await handleNotifyEvent(request, env);
       if (url.pathname === '/waitlist-confirm')        return await handleWaitlistConfirm(request, env);

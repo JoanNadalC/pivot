@@ -676,6 +676,11 @@ function renderStructureCard(s, members) {
         <span>${s.plan||'—'}</span>
         <button onclick="event.stopPropagation();openEditModal('${s.id}')" class="text-gray-300 hover:text-indigo-600" title="Modifier">✏️</button>
         <button onclick="event.stopPropagation();deleteStructure('${s.id}','${escHtml(s.nom||'')}')" class="text-gray-300 hover:text-red-500" title="Supprimer la structure">🗑️</button>
+        ${_purgeDisponible(s) ? `
+          <button onclick="event.stopPropagation();ouvrirPurgeStructure('${s.id}','${escHtml(s.nom||'')}')"
+            class="text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg px-2 py-0.5 hover:bg-red-100 font-medium whitespace-nowrap"
+            title="Effacer les données métier de cette structure">🧹 Purger</button>` : ''}
+        ${s.donnees_supprimees_le ? `<span class="text-xs text-gray-400 italic whitespace-nowrap">données purgées</span>` : ''}
         ${s.type !== 'moe' ? `
           <button onclick="event.stopPropagation();${s.statut_abonnement==='actif'?`toggleStatut('${s.id}','actif')`:`toggleStatut('${s.id}','suspendu')`}"
             class="text-gray-300 ${s.statut_abonnement==='actif'?'hover:text-red-500':'hover:text-green-600'}"
@@ -878,6 +883,78 @@ async function deleteUser(userId, email, type) {
     await loadAll();
   } catch (e) {
     alert('Erreur : ' + e.message);
+  }
+}
+
+// Délai de conservation après résiliation, avant purge possible. Doit rester aligné sur
+// JOURS_AVANT_SUPPRESSION dans worker/worker.js, qui refuse la purge en deçà.
+const JOURS_AVANT_PURGE = 90;
+
+function _joursDepuisResiliation(s) {
+  if (!s?.resilie_le) return null;
+  return Math.floor((Date.now() - new Date(s.resilie_le).getTime()) / 86400000);
+}
+
+// Le bouton n'apparaît que lorsque la purge est réellement possible : structure résiliée,
+// délai écoulé, données pas déjà effacées. Le worker revérifie ces trois conditions.
+function _purgeDisponible(s) {
+  if (!s || s.statut_abonnement !== 'resilie' || s.donnees_supprimees_le) return false;
+  const j = _joursDepuisResiliation(s);
+  return j !== null && j >= JOURS_AVANT_PURGE;
+}
+
+// Suppression irréversible : on demande de recopier le nom de la structure plutôt qu'un simple
+// « OK », pour qu'un clic distrait ne puisse pas effacer les chantiers d'un client.
+function ouvrirPurgeStructure(structId, structNom) {
+  const s = (state.structures || []).find(x => x.id === structId);
+  const jours = _joursDepuisResiliation(s);
+  document.getElementById('modal-content').innerHTML = `
+    <h2 class="text-lg font-semibold text-red-700 mb-3">🧹 Purger les données de « ${escHtml(structNom)} »</h2>
+    <p class="text-sm text-gray-600 mb-3">
+      Résiliée depuis <strong>${jours} jours</strong>. Les chantiers, consultations, devis reçus,
+      commandes, DAF et documents de cette structure seront <strong>définitivement effacés</strong>.
+    </p>
+    <p class="text-sm text-gray-600 mb-3">
+      La fiche de la structure est conservée : son nom, ses dates et ses références de facturation
+      restent nécessaires à votre comptabilité.
+    </p>
+    <p class="text-xs text-red-600 mb-3">Cette action est irréversible et aucune restauration n'est possible.</p>
+    <label class="block text-xs text-gray-500 mb-1">Recopiez le nom de la structure pour confirmer</label>
+    <input id="purge-confirm" type="text" placeholder="${escHtml(structNom)}" class="w-full border rounded-lg px-3 py-2 text-sm mb-3">
+    <div id="purge-msg" class="text-xs mb-3 hidden"></div>
+    <div class="flex gap-3">
+      <button onclick="confirmerPurgeStructure('${structId}','${escHtml(structNom)}',this)"
+        class="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700">Purger définitivement</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>`;
+  document.getElementById('modal-overlay')?.classList.remove('hidden');
+}
+
+async function confirmerPurgeStructure(structId, structNom, btn) {
+  const saisi = document.getElementById('purge-confirm')?.value.trim();
+  const msg = document.getElementById('purge-msg');
+  const erreur = t => { msg.textContent = t; msg.className = 'text-xs text-red-600 mb-3'; };
+  if (saisi !== structNom) return erreur('Le nom saisi ne correspond pas.');
+
+  const libelle = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Suppression…';
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch('https://pivot-pdf.jncoutier.workers.dev/purger-structure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ structureId: structId }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) throw new Error(data.error || 'Échec de la suppression.');
+    const detail = Object.entries(data.supprimees || {})
+      .filter(([, n]) => n > 0).map(([t, n]) => `${n} ${t}`).join(', ');
+    closeModal();
+    toast(`Données de « ${structNom} » supprimées${detail ? ' — ' + detail : ''}`);
+    await loadAll();
+  } catch (e) {
+    erreur(e.message);
+    btn.disabled = false; btn.textContent = libelle;
   }
 }
 
