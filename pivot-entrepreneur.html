@@ -1461,6 +1461,13 @@ function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
 const _dateFr = d => d ? new Date(d).toLocaleDateString('fr-FR') : '';
 const _euros = v => (v === null || v === undefined || v === '') ? '' : Number(v);
 
+// Statuts DAF et documents, en clair : les codes internes n'ont aucun sens dans un export.
+const _STATUT_LISIBLE = {
+  brouillon: 'Brouillon', soumise: 'Soumise', visa_ok: 'Visa accordé',
+  visa_remarques: 'Visa avec observations', refusee: 'Refusée', commandee: 'Commandée',
+  en_attente: 'En attente', valide: 'Validé',
+};
+
 async function exporterMesDonnees(btn) {
   if (typeof JSZip === 'undefined' || typeof XLSX === 'undefined') {
     return toast('Bibliothèque d\'export indisponible, rechargez la page', 'err');
@@ -1612,7 +1619,8 @@ async function exporterMesDonnees(btn) {
         }
       }
 
-      // DAF
+      // DAF, avec la version revêtue du visa MOE quand elle existe : c'est la pièce qui fait foi
+      // pour justifier qu'une fourniture a bien été validée avant commande.
       const dafs = dafRes.data || [];
       if (dafs.length) {
         _ajouterFeuille(d, 'daf', dafs.map(x => ({
@@ -1620,24 +1628,43 @@ async function exporterMesDonnees(btn) {
           'Référence': x.reference || '',
           'Fabricant': x.fabricant || '',
           'Fournisseur': nomFournisseur[x.fournisseur_id] || '',
-          'Statut': x.statut || '',
+          'Statut': _STATUT_LISIBLE[x.statut] || x.statut || '',
+          'Visa MOE': x.pdf_visa_url ? 'Oui' : '',
+          'Observations du visa': x.visa_remarques || '',
           'Version': x.version || '',
           'Livraison prévue': _dateFr(x.date_livraison_prevue),
           'Soumise le': _dateFr(x.date_soumission),
         })), 'DAF');
         const dd = d.folder('daf-pdf');
-        for (const daf of dafs) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || 'document'}.pdf`);
+        for (const daf of dafs) {
+          const nom = daf.designation || 'document';
+          await ajouterFichier(dd, daf.pdf_url, `DAF - ${nom}.pdf`);
+          await ajouterFichier(dd, daf.pdf_visa_url, `DAF visée MOE - ${nom}.pdf`);
+        }
       }
 
-      // Documents soumis au visa
+      // Documents soumis au visa, avec le dernier visa émis : sans lui l'export contiendrait
+      // le document sans indiquer s'il a été approuvé, ce qui lui ôte sa valeur de preuve.
       const docs = docsRes.data || [];
       if (docs.length) {
-        _ajouterFeuille(d, 'documents-vises', docs.map(x => ({
-          'Document': x.nom || '',
-          'Version': x.version || '',
-          'Statut': x.statut || '',
-          'Déposé le': _dateFr(x.created_at),
-        })), 'Documents');
+        const { data: visas } = await db.from('visa_documents').select('*')
+          .in('document_id', docs.map(x => x.id)).order('date_visa', { ascending: false })
+          .then(r => r, () => ({ data: [] }));
+        const dernierVisa = {};
+        (visas || []).forEach(v => { if (!dernierVisa[v.document_id]) dernierVisa[v.document_id] = v; });
+        const libelleVisa = { sans_remarque: 'Accordé sans observation', avec_remarques: 'Accordé avec observations', refuse: 'Refusé' };
+        _ajouterFeuille(d, 'documents-vises', docs.map(x => {
+          const v = dernierVisa[x.id];
+          return {
+            'Document': x.nom || '',
+            'Version': x.version || '',
+            'Statut': _STATUT_LISIBLE[x.statut] || x.statut || '',
+            'Visa': v ? (libelleVisa[v.type] || v.type || '') : 'En attente',
+            'Observations du visa': v?.remarques || '',
+            'Visé le': _dateFr(v?.date_visa),
+            'Déposé le': _dateFr(x.created_at),
+          };
+        }), 'Documents');
         const dv = d.folder('documents-vises');
         for (const doc of docs) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || 'document.pdf');
       }
