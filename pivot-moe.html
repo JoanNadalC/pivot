@@ -1087,6 +1087,7 @@ async function exporterMesDonnees(btn) {
   if (btn) btn.disabled = true;
 
   const echecs = [];
+  const visasSansPdf = [];
   const ajouterFichier = async (dossier, url, nom) => {
     if (!url) return;
     try {
@@ -1142,22 +1143,42 @@ async function exporterMesDonnees(btn) {
       // DAF, avec la version revêtue de votre visa quand elle existe : c'est la pièce qui atteste
       // de votre validation, celle qu'il faut pouvoir produire des années plus tard.
       if (dafRes.data?.length) {
-        _ajouterFeuille(d, 'daf', dafRes.data.map(x => ({
-          'Désignation': x.designation || '',
-          'Référence': x.reference || '',
-          'Fabricant': x.fabricant || '',
-          'Statut': _STATUT_LISIBLE[x.statut] || x.statut || '',
-          'Visa émis': x.pdf_visa_url ? 'Oui' : '',
-          'Observations du visa': x.visa_remarques || '',
-          'Version': x.version || '',
-          'Livraison prévue': _dateFr(x.date_livraison_prevue),
-          'Soumise le': _dateFr(x.date_soumission),
-        })), 'DAF');
+        // Le visa fait foi par son enregistrement dans visa_moe, pas par le PDF qui n'en est
+        // qu'un rendu : celui-ci peut manquer (généré après coup, ou échec au moment du visa)
+        // sans que le visa soit moins réel. On exporte donc les deux.
+        const { data: visas } = await db.from('visa_moe').select('*')
+          .in('daf_id', dafRes.data.map(x => x.id)).order('date_visa', { ascending: false })
+          .then(r => r, () => ({ data: [] }));
+        const dernierVisa = {};
+        (visas || []).forEach(v => { if (!dernierVisa[v.daf_id]) dernierVisa[v.daf_id] = v; });
+        const libelleVisa = { sans_remarque: 'Accordé sans observation', avec_remarques: 'Accordé avec observations', refusee: 'Refusé', refuse: 'Refusé' };
+
+        _ajouterFeuille(d, 'daf', dafRes.data.map(x => {
+          const v = dernierVisa[x.id];
+          return {
+            'Désignation': x.designation || '',
+            'Référence': x.reference || '',
+            'Fabricant': x.fabricant || '',
+            'Statut': _STATUT_LISIBLE[x.statut] || x.statut || '',
+            'Mon visa': v ? (libelleVisa[v.type] || v.type || '') : 'En attente',
+            'Visé le': _dateFr(v?.date_visa),
+            'Observations du visa': v?.remarques || x.visa_remarques || '',
+            'PDF visé joint': x.pdf_visa_url ? 'Oui' : (v ? 'Non généré' : ''),
+            'Version': x.version || '',
+            'Livraison prévue': _dateFr(x.date_livraison_prevue),
+            'Soumise le': _dateFr(x.date_soumission),
+          };
+        }), 'DAF');
+
         const dd = d.folder('daf-pdf');
         for (const daf of dafRes.data) {
           const nom = daf.designation || 'document';
           await ajouterFichier(dd, daf.pdf_url, `DAF - ${nom}.pdf`);
-          await ajouterFichier(dd, daf.pdf_visa_url, `DAF visée - ${nom}.pdf`);
+          if (daf.pdf_visa_url) {
+            await ajouterFichier(dd, daf.pdf_visa_url, `DAF visée - ${nom}.pdf`);
+          } else if (dernierVisa[daf.id]) {
+            visasSansPdf.push(`${ch.affaire || 'chantier'} — ${nom}`);
+          }
         }
       }
 
@@ -1200,6 +1221,14 @@ async function exporterMesDonnees(btn) {
       echecs.length
         ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')
         : `Tous les fichiers ont été récupérés.`,
+      ...(visasSansPdf.length ? [
+        ``,
+        `${visasSansPdf.length} DAF ont bien été visées mais n'ont pas de PDF visé associé`,
+        `(le PDF n'a pas été généré au moment du visa). Le visa reste attesté par la`,
+        `feuille daf.xlsx de chaque chantier : colonnes "Mon visa", "Visé le" et`,
+        `"Observations du visa". DAF concernées :`,
+        ...visasSansPdf.map(v => '  - ' + v),
+      ] : []),
     ].join('\n'));
 
     maj('Compression…');
