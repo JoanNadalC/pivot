@@ -4701,8 +4701,12 @@ async function _genererPdfVise(d, statutDaf, remarques) {
   }
 
   const pdfBytes = await pdfDoc.save();
-  const path = `${d.id}/daf_visee.pdf`;
-  const { error } = await db.storage.from('daf-pdfs').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true });
+  // Un visa est un acte daté : sa pièce ne doit jamais être écrasée. L'ancien chemin fixe
+  // (`<id>/daf_visee.pdf`) combiné à upsert détruisait le visa précédent à chaque nouveau visa
+  // de la même DAF. Chaque visa dispose désormais de son propre fichier, horodaté et conservé.
+  const horodatage = new Date().toISOString().replace(/[:.]/g, '-');
+  const path = `${d.id}/visa-${horodatage}.pdf`;
+  const { error } = await db.storage.from('daf-pdfs').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: false });
   if (error) throw error;
   const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
   return urlData?.publicUrl || null;
@@ -4925,6 +4929,13 @@ async function donnerVisa(dafId, type) {
   const moeId = state.isGuest ? null : (state.user ? state.user.id : null);
   const d = state.daf.find(x => x.id === dafId);
   try {
+    // Le PDF visé est produit AVANT l'enregistrement du visa : un visa sans sa pièce signée
+    // n'aurait aucune valeur probante. Auparavant la génération suivait le visa dans un bloc
+    // dont l'échec était avalé par un console.warn, ce qui laissait des DAF marquées « visées »
+    // sans document opposable. Si le PDF ne peut pas être produit, le visa n'est pas accordé.
+    const pdfVisaUrl = await _genererPdfVise(d, statutDaf, remarques);
+    if (!pdfVisaUrl) throw new Error("Le PDF du visa n'a pas pu être généré : le visa n'a pas été enregistré.");
+
     // Insérer le VISA + mettre à jour la DAF via fonction serveur :
     // auth.uid() est fiable côté serveur même si state.user est momentanément vide.
     const { error: visaErr } = await db.rpc('donner_visa', {
@@ -4933,6 +4944,11 @@ async function donnerVisa(dafId, type) {
       p_remarques: remarques || null
     });
     if (visaErr) throw new Error('Erreur visa_moe : ' + visaErr.message);
+
+    // Rattachement du PDF à la DAF. L'erreur n'était pas testée : un refus RLS passait
+    // inaperçu et le document restait orphelin dans le Storage.
+    const { error: lienErr } = await db.from('daf').update({ pdf_visa_url: pdfVisaUrl }).eq('id', dafId);
+    if (lienErr) throw new Error('Le visa est enregistré mais son PDF n\'a pas pu y être rattaché : ' + lienErr.message);
 
     // Notification entrepreneur
     if (d?.entrepreneur_id) {
@@ -4961,14 +4977,7 @@ async function donnerVisa(dafId, type) {
     const dafLocal = state.daf.find(x => x.id === dafId);
     if (dafLocal) dafLocal.statut = statutDaf;
 
-    // Générer PDF visé et uploader
-    try {
-      const pdfVisaUrl = await _genererPdfVise(d, statutDaf, remarques);
-      if (pdfVisaUrl) {
-        await db.from('daf').update({ pdf_visa_url: pdfVisaUrl }).eq('id', dafId);
-        if (dafLocal) dafLocal.pdf_visa_url = pdfVisaUrl;
-      }
-    } catch (pdfErr) { console.warn('PDF visé:', pdfErr); }
+    if (dafLocal) dafLocal.pdf_visa_url = pdfVisaUrl;
 
     closeModal();
     renderDafVisa();
@@ -5221,8 +5230,10 @@ async function _genererPdfViseDocument(d, statutDoc, remarques) {
   }
 
   const pdfBytes = await pdfDoc.save();
-  const path = `${d.id}/document_vise.pdf`;
-  const { error } = await db.storage.from('daf-pdfs').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true });
+  // Chemin horodaté et sans écrasement : chaque visa conserve sa propre pièce (voir _genererPdfVise).
+  const horodatage = new Date().toISOString().replace(/[:.]/g, '-');
+  const path = `${d.id}/visa-document-${horodatage}.pdf`;
+  const { error } = await db.storage.from('daf-pdfs').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: false });
   if (error) throw error;
   const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
   return urlData?.publicUrl || null;
@@ -5238,12 +5249,20 @@ async function donnerVisaDoc(docId, type) {
   const statutDoc = type === 'sans_remarque' ? 'visa_ok' : type === 'avec_remarques' ? 'visa_remarques' : 'refusee';
   const d = state.documentsViser.find(x => x.id === docId);
   try {
+    // Comme pour les DAF : la pièce visée est produite avant l'enregistrement du visa, faute de
+    // quoi un visa pourrait exister sans document opposable.
+    const pdfVisaUrl = await _genererPdfViseDocument(d, statutDoc, remarques);
+    if (!pdfVisaUrl) throw new Error("Le PDF du visa n'a pas pu être généré : le visa n'a pas été enregistré.");
+
     const { error: visaErr } = await db.from('visa_documents').insert({
       document_id: docId, moe_id: state.isGuest ? null : state.user?.id, type, remarques: remarques || null
     });
     if (visaErr) throw visaErr;
-    await db.from('documents_viser').update({ statut: statutDoc }).eq('id', docId);
-    if (d) d.statut = statutDoc;
+
+    const { error: statutErr } = await db.from('documents_viser')
+      .update({ statut: statutDoc, pdf_visa_url: pdfVisaUrl }).eq('id', docId);
+    if (statutErr) throw new Error('Le visa est enregistré mais le document n\'a pas pu être mis à jour : ' + statutErr.message);
+    if (d) { d.statut = statutDoc; d.pdf_visa_url = pdfVisaUrl; }
 
     if (d?.entrepreneur_id) {
       const chDoc = d.chantier_id ? state.chantiers?.find(c => c.id === d.chantier_id) : null;
@@ -5261,14 +5280,6 @@ async function donnerVisaDoc(docId, type) {
         body: JSON.stringify({ user_id: d.entrepreneur_id, portail: 'entrepreneur', title: 'Document visé', message: msg })
       }).catch(() => {});
     }
-
-    try {
-      const pdfVisaUrl = await _genererPdfViseDocument(d, statutDoc, remarques);
-      if (pdfVisaUrl) {
-        await db.from('documents_viser').update({ pdf_visa_url: pdfVisaUrl }).eq('id', docId);
-        if (d) d.pdf_visa_url = pdfVisaUrl;
-      }
-    } catch (pdfErr) { console.warn('PDF visé document:', pdfErr); }
 
     closeModal();
     renderDocumentsViser();
