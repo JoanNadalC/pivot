@@ -10,6 +10,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1395,6 +1396,181 @@ async function _loadLogoBase64() {
   } catch { state.logoBase64 = null; return null; }
 }
 
+// ============================================================
+// EXPORT COMPLET DES DONNÉES
+// ============================================================
+// Archive ZIP contenant un dossier par chantier (fournitures, consultations et devis reçus,
+// commandes, DAF, documents visés), le carnet fournisseurs et la bibliothèque de fiches techniques.
+// Les pièces jointes sont réellement téléchargées depuis le Storage : un export qui ne contiendrait
+// que des liens deviendrait inutilisable dès la suppression du compte.
+
+// Nettoie un libellé pour en faire un nom de dossier/fichier valable sur Windows comme sur macOS.
+function _nomFichierSafe(s, defaut) {
+  const net = String(s || '').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return net || defaut;
+}
+
+// Convertit un tableau d'objets en CSV point-virgule (séparateur attendu par Excel en français).
+function _versCsv(lignes) {
+  if (!lignes?.length) return '';
+  const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))];
+  const cell = v => {
+    if (v === null || v === undefined) return '';
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return '﻿' + [colonnes.join(';'), ...lignes.map(l => colonnes.map(c => cell(l[c])).join(';'))].join('\n');
+}
+
+async function exporterMesDonnees(btn) {
+  if (typeof JSZip === 'undefined') return toast('Bibliothèque d\'archivage indisponible, rechargez la page', 'err');
+  const libelle = btn?.textContent;
+  const maj = txt => { if (btn) btn.textContent = txt; };
+  if (btn) btn.disabled = true;
+
+  const echecs = [];
+  // Télécharge un fichier du Storage et l'ajoute au ZIP ; un fichier manquant ne doit pas
+  // interrompre l'export, il est simplement consigné dans le rapport final.
+  const ajouterFichier = async (dossier, url, nom) => {
+    if (!url) return;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
+    } catch (e) {
+      echecs.push(`${nom} — ${e.message} (${url})`);
+    }
+  };
+
+  try {
+    maj('Préparation…');
+    const zip = new JSZip();
+    const societe = state.profile?.raison_sociale || state.profile?.societe || 'Pivot';
+    const racine = zip.folder(_nomFichierSafe(`Export Pivot - ${societe}`, 'Export Pivot'));
+
+    // ── Chantiers ────────────────────────────────────────────
+    const chantiers = state.chantiers || [];
+    const dossierChantiers = racine.folder('chantiers');
+
+    for (let i = 0; i < chantiers.length; i++) {
+      const ch = chantiers[i];
+      maj(`Chantier ${i + 1}/${chantiers.length}…`);
+      const d = dossierChantiers.folder(_nomFichierSafe(ch.affaire || ch.nom, `chantier-${i + 1}`));
+      d.file('chantier.csv', _versCsv([ch]));
+
+      const [fournRes, consRes, dafRes, docsRes, cmdRes] = await Promise.all([
+        db.from('fournitures').select('*').eq('chantier_id', ch.id),
+        db.from('consultations').select('*').eq('chantier_id', ch.id),
+        db.from('daf').select('*').eq('chantier_id', ch.id),
+        db.from('documents_viser').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
+        db.from('commandes').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
+      ]);
+
+      const fournitures = fournRes.data || [];
+      if (fournitures.length) d.file('fournitures.csv', _versCsv(fournitures));
+
+      // Fiches techniques attachées aux fournitures
+      const fiches = fournitures.flatMap(f => (f.fiches_techniques || []).map(ft => ({ ...ft, _poste: f.numero_poste || '' })));
+      if (fiches.length) {
+        const df = d.folder('fiches-techniques');
+        for (const ft of fiches) await ajouterFichier(df, ft.url, `${ft._poste ? ft._poste + ' - ' : ''}${ft.nom || 'fiche.pdf'}`);
+      }
+
+      // Consultations, avec les réponses chiffrées des fournisseurs
+      const consultations = consRes.data || [];
+      if (consultations.length) {
+        const dc = d.folder('consultations');
+        dc.file('consultations.csv', _versCsv(consultations));
+        for (const c of consultations) {
+          const { data: reps } = await db.from('reponses_fournisseurs').select('*').eq('consultation_id', c.id);
+          if (reps?.length) dc.file(_nomFichierSafe(`reponses - ${c.titre}`, 'reponses') + '.csv', _versCsv(reps));
+        }
+      }
+
+      // DAF et leurs PDF
+      const dafs = dafRes.data || [];
+      if (dafs.length) {
+        d.file('daf.csv', _versCsv(dafs));
+        const dd = d.folder('daf-pdf');
+        for (const daf of dafs) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || daf.id}.pdf`);
+      }
+
+      // Commandes et leurs lignes
+      const commandes = cmdRes.data || [];
+      if (commandes.length) {
+        const dcm = d.folder('commandes');
+        dcm.file('commandes.csv', _versCsv(commandes));
+        for (const cmd of commandes) {
+          const { data: lignes } = await db.from('commande_lignes').select('*').eq('commande_id', cmd.id);
+          if (lignes?.length) dcm.file(_nomFichierSafe(`lignes - commande ${cmd.numero || cmd.id}`, 'lignes') + '.csv', _versCsv(lignes));
+        }
+      }
+
+      // Documents soumis au visa MOE
+      const docs = docsRes.data || [];
+      if (docs.length) {
+        d.file('documents-vises.csv', _versCsv(docs));
+        const dv = d.folder('documents-vises');
+        for (const doc of docs) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || `document-${doc.id}.pdf`);
+      }
+    }
+
+    // ── Carnet fournisseurs ──────────────────────────────────
+    maj('Carnet fournisseurs…');
+    const { data: carnet } = await db.from('fournisseurs').select('*').eq('entrepreneur_id', state.user.id);
+    if (carnet?.length) racine.file('carnet-fournisseurs.csv', _versCsv(carnet));
+
+    // ── Bibliothèque de fiches techniques ────────────────────
+    maj('Bibliothèque de fiches…');
+    const { data: bibFiches } = await db.from('catalogue_fiches').select('*').then(r => r, () => ({ data: [] }));
+    if (bibFiches?.length) {
+      const db1 = racine.folder('bibliotheque-fiches-techniques');
+      db1.file('fiches.csv', _versCsv(bibFiches));
+      for (let i = 0; i < bibFiches.length; i++) {
+        maj(`Bibliothèque ${i + 1}/${bibFiches.length}…`);
+        const f = bibFiches[i];
+        await ajouterFichier(db1, f.url || f.fichier_url || f.pdf_url, f.nom || f.designation || `fiche-${f.id}.pdf`);
+      }
+    }
+
+    // ── Rapport ──────────────────────────────────────────────
+    racine.file('LISEZ-MOI.txt', [
+      `Export des données Pivot La Racine`,
+      `Structure : ${societe}`,
+      `Compte : ${state.user?.email || ''}`,
+      `Date de l'export : ${new Date().toLocaleString('fr-FR')}`,
+      ``,
+      `Contenu :`,
+      `  chantiers/                        un dossier par chantier`,
+      `  carnet-fournisseurs.csv           vos fournisseurs enregistrés`,
+      `  bibliotheque-fiches-techniques/   vos fiches techniques`,
+      ``,
+      `Les fichiers .csv s'ouvrent avec Excel ou LibreOffice (séparateur : point-virgule).`,
+      ``,
+      echecs.length
+        ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')
+        : `Tous les fichiers ont été récupérés.`,
+    ].join('\n'));
+
+    maj('Compression…');
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, m => {
+      maj(`Compression ${Math.round(m.percent)} %…`);
+    });
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = _nomFichierSafe(`Export Pivot - ${societe} - ${new Date().toISOString().slice(0, 10)}`, 'export-pivot') + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+
+    toast(echecs.length ? `Export terminé — ${echecs.length} fichier(s) manquant(s), voir LISEZ-MOI.txt` : 'Export terminé', echecs.length ? 'err' : undefined);
+  } catch (err) {
+    toast('Erreur pendant l\'export : ' + err.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = libelle; }
+  }
+}
+
 // Ouvre le portail de facturation hébergé par Stripe : changement d'offre, résiliation, moyen de
 // paiement et factures. Le worker vérifie que l'appelant est bien le référent de sa structure.
 async function ouvrirPortailFacturation(btn) {
@@ -1439,6 +1615,14 @@ function openCompteModal() {
         ${state.isReferent ? `<button onclick="ouvrirPortailFacturation(this)" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50 whitespace-nowrap">Gérer mon abonnement</button>` : ''}
         <a href="pivot-tarifs-entreprise.html" target="_blank" class="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 whitespace-nowrap">Voir les tarifs</a>
       </div>
+    </div>
+
+    <div class="bg-gray-50 rounded-xl p-4 mb-4 flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs text-gray-400 mb-1">Mes données</div>
+        <div class="text-sm text-gray-600">Archive complète : chantiers, consultations, devis reçus, commandes, DAF, documents et fiches techniques.</div>
+      </div>
+      <button onclick="exporterMesDonnees(this)" class="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-50 whitespace-nowrap flex-shrink-0">⬇ Télécharger</button>
     </div>
     <div class="space-y-3">
       <div>
