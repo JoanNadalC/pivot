@@ -1678,19 +1678,28 @@ function _nomFichierSafe(s, defaut) {
   return net || defaut;
 }
 
-function _versCsv(lignes) {
-  if (!lignes?.length) return '';
-  const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))];
-  const cell = v => {
-    if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  return '﻿' + [colonnes.join(';'), ...lignes.map(l => colonnes.map(c => cell(l[c])).join(';'))].join('\n');
+// Écrit un classeur Excel dans l'archive. On préfère le .xlsx au .csv : pas de question de
+// séparateur ni d'encodage à l'ouverture, et les colonnes sont dimensionnées.
+function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
+  if (!lignes?.length) return;
+  const feuille = XLSX.utils.json_to_sheet(lignes);
+  const colonnes = Object.keys(lignes[0]);
+  feuille['!cols'] = colonnes.map(c => ({
+    wch: Math.min(50, Math.max(c.length + 2, ...lignes.slice(0, 200).map(l => String(l[c] ?? '').length + 2))),
+  }));
+  const classeur = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(classeur, feuille, (nomFeuille || 'Données').slice(0, 31));
+  dossier.file(_nomFichierSafe(nomFichier, 'donnees') + '.xlsx',
+    XLSX.write(classeur, { bookType: 'xlsx', type: 'array' }));
 }
 
+const _dateFr = d => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+const _euros = v => (v === null || v === undefined || v === '') ? '' : Number(v);
+
 async function exporterMesDonnees(btn) {
-  if (typeof JSZip === 'undefined') return toast('Bibliothèque d\'archivage indisponible, rechargez la page', 'err');
+  if (typeof JSZip === 'undefined' || typeof XLSX === 'undefined') {
+    return toast('Bibliothèque d\'export indisponible, rechargez la page', 'err');
+  }
   const libelle = btn?.textContent;
   const maj = txt => { if (btn) btn.textContent = txt; };
   if (btn) btn.disabled = true;
@@ -1702,7 +1711,7 @@ async function exporterMesDonnees(btn) {
       const r = await fetch(url);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
-    } catch (e) { echecs.push(`${nom} — ${e.message} (${url})`); }
+    } catch (e) { echecs.push(`${nom} — ${e.message}`); }
   };
 
   try {
@@ -1716,13 +1725,60 @@ async function exporterMesDonnees(btn) {
     maj('Consultations…');
     const { data: reponses } = await db.from('reponses_fournisseurs').select('*').eq('fournisseur_id', fId);
     const consIds = [...new Set((reponses || []).map(r => r.consultation_id).filter(Boolean))];
+
     if (consIds.length) {
       const { data: consultations } = await db.from('consultations').select('*').in('id', consIds);
+      // Les libellés des articles vivent dans fournitures : sans cette résolution l'export
+      // ne contiendrait que des identifiants, illisibles pour qui ouvre le fichier plus tard.
+      const fIds = [...new Set((reponses || []).map(r => r.fourniture_id).filter(Boolean))];
+      const infoFourniture = {};
+      for (let i = 0; i < fIds.length; i += 200) {
+        const { data } = await db.from('fournitures').select('*').in('id', fIds.slice(i, i + 200));
+        (data || []).forEach(f => { infoFourniture[f.id] = f; });
+      }
+
       const dc = racine.folder('consultations');
-      if (consultations?.length) dc.file('consultations.csv', _versCsv(consultations));
+      _ajouterFeuille(dc, 'consultations', (consultations || []).map(c => ({
+        'Consultation': c.titre || 'Sans titre',
+        'Statut': c.statut || '',
+        'Reçue le': _dateFr(c.date_envoi),
+        'Réponse attendue le': _dateFr(c.date_limite_reponse),
+        'Remarques': c.remarques || '',
+      })), 'Consultations');
+
       for (const c of (consultations || [])) {
         const lignes = (reponses || []).filter(r => r.consultation_id === c.id);
-        if (lignes.length) dc.file(_nomFichierSafe(`reponses - ${c.titre}`, 'reponses-' + c.id) + '.csv', _versCsv(lignes));
+        if (!lignes.length) continue;
+        _ajouterFeuille(dc, `reponses - ${c.titre || 'sans titre'}`, lignes.map(r => {
+          const f = infoFourniture[r.fourniture_id] || {};
+          const prix = Number(r.prix_unit_ht) || 0;
+          return {
+            'N° poste': f.numero_poste || '',
+            'Désignation': r.est_variante ? (r.variante_description || f.designation || '') : (f.designation || ''),
+            'Variante': r.est_variante ? 'Oui' : '',
+            'Quantité demandée': _euros(f.qte),
+            'Unité': f.unite || '',
+            'Mon prix unitaire HT': _euros(r.prix_unit_ht),
+            'Remise %': _euros(r.remise),
+            'Total HT': f.qte ? Number((prix * Number(f.qte)).toFixed(2)) : '',
+            'Délai livraison': r.delai_livraison || '',
+            'Mon commentaire': r.commentaire || '',
+            'Caractéristiques variante': (r.variante_caracteristiques || [])
+              .map(c2 => `${c2.cle} : ${c2.valeur}`).join(' · '),
+          };
+        }), 'Réponses');
+      }
+
+      // Devis PDF émis, dédoublonnés
+      const devis = new Map();
+      (reponses || []).forEach(r => {
+        if (!r.devis_pdf_url) return;
+        const c = (consultations || []).find(x => x.id === r.consultation_id);
+        devis.set(r.devis_pdf_url, `devis - ${c?.titre || 'consultation'}.pdf`);
+      });
+      if (devis.size) {
+        const dd = dc.folder('mes-devis');
+        for (const [url, nom] of devis) await ajouterFichier(dd, url, nom);
       }
     }
 
@@ -1731,29 +1787,41 @@ async function exporterMesDonnees(btn) {
     const { data: catalogue } = await db.from('catalogue_fournisseur').select('*').eq('fournisseur_id', fId)
       .then(r => r, () => ({ data: [] }));
     if (catalogue?.length) {
-      racine.file('catalogue.csv', _versCsv(catalogue));
+      _ajouterFeuille(racine, 'catalogue', catalogue.map(c => ({
+        'Désignation': c.designation || '',
+        'Référence': c.reference || '',
+        'Famille': c.famille || '',
+        'Prix unitaire HT': _euros(c.prix_unit_ht),
+        'Unité': c.unite || '',
+        'Taille': c.taille || '',
+        'Conditionnement': c.contenant || c.conditionnement || '',
+      })), 'Catalogue');
       const dcat = racine.folder('catalogue-photos');
       for (let i = 0; i < catalogue.length; i++) {
         maj(`Catalogue ${i + 1}/${catalogue.length}…`);
-        const c = catalogue[i];
-        await ajouterFichier(dcat, c.photo_url, `${c.designation || c.id}.jpg`);
+        await ajouterFichier(dcat, catalogue[i].photo_url, `${catalogue[i].designation || 'article-' + (i + 1)}.jpg`);
       }
     }
 
-    // ── Demandes de photos et photos transmises ──────────────
+    // ── Photos transmises ────────────────────────────────────
     maj('Photos…');
     const { data: demandes } = await db.from('demandes_photos').select('*').eq('fournisseur_id', fId)
       .then(r => r, () => ({ data: [] }));
     if (demandes?.length) {
-      racine.file('demandes-photos.csv', _versCsv(demandes));
+      _ajouterFeuille(racine, 'demandes-photos', demandes.map(d => ({
+        'Demande': d.message || '',
+        'Type': d.type === 'renseignement' ? 'Renseignement' : 'Photo',
+        'Statut': d.statut || '',
+        'Reçue le': _dateFr(d.created_at),
+      })), 'Demandes');
+
       const { data: photos } = await db.from('photos_fournitures').select('*')
         .in('demande_id', demandes.map(d => d.id)).then(r => r, () => ({ data: [] }));
       if (photos?.length) {
-        racine.file('photos.csv', _versCsv(photos));
         const dp = racine.folder('photos');
         for (let i = 0; i < photos.length; i++) {
           maj(`Photos ${i + 1}/${photos.length}…`);
-          await ajouterFichier(dp, photos[i].url, `photo-${i + 1}.jpg`);
+          await ajouterFichier(dp, photos[i].url, `photo-${i + 1}-${_dateFr(photos[i].created_at).replace(/\//g, '-')}.jpg`);
         }
       }
     }
@@ -1765,11 +1833,11 @@ async function exporterMesDonnees(btn) {
       `Date de l'export : ${new Date().toLocaleString('fr-FR')}`,
       ``,
       `Contenu :`,
-      `  consultations/       consultations traitées et prix proposés`,
-      `  catalogue.csv        votre catalogue, photos dans catalogue-photos/`,
+      `  consultations/       consultations traitées, prix proposés et devis émis`,
+      `  catalogue.xlsx       votre catalogue, photos dans catalogue-photos/`,
       `  photos/              photos transmises aux entreprises`,
       ``,
-      `Les fichiers .csv s'ouvrent avec Excel ou LibreOffice (séparateur : point-virgule).`,
+      `Les fichiers .xlsx s'ouvrent directement avec Excel ou LibreOffice.`,
       ``,
       echecs.length
         ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')

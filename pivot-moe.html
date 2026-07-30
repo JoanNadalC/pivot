@@ -1053,19 +1053,28 @@ function _nomFichierSafe(s, defaut) {
   return net || defaut;
 }
 
-function _versCsv(lignes) {
-  if (!lignes?.length) return '';
-  const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))];
-  const cell = v => {
-    if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  return '﻿' + [colonnes.join(';'), ...lignes.map(l => colonnes.map(c => cell(l[c])).join(';'))].join('\n');
+// Écrit un classeur Excel dans l'archive. On préfère le .xlsx au .csv : pas de question de
+// séparateur ni d'encodage à l'ouverture, et les colonnes sont dimensionnées.
+function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
+  if (!lignes?.length) return;
+  const feuille = XLSX.utils.json_to_sheet(lignes);
+  const colonnes = Object.keys(lignes[0]);
+  feuille['!cols'] = colonnes.map(c => ({
+    wch: Math.min(50, Math.max(c.length + 2, ...lignes.slice(0, 200).map(l => String(l[c] ?? '').length + 2))),
+  }));
+  const classeur = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(classeur, feuille, (nomFeuille || 'Données').slice(0, 31));
+  dossier.file(_nomFichierSafe(nomFichier, 'donnees') + '.xlsx',
+    XLSX.write(classeur, { bookType: 'xlsx', type: 'array' }));
 }
 
+const _dateFr = d => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+const _euros = v => (v === null || v === undefined || v === '') ? '' : Number(v);
+
 async function exporterMesDonnees(btn) {
-  if (typeof JSZip === 'undefined') return toast('Bibliothèque d\'archivage indisponible, rechargez la page', 'err');
+  if (typeof JSZip === 'undefined' || typeof XLSX === 'undefined') {
+    return toast('Bibliothèque d\'export indisponible, rechargez la page', 'err');
+  }
   const libelle = btn?.textContent;
   const maj = txt => { if (btn) btn.textContent = txt; };
   if (btn) btn.disabled = true;
@@ -1077,7 +1086,7 @@ async function exporterMesDonnees(btn) {
       const r = await fetch(url);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
-    } catch (e) { echecs.push(`${nom} — ${e.message} (${url})`); }
+    } catch (e) { echecs.push(`${nom} — ${e.message}`); }
   };
 
   try {
@@ -1093,7 +1102,6 @@ async function exporterMesDonnees(btn) {
       const ch = chantiers[i];
       maj(`Chantier ${i + 1}/${chantiers.length}…`);
       const d = dossierChantiers.folder(_nomFichierSafe(ch.affaire || ch.nom, `chantier-${i + 1}`));
-      d.file('chantier.csv', _versCsv([ch]));
 
       const [fRes, lotsRes, dafRes, docsRes] = await Promise.all([
         db.from('fournitures').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
@@ -1102,19 +1110,51 @@ async function exporterMesDonnees(btn) {
         db.from('documents_viser').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
       ]);
 
-      if (fRes.data?.length) d.file('fournitures.csv', _versCsv(fRes.data));
-      if (lotsRes.data?.length) d.file('lots.csv', _versCsv(lotsRes.data));
+      // Les lots servent à situer chaque fourniture : on résout leur libellé plutôt que
+      // de laisser un identifiant technique dans la colonne.
+      const nomLot = {};
+      (lotsRes.data || []).forEach(l => { nomLot[l.id] = l.nom || l.numero || ''; });
+
+      _ajouterFeuille(d, 'fournitures', (fRes.data || []).filter(f => !f.is_variante).map(f => ({
+        'N° poste': f.numero_poste || '',
+        'Désignation': f.designation || '',
+        'Lot': nomLot[f.lot_id] || '',
+        'Référence': f.reference || '',
+        'Quantité': _euros(f.qte),
+        'Unité': f.unite || '',
+        'Prix étude HT': _euros(f.prix_etude_ht),
+        'Description': f.description || '',
+      })), 'Fournitures');
+
+      _ajouterFeuille(d, 'lots', (lotsRes.data || []).map(l => ({
+        'Lot': l.nom || '',
+        'Numéro': l.numero || '',
+        'Description': l.description || '',
+      })), 'Lots');
 
       if (dafRes.data?.length) {
-        d.file('daf.csv', _versCsv(dafRes.data));
+        _ajouterFeuille(d, 'daf', dafRes.data.map(x => ({
+          'Désignation': x.designation || '',
+          'Référence': x.reference || '',
+          'Fabricant': x.fabricant || '',
+          'Statut': x.statut || '',
+          'Version': x.version || '',
+          'Livraison prévue': _dateFr(x.date_livraison_prevue),
+          'Soumise le': _dateFr(x.date_soumission),
+        })), 'DAF');
         const dd = d.folder('daf-pdf');
-        for (const daf of dafRes.data) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || daf.id}.pdf`);
+        for (const daf of dafRes.data) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || 'document'}.pdf`);
       }
 
       if (docsRes.data?.length) {
-        d.file('documents-vises.csv', _versCsv(docsRes.data));
+        _ajouterFeuille(d, 'documents-vises', docsRes.data.map(x => ({
+          'Document': x.nom || '',
+          'Version': x.version || '',
+          'Statut': x.statut || '',
+          'Déposé le': _dateFr(x.created_at),
+        })), 'Documents');
         const dv = d.folder('documents-vises');
-        for (const doc of docsRes.data) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || `document-${doc.id}.pdf`);
+        for (const doc of docsRes.data) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || 'document.pdf');
       }
     }
 
@@ -1127,7 +1167,7 @@ async function exporterMesDonnees(btn) {
       `Contenu : un dossier par chantier suivi, avec ses fournitures, ses lots,`,
       `les DAF soumises et les documents visés.`,
       ``,
-      `Les fichiers .csv s'ouvrent avec Excel ou LibreOffice (séparateur : point-virgule).`,
+      `Les fichiers .xlsx s'ouvrent directement avec Excel ou LibreOffice.`,
       ``,
       echecs.length
         ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')

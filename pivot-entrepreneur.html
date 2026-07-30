@@ -1443,36 +1443,40 @@ function _nomFichierSafe(s, defaut) {
   return net || defaut;
 }
 
-// Convertit un tableau d'objets en CSV point-virgule (séparateur attendu par Excel en français).
-function _versCsv(lignes) {
-  if (!lignes?.length) return '';
-  const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))];
-  const cell = v => {
-    if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
-  return '﻿' + [colonnes.join(';'), ...lignes.map(l => colonnes.map(c => cell(l[c])).join(';'))].join('\n');
+// Écrit un classeur Excel dans l'archive. On préfère le .xlsx au .csv : pas de question de
+// séparateur ni d'encodage à l'ouverture, et les colonnes sont dimensionnées.
+function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
+  if (!lignes?.length) return;
+  const feuille = XLSX.utils.json_to_sheet(lignes);
+  const colonnes = Object.keys(lignes[0]);
+  feuille['!cols'] = colonnes.map(c => ({
+    wch: Math.min(50, Math.max(c.length + 2, ...lignes.slice(0, 200).map(l => String(l[c] ?? '').length + 2))),
+  }));
+  const classeur = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(classeur, feuille, (nomFeuille || 'Données').slice(0, 31));
+  dossier.file(_nomFichierSafe(nomFichier, 'donnees') + '.xlsx',
+    XLSX.write(classeur, { bookType: 'xlsx', type: 'array' }));
 }
 
+const _dateFr = d => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+const _euros = v => (v === null || v === undefined || v === '') ? '' : Number(v);
+
 async function exporterMesDonnees(btn) {
-  if (typeof JSZip === 'undefined') return toast('Bibliothèque d\'archivage indisponible, rechargez la page', 'err');
+  if (typeof JSZip === 'undefined' || typeof XLSX === 'undefined') {
+    return toast('Bibliothèque d\'export indisponible, rechargez la page', 'err');
+  }
   const libelle = btn?.textContent;
   const maj = txt => { if (btn) btn.textContent = txt; };
   if (btn) btn.disabled = true;
 
   const echecs = [];
-  // Télécharge un fichier du Storage et l'ajoute au ZIP ; un fichier manquant ne doit pas
-  // interrompre l'export, il est simplement consigné dans le rapport final.
   const ajouterFichier = async (dossier, url, nom) => {
     if (!url) return;
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
-    } catch (e) {
-      echecs.push(`${nom} — ${e.message} (${url})`);
-    }
+    } catch (e) { echecs.push(`${nom} — ${e.message}`); }
   };
 
   try {
@@ -1481,7 +1485,18 @@ async function exporterMesDonnees(btn) {
     const societe = state.profile?.raison_sociale || state.profile?.societe || 'Pivot';
     const racine = zip.folder(_nomFichierSafe(`Export Pivot - ${societe}`, 'Export Pivot'));
 
-    // ── Chantiers ────────────────────────────────────────────
+    // Tables de correspondance : l'export ne doit contenir que des libellés, jamais d'identifiants
+    // techniques — ils n'ont aucun sens pour qui ouvre le fichier des années plus tard.
+    const { data: tousFournisseurs } = await db.from('fournisseurs').select('*').eq('entrepreneur_id', state.user.id);
+    const nomFournisseur = {};
+    (tousFournisseurs || []).forEach(f => {
+      nomFournisseur[f.id] = f.nom || '';
+      if (f.compte_fournisseur_id) nomFournisseur[f.compte_fournisseur_id] = f.nom || '';
+      if (f.fournisseur_portail_id) nomFournisseur[f.fournisseur_portail_id] = f.nom || '';
+    });
+    const nomFamille = {};
+    (state.familles || []).forEach(f => { nomFamille[f.id] = f.nom || ''; });
+
     const chantiers = state.chantiers || [];
     const dossierChantiers = racine.folder('chantiers');
 
@@ -1489,84 +1504,176 @@ async function exporterMesDonnees(btn) {
       const ch = chantiers[i];
       maj(`Chantier ${i + 1}/${chantiers.length}…`);
       const d = dossierChantiers.folder(_nomFichierSafe(ch.affaire || ch.nom, `chantier-${i + 1}`));
-      d.file('chantier.csv', _versCsv([ch]));
 
-      const [fournRes, consRes, dafRes, docsRes, cmdRes] = await Promise.all([
-        db.from('fournitures').select('*').eq('chantier_id', ch.id),
-        db.from('consultations').select('*').eq('chantier_id', ch.id),
-        db.from('daf').select('*').eq('chantier_id', ch.id),
+      const [fRes, cRes, dafRes, docsRes, cmdRes] = await Promise.all([
+        db.from('fournitures').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
+        db.from('consultations').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
+        db.from('daf').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
         db.from('documents_viser').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
         db.from('commandes').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
       ]);
 
-      const fournitures = fournRes.data || [];
-      if (fournitures.length) d.file('fournitures.csv', _versCsv(fournitures));
+      const fournitures = (fRes.data || []).filter(f => !f.is_variante);
+      const infoFourniture = {};
+      (fRes.data || []).forEach(f => { infoFourniture[f.id] = f; });
 
-      // Fiches techniques attachées aux fournitures
-      const fiches = fournitures.flatMap(f => (f.fiches_techniques || []).map(ft => ({ ...ft, _poste: f.numero_poste || '' })));
+      _ajouterFeuille(d, 'fournitures', fournitures.map(f => ({
+        'N° poste': f.numero_poste || '',
+        'Désignation': f.designation || '',
+        'Famille': nomFamille[f.famille_id] || '',
+        'Référence': f.reference || '',
+        'Quantité': _euros(f.qte),
+        'Unité': f.unite || '',
+        'Prix étude HT': _euros(f.prix_etude_ht),
+        'Description': f.description || '',
+      })), 'Fournitures');
+
+      // Fiches techniques jointes aux fournitures
+      const fiches = (fRes.data || []).flatMap(f => (f.fiches_techniques || []).map(ft => ({ ...ft, _poste: f.numero_poste || '' })));
       if (fiches.length) {
         const df = d.folder('fiches-techniques');
         for (const ft of fiches) await ajouterFichier(df, ft.url, `${ft._poste ? ft._poste + ' - ' : ''}${ft.nom || 'fiche.pdf'}`);
       }
 
-      // Consultations, avec les réponses chiffrées des fournisseurs
-      const consultations = consRes.data || [];
+      // Consultations : une feuille de synthèse, puis le détail chiffré par consultation
+      const consultations = cRes.data || [];
       if (consultations.length) {
         const dc = d.folder('consultations');
-        dc.file('consultations.csv', _versCsv(consultations));
+        _ajouterFeuille(dc, 'consultations', consultations.map(c => ({
+          'Consultation': c.titre || 'Sans titre',
+          'Statut': c.statut || '',
+          'Envoyée le': _dateFr(c.date_envoi),
+          'Réponse attendue le': _dateFr(c.date_limite_reponse),
+          'Familles': (c.familles || []).map(id => nomFamille[id] || '').filter(Boolean).join(', '),
+          'Frais de port étude': _euros(c.frais_port_etude),
+          'Remarques': c.remarques || '',
+        })), 'Consultations');
+
         for (const c of consultations) {
           const { data: reps } = await db.from('reponses_fournisseurs').select('*').eq('consultation_id', c.id);
-          if (reps?.length) dc.file(_nomFichierSafe(`reponses - ${c.titre}`, 'reponses') + '.csv', _versCsv(reps));
+          if (!reps?.length) continue;
+          _ajouterFeuille(dc, `reponses - ${c.titre || 'sans titre'}`, reps.map(r => {
+            const f = infoFourniture[r.fourniture_id] || {};
+            const prix = Number(r.prix_unit_ht) || 0;
+            return {
+              'N° poste': f.numero_poste || '',
+              'Désignation': r.est_variante ? (r.variante_description || f.designation || '') : (f.designation || ''),
+              'Variante': r.est_variante ? 'Oui' : '',
+              'Fournisseur': nomFournisseur[r.fournisseur_id] || 'Fournisseur inconnu',
+              'Quantité': _euros(f.qte),
+              'Unité': f.unite || '',
+              'Prix unitaire HT': _euros(r.prix_unit_ht),
+              'Remise %': _euros(r.remise),
+              'Total HT': f.qte ? Number((prix * Number(f.qte)).toFixed(2)) : '',
+              'Délai livraison': r.delai_livraison || '',
+              'Commentaire': r.commentaire || '',
+              'Caractéristiques variante': (r.variante_caracteristiques || [])
+                .map(c2 => `${c2.cle} : ${c2.valeur}`).join(' · '),
+            };
+          }), 'Réponses');
+        }
+
+        // Devis PDF reçus, dédoublonnés par URL
+        const urlsDevis = new Map();
+        for (const c of consultations) {
+          const { data: reps } = await db.from('reponses_fournisseurs').select('fournisseur_id, devis_pdf_url').eq('consultation_id', c.id);
+          (reps || []).forEach(r => {
+            if (r.devis_pdf_url) urlsDevis.set(r.devis_pdf_url, `${nomFournisseur[r.fournisseur_id] || 'fournisseur'} - ${c.titre || 'consultation'}.pdf`);
+          });
+        }
+        if (urlsDevis.size) {
+          const dd = dc.folder('devis-recus');
+          for (const [url, nom] of urlsDevis) await ajouterFichier(dd, url, nom);
         }
       }
 
-      // DAF et leurs PDF
-      const dafs = dafRes.data || [];
-      if (dafs.length) {
-        d.file('daf.csv', _versCsv(dafs));
-        const dd = d.folder('daf-pdf');
-        for (const daf of dafs) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || daf.id}.pdf`);
-      }
-
-      // Commandes et leurs lignes
+      // Commandes, avec leurs lignes détaillées
       const commandes = cmdRes.data || [];
       if (commandes.length) {
         const dcm = d.folder('commandes');
-        dcm.file('commandes.csv', _versCsv(commandes));
+        _ajouterFeuille(dcm, 'commandes', commandes.map(c => ({
+          'Fournisseur': nomFournisseur[c.fournisseur_id] || 'Fournisseur inconnu',
+          'Date': _dateFr(c.created_at),
+          'Frais de port': _euros(c.frais_port),
+        })), 'Commandes');
+
         for (const cmd of commandes) {
           const { data: lignes } = await db.from('commande_lignes').select('*').eq('commande_id', cmd.id);
-          if (lignes?.length) dcm.file(_nomFichierSafe(`lignes - commande ${cmd.numero || cmd.id}`, 'lignes') + '.csv', _versCsv(lignes));
+          if (!lignes?.length) continue;
+          const four = nomFournisseur[cmd.fournisseur_id] || 'fournisseur';
+          _ajouterFeuille(dcm, `commande - ${four} - ${_dateFr(cmd.created_at)}`, lignes.map(l => ({
+            'N° poste': l.numero_poste || '',
+            'Désignation': l.designation || '',
+            'Quantité': _euros(l.qte),
+            'Unité': l.unite || '',
+            'Prix unitaire HT': _euros(l.prix_unit_ht),
+            'Total HT': (l.qte && l.prix_unit_ht) ? Number((Number(l.qte) * Number(l.prix_unit_ht)).toFixed(2)) : '',
+          })), 'Lignes');
         }
       }
 
-      // Documents soumis au visa MOE
+      // DAF
+      const dafs = dafRes.data || [];
+      if (dafs.length) {
+        _ajouterFeuille(d, 'daf', dafs.map(x => ({
+          'Désignation': x.designation || '',
+          'Référence': x.reference || '',
+          'Fabricant': x.fabricant || '',
+          'Fournisseur': nomFournisseur[x.fournisseur_id] || '',
+          'Statut': x.statut || '',
+          'Version': x.version || '',
+          'Livraison prévue': _dateFr(x.date_livraison_prevue),
+          'Soumise le': _dateFr(x.date_soumission),
+        })), 'DAF');
+        const dd = d.folder('daf-pdf');
+        for (const daf of dafs) await ajouterFichier(dd, daf.pdf_url, `DAF - ${daf.designation || 'document'}.pdf`);
+      }
+
+      // Documents soumis au visa
       const docs = docsRes.data || [];
       if (docs.length) {
-        d.file('documents-vises.csv', _versCsv(docs));
+        _ajouterFeuille(d, 'documents-vises', docs.map(x => ({
+          'Document': x.nom || '',
+          'Version': x.version || '',
+          'Statut': x.statut || '',
+          'Déposé le': _dateFr(x.created_at),
+        })), 'Documents');
         const dv = d.folder('documents-vises');
-        for (const doc of docs) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || `document-${doc.id}.pdf`);
+        for (const doc of docs) await ajouterFichier(dv, doc.url || doc.pdf_url, doc.nom || 'document.pdf');
       }
     }
 
-    // ── Carnet fournisseurs ──────────────────────────────────
+    // Carnet fournisseurs
     maj('Carnet fournisseurs…');
-    const { data: carnet } = await db.from('fournisseurs').select('*').eq('entrepreneur_id', state.user.id);
-    if (carnet?.length) racine.file('carnet-fournisseurs.csv', _versCsv(carnet));
+    _ajouterFeuille(racine, 'carnet-fournisseurs', (tousFournisseurs || []).map(f => ({
+      'Fournisseur': f.nom || '',
+      'Contact': [f.contact_prenom, f.contact_nom].filter(Boolean).join(' '),
+      'Email': f.email || '',
+      'Téléphone': f.tel || '',
+      'SIRET': f.siret || '',
+      'Adresse': f.adresse || '',
+      'Pays': f.pays || '',
+      'Familles': (f.familles || []).map(id => nomFamille[id] || '').filter(Boolean).join(', '),
+      'Type': f.type_fournisseur === 'portail' ? 'Inscrit sur Pivot' : 'Contact privé',
+    })), 'Fournisseurs');
 
-    // ── Bibliothèque de fiches techniques ────────────────────
+    // Bibliothèque de fiches techniques
     maj('Bibliothèque de fiches…');
     const { data: bibFiches } = await db.from('catalogue_fiches').select('*').then(r => r, () => ({ data: [] }));
     if (bibFiches?.length) {
-      const db1 = racine.folder('bibliotheque-fiches-techniques');
-      db1.file('fiches.csv', _versCsv(bibFiches));
+      const dbib = racine.folder('bibliotheque-fiches-techniques');
+      _ajouterFeuille(dbib, 'fiches', bibFiches.map(f => ({
+        'Fiche': f.nom || f.designation || '',
+        'Référence': f.reference || '',
+        'Fabricant': f.fabricant || '',
+      })), 'Fiches');
       for (let i = 0; i < bibFiches.length; i++) {
         maj(`Bibliothèque ${i + 1}/${bibFiches.length}…`);
         const f = bibFiches[i];
-        await ajouterFichier(db1, f.url || f.fichier_url || f.pdf_url, f.nom || f.designation || `fiche-${f.id}.pdf`);
+        await ajouterFichier(dbib, f.url || f.fichier_url || f.pdf_url, f.nom || f.designation || `fiche-${i + 1}.pdf`);
       }
     }
 
-    // ── Rapport ──────────────────────────────────────────────
     racine.file('LISEZ-MOI.txt', [
       `Export des données Pivot La Racine`,
       `Structure : ${societe}`,
@@ -1575,10 +1682,10 @@ async function exporterMesDonnees(btn) {
       ``,
       `Contenu :`,
       `  chantiers/                        un dossier par chantier`,
-      `  carnet-fournisseurs.csv           vos fournisseurs enregistrés`,
+      `  carnet-fournisseurs.xlsx          vos fournisseurs enregistrés`,
       `  bibliotheque-fiches-techniques/   vos fiches techniques`,
       ``,
-      `Les fichiers .csv s'ouvrent avec Excel ou LibreOffice (séparateur : point-virgule).`,
+      `Les fichiers .xlsx s'ouvrent directement avec Excel ou LibreOffice.`,
       ``,
       echecs.length
         ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')
@@ -1586,10 +1693,7 @@ async function exporterMesDonnees(btn) {
     ].join('\n'));
 
     maj('Compression…');
-    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, m => {
-      maj(`Compression ${Math.round(m.percent)} %…`);
-    });
-
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, m => maj(`Compression ${Math.round(m.percent)} %…`));
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = _nomFichierSafe(`Export Pivot - ${societe} - ${new Date().toISOString().slice(0, 10)}`, 'export-pivot') + '.zip';
@@ -1603,7 +1707,6 @@ async function exporterMesDonnees(btn) {
     if (btn) { btn.disabled = false; btn.textContent = libelle; }
   }
 }
-
 // Ouvre le portail de facturation hébergé par Stripe : changement d'offre, résiliation, moyen de
 // paiement et factures. Le worker vérifie que l'appelant est bien le référent de sa structure.
 async function ouvrirPortailFacturation(btn) {
