@@ -13,6 +13,7 @@
   <meta name="apple-mobile-web-app-title" content="Pivot">
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -677,6 +678,17 @@
           <div class="flex items-center gap-3">
             <div id="abonnement-badge" class="text-sm font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-700">—</div>
             <div id="abonnement-desc" class="text-xs text-gray-500"></div>
+          </div>
+        </div>
+
+        <!-- Mes données -->
+        <div class="bg-white rounded-xl p-5 shadow-sm mb-4 border border-gray-100">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="font-semibold mb-1">📦 Mes données</h3>
+              <p class="text-xs text-gray-500">Archive complète : consultations traitées, prix proposés, catalogue et photos transmises.</p>
+            </div>
+            <button onclick="exporterMesDonnees(this)" class="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-50 whitespace-nowrap flex-shrink-0">⬇ Télécharger</button>
           </div>
         </div>
 
@@ -1652,6 +1664,132 @@ function previewProfilLogo(input) {
   const img = document.getElementById('p-logo-preview');
   img.src = URL.createObjectURL(file);
   wrap?.classList.remove('hidden');
+}
+
+// ============================================================
+// EXPORT COMPLET DES DONNÉES
+// ============================================================
+// Archive ZIP : consultations auxquelles vous avez répondu (avec le détail des prix proposés),
+// catalogue, demandes de photos et photos transmises. Les fichiers sont réellement téléchargés,
+// car des liens deviendraient morts à la suppression du compte.
+
+function _nomFichierSafe(s, defaut) {
+  const net = String(s || '').replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return net || defaut;
+}
+
+function _versCsv(lignes) {
+  if (!lignes?.length) return '';
+  const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))];
+  const cell = v => {
+    if (v === null || v === undefined) return '';
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return '﻿' + [colonnes.join(';'), ...lignes.map(l => colonnes.map(c => cell(l[c])).join(';'))].join('\n');
+}
+
+async function exporterMesDonnees(btn) {
+  if (typeof JSZip === 'undefined') return toast('Bibliothèque d\'archivage indisponible, rechargez la page', 'err');
+  const libelle = btn?.textContent;
+  const maj = txt => { if (btn) btn.textContent = txt; };
+  if (btn) btn.disabled = true;
+
+  const echecs = [];
+  const ajouterFichier = async (dossier, url, nom) => {
+    if (!url) return;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      dossier.file(_nomFichierSafe(nom, 'fichier'), await r.blob());
+    } catch (e) { echecs.push(`${nom} — ${e.message} (${url})`); }
+  };
+
+  try {
+    maj('Préparation…');
+    const zip = new JSZip();
+    const societe = state.profile?.nom_entreprise || state.profile?.nom || 'Pivot';
+    const racine = zip.folder(_nomFichierSafe(`Export Pivot - ${societe}`, 'Export Pivot'));
+    const fId = state.fournisseurId || state.user?.id;
+
+    // ── Réponses aux consultations ───────────────────────────
+    maj('Consultations…');
+    const { data: reponses } = await db.from('reponses_fournisseurs').select('*').eq('fournisseur_id', fId);
+    const consIds = [...new Set((reponses || []).map(r => r.consultation_id).filter(Boolean))];
+    if (consIds.length) {
+      const { data: consultations } = await db.from('consultations').select('*').in('id', consIds);
+      const dc = racine.folder('consultations');
+      if (consultations?.length) dc.file('consultations.csv', _versCsv(consultations));
+      for (const c of (consultations || [])) {
+        const lignes = (reponses || []).filter(r => r.consultation_id === c.id);
+        if (lignes.length) dc.file(_nomFichierSafe(`reponses - ${c.titre}`, 'reponses-' + c.id) + '.csv', _versCsv(lignes));
+      }
+    }
+
+    // ── Catalogue ────────────────────────────────────────────
+    maj('Catalogue…');
+    const { data: catalogue } = await db.from('catalogue_fournisseur').select('*').eq('fournisseur_id', fId)
+      .then(r => r, () => ({ data: [] }));
+    if (catalogue?.length) {
+      racine.file('catalogue.csv', _versCsv(catalogue));
+      const dcat = racine.folder('catalogue-photos');
+      for (let i = 0; i < catalogue.length; i++) {
+        maj(`Catalogue ${i + 1}/${catalogue.length}…`);
+        const c = catalogue[i];
+        await ajouterFichier(dcat, c.photo_url, `${c.designation || c.id}.jpg`);
+      }
+    }
+
+    // ── Demandes de photos et photos transmises ──────────────
+    maj('Photos…');
+    const { data: demandes } = await db.from('demandes_photos').select('*').eq('fournisseur_id', fId)
+      .then(r => r, () => ({ data: [] }));
+    if (demandes?.length) {
+      racine.file('demandes-photos.csv', _versCsv(demandes));
+      const { data: photos } = await db.from('photos_fournitures').select('*')
+        .in('demande_id', demandes.map(d => d.id)).then(r => r, () => ({ data: [] }));
+      if (photos?.length) {
+        racine.file('photos.csv', _versCsv(photos));
+        const dp = racine.folder('photos');
+        for (let i = 0; i < photos.length; i++) {
+          maj(`Photos ${i + 1}/${photos.length}…`);
+          await ajouterFichier(dp, photos[i].url, `photo-${i + 1}.jpg`);
+        }
+      }
+    }
+
+    racine.file('LISEZ-MOI.txt', [
+      `Export des données Pivot La Racine`,
+      `Structure : ${societe}`,
+      `Compte : ${state.user?.email || ''}`,
+      `Date de l'export : ${new Date().toLocaleString('fr-FR')}`,
+      ``,
+      `Contenu :`,
+      `  consultations/       consultations traitées et prix proposés`,
+      `  catalogue.csv        votre catalogue, photos dans catalogue-photos/`,
+      `  photos/              photos transmises aux entreprises`,
+      ``,
+      `Les fichiers .csv s'ouvrent avec Excel ou LibreOffice (séparateur : point-virgule).`,
+      ``,
+      echecs.length
+        ? `${echecs.length} fichier(s) n'ont pas pu être récupérés :\n` + echecs.map(e => '  - ' + e).join('\n')
+        : `Tous les fichiers ont été récupérés.`,
+    ].join('\n'));
+
+    maj('Compression…');
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, m => maj(`Compression ${Math.round(m.percent)} %…`));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = _nomFichierSafe(`Export Pivot - ${societe} - ${new Date().toISOString().slice(0, 10)}`, 'export-pivot') + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+
+    toast(echecs.length ? `Export terminé — ${echecs.length} fichier(s) manquant(s), voir LISEZ-MOI.txt` : 'Export terminé', echecs.length ? 'err' : undefined);
+  } catch (err) {
+    toast('Erreur pendant l\'export : ' + err.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = libelle; }
+  }
 }
 
 // Ouvre le portail de facturation hébergé par Stripe : changement d'offre, résiliation, moyen de
