@@ -1403,6 +1403,30 @@ async function handlePurgerStructure(request, env) {
     }
     if (fichiersSupprimes) supprimees.fichiers = fichiersSupprimes;
 
+    // Suppression des comptes. Elle vient en dernier : les données métier y font référence, et
+    // passé le délai de conservation ces données personnelles n'ont plus de finalité (RGPD).
+    // Le référent est détaché au préalable, la fiche de structure étant conservée pour la
+    // comptabilité : elle ne doit pas pointer vers un compte qui n'existe plus.
+    if (userIds.length) {
+      await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
+        method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ referent_id: null }),
+      });
+
+      const tableCompte = struct.type === 'fournisseur' ? 'compte_fournisseur'
+                        : struct.type === 'moe' ? 'compte_moe' : 'compte_entrepreneur';
+      let comptesSupprimes = 0;
+      for (const uid of userIds) {
+        await fetch(`${SUPABASE_URL}/rest/v1/${tableCompte}?id=eq.${uid}`, { method: 'DELETE', headers });
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${uid}`, { method: 'DELETE', headers });
+        await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?user_id=eq.${uid}`, { method: 'DELETE', headers });
+        const rAuth = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers });
+        if (rAuth.ok) comptesSupprimes++;
+        else console.error('purge compte auth', uid, await rAuth.text());
+      }
+      if (comptesSupprimes) supprimees.comptes = comptesSupprimes;
+    }
+
     await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
       method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ donnees_supprimees_le: new Date().toISOString() }),

@@ -911,8 +911,10 @@ function ouvrirPurgeStructure(structId, structNom) {
   document.getElementById('modal-content').innerHTML = `
     <h2 class="text-lg font-semibold text-red-700 mb-3">🧹 Purger les données de « ${escHtml(structNom)} »</h2>
     <p class="text-sm text-gray-600 mb-3">
-      Résiliée depuis <strong>${jours} jours</strong>. Les chantiers, consultations, devis reçus,
-      commandes, DAF et documents de cette structure seront <strong>définitivement effacés</strong>.
+      Résiliée depuis <strong>${jours} jours</strong>. Seront <strong>définitivement effacés</strong> :
+      les chantiers, consultations, devis reçus, commandes, DAF et documents, les fichiers associés
+      (PDF, photos, fiches techniques), ainsi que <strong>les comptes des membres</strong>, qui ne
+      pourront plus se connecter.
     </p>
     <p class="text-sm text-gray-600 mb-3">
       La fiche de la structure est conservée : son nom, ses dates et ses références de facturation
