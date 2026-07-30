@@ -1577,7 +1577,8 @@ async function handleStripeWebhook(request, env) {
       if (struct) {
         await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${struct.id}`, {
           method: 'PATCH', headers: { ...serviceHeaders, 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ statut_abonnement: 'resilie' }),
+          // resilie_le sert de point de départ aux délais de restriction puis de suppression.
+          body: JSON.stringify({ statut_abonnement: 'resilie', resilie_le: new Date().toISOString() }),
         });
         await envoyerEmailResiliation(env, {
           structure: struct,
@@ -2048,6 +2049,83 @@ async function handleWaitlistConfirm(request, env) {
 // ============================================================
 // CRON — RELANCES & NOTIFICATIONS ADMIN
 // ============================================================
+// Délais du cycle de vie, comptés depuis la date de résiliation effective.
+const JOURS_AVANT_RESTRICTION = 30;  // au-delà : lecture et export seulement
+const JOURS_AVANT_SUPPRESSION = 90;  // au-delà : purge des données métier, déclenchée par l'admin
+
+// Applique les échéances post-résiliation. Chaque étape est idempotente : elle ne sélectionne que
+// les structures qui n'ont pas encore reçu le traitement, pour survivre à plusieurs exécutions.
+async function traiterCycleVieResiliations(env, supabaseUrl, headers) {
+  const ilYA = j => new Date(Date.now() - j * 86400000).toISOString();
+  const patch = (id, corps) => fetch(`${supabaseUrl}/rest/v1/structures?id=eq.${id}`, {
+    method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' }, body: JSON.stringify(corps),
+  });
+  const emailReferent = async (structure, sujet, titre, message) => {
+    if (!structure.referent_id) return;
+    try {
+      const r = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${structure.referent_id}&select=email`, { headers });
+      const [ref] = await r.json();
+      if (!ref?.email) return;
+      const siteUrl = (env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '');
+      const portail = PORTAIL_URL[structure.type] || PORTAIL_URL.entrepreneur;
+      await sendResendEmail(env, {
+        to: ref.email, subject: sujet,
+        html: notifEmailHtml({ title: titre, message, link: `${siteUrl}/${portail}` }),
+      });
+    } catch (e) { console.error('cycle de vie — email:', e.message); }
+  };
+
+  try {
+    // 1. Passage en accès restreint
+    const r1 = await fetch(
+      `${supabaseUrl}/rest/v1/structures?select=id,nom,type,referent_id&statut_abonnement=eq.resilie`
+      + `&acces_restreint=eq.false&resilie_le=lt.${ilYA(JOURS_AVANT_RESTRICTION)}`,
+      { headers }
+    );
+    for (const s of (await r1.json()) || []) {
+      await patch(s.id, { acces_restreint: true });
+      await emailReferent(s, 'Votre accès Pivot passe en lecture seule',
+        'Votre espace passe en lecture seule',
+        `Votre abonnement ayant pris fin il y a ${JOURS_AVANT_RESTRICTION} jours, votre espace <strong>${escHtml(s.nom || '')}</strong> `
+        + `reste consultable mais n'accepte plus de modification. Vous pouvez toujours télécharger l'intégralité de vos dossiers `
+        + `depuis « Mon compte », et ce jusqu'au ${new Date(Date.now() + (JOURS_AVANT_SUPPRESSION - JOURS_AVANT_RESTRICTION) * 86400000).toLocaleDateString('fr-FR')}.`);
+      await notifyAdmin(env, { categorie: 'resiliation', message: `Accès restreint — ${s.nom}`, structureId: s.id });
+    }
+
+    // 2. Avertissement 7 jours avant l'échéance de suppression
+    const r2 = await fetch(
+      `${supabaseUrl}/rest/v1/structures?select=id,nom,type,referent_id&statut_abonnement=eq.resilie`
+      + `&avert_suppression_envoye=eq.false&donnees_supprimees_le=is.null&resilie_le=lt.${ilYA(JOURS_AVANT_SUPPRESSION - 7)}`,
+      { headers }
+    );
+    for (const s of (await r2.json()) || []) {
+      await patch(s.id, { avert_suppression_envoye: true });
+      await emailReferent(s, 'Vos données Pivot seront supprimées dans 7 jours',
+        'Dernier délai pour récupérer vos dossiers',
+        `Les données de <strong>${escHtml(s.nom || '')}</strong> seront supprimées dans <strong>7 jours</strong>. `
+        + `Téléchargez dès maintenant l'archive complète de vos chantiers depuis « Mon compte » : `
+        + `cette suppression est définitive et nous ne pourrons pas restaurer vos dossiers.`);
+    }
+
+    // 3. Échéance atteinte : on signale à l'admin, sans rien supprimer.
+    const r3 = await fetch(
+      `${supabaseUrl}/rest/v1/structures?select=id,nom&statut_abonnement=eq.resilie`
+      + `&donnees_supprimees_le=is.null&resilie_le=lt.${ilYA(JOURS_AVANT_SUPPRESSION)}`,
+      { headers }
+    );
+    const aPurger = (await r3.json()) || [];
+    if (aPurger.length) {
+      await notifyAdmin(env, {
+        categorie: 'resiliation',
+        message: `${aPurger.length} structure(s) résiliée(s) depuis plus de ${JOURS_AVANT_SUPPRESSION} jours, en attente de suppression : `
+               + aPurger.map(s => s.nom).join(', '),
+      });
+    }
+  } catch (e) {
+    console.error('traiterCycleVieResiliations:', e.message);
+  }
+}
+
 async function handleScheduled(env) {
   const supabaseUrl  = env.SUPABASE_URL || 'https://djegdtlcvyjtrayrodxj.supabase.co';
   const serviceKey   = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -2057,6 +2135,13 @@ async function handleScheduled(env) {
   const in7days = new Date(today); in7days.setDate(today.getDate() + 7);
   const in7str  = in7days.toISOString().slice(0, 10);
   const todayStr = today.toISOString().slice(0, 10);
+
+  // ── 0. Cycle de vie après résiliation ─────────────────────
+  // Trois étapes échelonnées depuis resilie_le : restriction à 30 jours (lecture et export
+  // conservés, conformément à ce que promet l'email de résiliation), avertissement à J-7 de
+  // l'échéance de suppression, puis signalement à l'admin à 90 jours. La suppression elle-même
+  // n'est jamais automatique : elle est irréversible et reste déclenchée à la main.
+  await traiterCycleVieResiliations(env, supabaseUrl, headers);
 
   // ── 1. Relances J-7 ───────────────────────────────────────
   const relRes = await fetch(

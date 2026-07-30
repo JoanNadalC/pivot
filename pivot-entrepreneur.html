@@ -1350,6 +1350,13 @@ async function loadProfile() {
         .select('*', { count: 'exact', head: true })
         .eq('structure_id', state.structureId);
       state.profile._membresCount = count || 1;
+
+      // Accès restreint : abonnement résilié depuis plus de 30 jours. L'espace reste consultable
+      // et exportable — c'est ce que promet l'email de résiliation — mais n'accepte plus d'écriture.
+      const { data: st } = await db.from('structures')
+        .select('acces_restreint, resilie_le').eq('id', state.structureId).maybeSingle();
+      state.accesRestreint = st?.acces_restreint === true;
+      _appliquerAccesRestreint();
     } else {
       state.profile._membresCount = 1;
     }
@@ -1358,7 +1365,33 @@ async function loadProfile() {
   }
 }
 
+// Accès restreint (abonnement résilié depuis plus de 30 jours) : bandeau permanent et blocage des
+// écritures. La garantie réelle reste côté base — ce garde-fou évite surtout à l'utilisateur de
+// saisir des données qui seraient refusées, et lui rappelle d'exporter ses dossiers.
+function _appliquerAccesRestreint() {
+  if (!state.accesRestreint) return;
+  let banner = document.getElementById('acces-restreint-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'acces-restreint-banner';
+    banner.className = 'bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2.5 flex items-center justify-center gap-3 flex-wrap';
+    banner.innerHTML = `
+      <span>🔒 Votre abonnement a pris fin : votre espace est en <strong>lecture seule</strong>. Pensez à récupérer vos dossiers.</span>
+      <button onclick="exporterMesDonnees(this)" class="text-xs bg-amber-700 text-white px-3 py-1 rounded-lg hover:bg-amber-800 whitespace-nowrap">⬇ Télécharger mes données</button>`;
+    document.body.prepend(banner);
+  }
+}
+
+// Refuse une action d'écriture quand l'espace est en lecture seule. Renvoie true si l'action
+// doit être interrompue, pour un usage direct en début de fonction.
+function _bloqueSiRestreint() {
+  if (!state.accesRestreint) return false;
+  toast('Votre abonnement a pris fin : votre espace est en lecture seule. Vous pouvez toujours télécharger vos dossiers.', 'err');
+  return true;
+}
+
 function _applyCompteRestrictions() {
+
   const bloque = state.compteBloque;
   const banner = document.getElementById('compte-bloque-banner');
   if (banner) banner.style.display = bloque ? 'block' : 'none';
@@ -3594,6 +3627,7 @@ function renderChantiers() {
 }
 
 function openNewChantierModal() {
+  if (_bloqueSiRestreint()) return;
   showModal(`
     <h2 class="text-lg font-bold mb-4">Nouveau chantier</h2>
     <label class="block text-xs text-gray-500 mb-1">Affaire *</label>
@@ -4327,6 +4361,7 @@ function clearPortailSelection() {
 }
 
 async function addFournisseurCarnet() {
+  if (_bloqueSiRestreint()) return;
   const nom   = document.getElementById('f-nom').value.trim();
   const siret = document.getElementById('f-siret').value.trim();
   if (!nom)   return toast('Nom obligatoire', 'err');
@@ -7694,6 +7729,7 @@ async function openAddFournisseurModal(consultationId) {
 }
 
 async function addFournisseursToConsultation(consultationId) {
+  if (_bloqueSiRestreint()) return;
   const ids = [...document.querySelectorAll('input[name="add-fours"]:checked')].map(el => el.value);
   if (!ids.length) return toast('Sélectionnez au moins un fournisseur', 'err');
   closeModal();
@@ -7781,6 +7817,7 @@ async function addFournisseursToConsultation(consultationId) {
 }
 
 function openNewConsultationModal() {
+  if (_bloqueSiRestreint()) return;
   const foursOptions = state.fournisseurs.map(f =>
     `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cf" value="${f.id}"> ${f.nom} <span class="text-gray-400">${f.email || ''}</span> ${_contactLigne(f)}</label>`
   ).join('');
@@ -7852,6 +7889,7 @@ function openNewConsultationModal() {
 }
 
 async function createConsultation() {
+  if (_bloqueSiRestreint()) return;
   const titre = document.getElementById('nc-titre').value.trim();
   const limite = document.getElementById('nc-limite').value;
   const checkedFours       = [...document.querySelectorAll('input[name="cf"]:checked')].map(el => el.value);
@@ -8941,6 +8979,7 @@ async function loadCommande() {
 }
 
 async function creerCommande(fournisseurId) {
+  if (_bloqueSiRestreint()) return;
   const card = document.querySelector(`[data-four-card="${fournisseurId}"]`);
   if (!card) return;
   const inputs = [...card.querySelectorAll('.cmd-qty-input')].filter(i => parseFloat(i.value) > 0);
