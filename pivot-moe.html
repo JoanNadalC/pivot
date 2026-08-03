@@ -5821,13 +5821,28 @@ async function loadInvitations() {
 
   // Complète avec la raison sociale et l'identité du compte rattaché : l'invitation ne porte
   // qu'un nom saisi à la volée, souvent vide, ce qui faisait retomber l'affichage sur l'email.
-  const ids = [...new Set(state._chantierInvits.map(i => i.entreprise_id).filter(Boolean))];
+  //
+  // entreprise_id n'a longtemps pas été renseigné à l'acceptation : on se rabat donc sur
+  // chantier_intervenants, qui est le rattachement effectif et couvre les invitations antérieures.
+  const { data: intervenants } = await db.from('chantier_intervenants')
+    .select('entrepreneur_id').eq('chantier_id', ch.id);
+  const idsIntervenants = (intervenants || []).map(i => i.entrepreneur_id).filter(Boolean);
+  const ids = [...new Set([
+    ...state._chantierInvits.map(i => i.entreprise_id).filter(Boolean),
+    ...idsIntervenants,
+  ])];
+
   if (ids.length) {
     const { data: comptes } = await db.from('compte_entrepreneur')
       .select('id, raison_sociale, societe, prenom, nom').in('id', ids);
     const parId = {};
     (comptes || []).forEach(c => { parId[c.id] = c; });
-    state._chantierInvits.forEach(i => { i._compte = parId[i.entreprise_id] || null; });
+    // Une seule entreprise par chantier hors mode lots : l'intervenant sert de repli quand
+    // l'invitation ne porte pas l'identifiant.
+    const repli = parId[idsIntervenants[0]] || null;
+    state._chantierInvits.forEach(i => {
+      i._compte = parId[i.entreprise_id] || (i.statut === 'accepted' ? repli : null);
+    });
   }
   renderContextBar();
 }

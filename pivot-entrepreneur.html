@@ -1137,10 +1137,15 @@ async function processInvitation() {
 
     if (ciErr) return toast(ciErr.message, 'err');
 
-    await db.from('chantier_invitations').update({
+    // `entreprise_id` n'était pas renseigné : l'invitation ne gardait aucun lien vers le compte,
+    // si bien que le portail MOE ne pouvait afficher que l'adresse email de l'invitation.
+    const { data: invMaj, error: majErr } = await db.from('chantier_invitations').update({
       statut: 'accepted',
-      accepted_at: new Date().toISOString()
-    }).eq('id', inv.id);
+      accepted_at: new Date().toISOString(),
+      entreprise_id: state.user.id
+    }).eq('id', inv.id).select('id');
+    if (majErr) return toast(majErr.message, 'err');
+    if (!invMaj?.length) return toast("L'invitation n'a pas pu être marquée comme acceptée.", 'err');
 
     state.pendingInvitationToken = null;
     // Nettoyer l'URL
