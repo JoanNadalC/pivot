@@ -417,6 +417,36 @@ function toast(msg, type) {
   setTimeout(() => t.classList.add('hidden'), 3000);
 }
 
+// Traduit une erreur technique en message compréhensible. PostgreSQL renvoie le code 42501 et un
+// texte du genre « new row violates row-level security policy … » quand une écriture est refusée :
+// exact, mais inutilisable pour un utilisateur devant son écran.
+
+// Bandeau permanent signalant la lecture seule. La garantie est côté base ; ceci évite à
+// l'utilisateur de saisir des données qui seront refusées, et lui rappelle d'exporter ses dossiers.
+function _appliquerAccesRestreint() {
+  if (!state.accesRestreint || document.getElementById('acces-restreint-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'acces-restreint-banner';
+  banner.className = 'bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2.5 flex items-center justify-center gap-3 flex-wrap';
+  banner.innerHTML = '<span>🔒 Votre abonnement a pris fin : votre espace est en <strong>lecture seule</strong>. Pensez à récupérer vos dossiers.</span>'
+    + '<button onclick="exporterMesDonnees(this)" class="text-xs bg-amber-700 text-white px-3 py-1 rounded-lg hover:bg-amber-800 whitespace-nowrap">⬇ Télécharger mes données</button>';
+  document.body.prepend(banner);
+}
+
+function _messageErreur(err) {
+  const txt = err?.message || String(err || '');
+  const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
+  if (rls) {
+    return state.accesRestreint
+      ? "Votre abonnement a pris fin : votre espace est en lecture seule. Vous pouvez toujours consulter et télécharger vos dossiers."
+      : "Vous n'avez pas les droits pour effectuer cette action.";
+  }
+  if (err?.code === '23505') return "Cet élément existe déjà.";
+  if (err?.code === '23503') return "Cet élément est utilisé ailleurs et ne peut pas être supprimé.";
+  if (/Failed to fetch/i.test(txt)) return "Connexion au serveur impossible. Vérifiez votre accès internet.";
+  return txt;
+}
+
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ============================================================
@@ -495,7 +525,7 @@ async function openEquipeModal() {
           : `<p class="text-center text-sm text-orange-500">Limite de licences atteinte. Contactez l'administrateur Pivot pour augmenter votre quota.</p>`}
       </div>`;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     closeModal();
   }
 }
@@ -575,7 +605,7 @@ async function inviterMembre() {
       toast('Invitation envoyée par email — lien aussi copié dans le presse-papiers');
     }
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function retirerMembre(userId) {
@@ -587,7 +617,7 @@ async function retirerMembre(userId) {
     await db.from('profiles').update({ structure_id: null }).eq('id', userId);
     toast('Membre retiré');
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function supprimerCompteMembre(userId) {
@@ -603,7 +633,7 @@ async function supprimerCompteMembre(userId) {
     if (data.error) throw new Error(data.error);
     toast('Compte supprimé');
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function annulerTeamInvite(invId) {
@@ -652,7 +682,7 @@ async function processTeamInvite() {
     state.pendingTeamToken = null;
     state.structureId = inv.structure_id;
     toast('Vous avez rejoint l\'équipe avec succès !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function showModal(html) {
@@ -1020,6 +1050,15 @@ async function loadProfile() {
       .maybeSingle();
     state.structureId = mem?.structure_id || null;
     state.isReferent = mem?.role === 'referent';
+
+    // Accès restreint : abonnement résilié depuis plus de 30 jours. L'espace reste consultable et
+    // exportable, mais n'accepte plus d'écriture — le RLS l'impose, ceci ne fait que l'annoncer.
+    if (state.structureId) {
+      const { data: st } = await db.from('structures')
+        .select('acces_restreint').eq('id', state.structureId).maybeSingle();
+      state.accesRestreint = st?.acces_restreint === true;
+      _appliquerAccesRestreint();
+    }
     if (state.isReferent) document.getElementById('btn-mon-equipe').classList.remove('hidden');
   } catch (err) {
     console.error('loadProfile', err);
@@ -1290,7 +1329,7 @@ async function ouvrirPortailFacturation(btn) {
     if (!resp.ok || !data.url) throw new Error(data.error || 'Portail de facturation indisponible.');
     window.location.href = data.url;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     if (btn) { btn.disabled = false; btn.textContent = libelle; }
   }
 }
@@ -1495,7 +1534,7 @@ async function saveCompte() {
     closeModal();
     toast('Compte mis à jour');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -1596,7 +1635,7 @@ async function accepterInvitationMoe(invId, chantierId, nom) {
     state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
     toast(`✅ Vous êtes maintenant MOE sur "${nom}" !`);
     await loadChantiers();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function refuserInvitationMoe(invId) {
@@ -2368,7 +2407,7 @@ async function ctFusionnerDoublons() {
     });
     renderFournitures();
     toast(`${nbFusions} fusion(s) effectuée(s), ${nbSuppr} ligne(s) supprimée(s)`);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function ctSupprimerLignes(mode = 'both') {
@@ -2431,7 +2470,7 @@ async function ctSupprimerLignes(mode = 'both') {
     });
     renderFournitures();
     toast(`${aSupprimer.length} ligne(s) supprimée(s)`);
-  }).catch(err => toast(err.message, 'err'));
+  }).catch(err => toast(_messageErreur(err), 'err'));
 }
 
 function ctToggleHeader() {
@@ -2515,7 +2554,7 @@ async function ctImporter() {
     await loadFournituresForChantier();
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = `✓ Importer ${toInsert.length} lignes`; }
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -3694,7 +3733,7 @@ async function affecterFamille() {
     updateFamillesChips();
     renderFournitures();
     toast(`${ids.length} fourniture(s) → ${fam?.nom || ''}`);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function scrollToFamille(famId) {
@@ -3805,7 +3844,7 @@ async function supprimerSelectionnes() {
     deselectionnerTout();
     renderFournitures();
     toast(`${ids.length} fourniture(s) supprimée(s) — Ctrl+Z pour annuler`);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function deleteFourniture(id) {
@@ -3814,7 +3853,7 @@ async function deleteFourniture(id) {
     await db.from('fournitures').delete().in('id', [id]);
     _unregisterFournitures([id]);
     renderFournitures();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ── Colonnes par famille ──
@@ -4052,7 +4091,7 @@ async function saveCaractInline(fournitureId, raw) {
     if (error) throw error;
     const f = state.fournitures.find(x => x.id === fournitureId);
     if (f) f.caracteristiques = data?.caracteristiques ?? toSave;
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function saveFournitureField(id, key, value) {
@@ -4067,7 +4106,7 @@ async function saveFournitureField(id, key, value) {
     try {
       await db.from('fournitures').update({ caracteristiques: caract }).eq('id', id);
       f.caracteristiques = caract;
-    } catch(err) { toast(err.message, 'err'); }
+    } catch(err) { toast(_messageErreur(err), 'err'); }
     return;
   }
   const numKeys = ['qte', 'prix_etude_ht', 'surface', 'longueur', 'largeur'];
@@ -4076,7 +4115,7 @@ async function saveFournitureField(id, key, value) {
   try {
     await db.from('fournitures').update({ [key]: parsed }).eq('id', id);
     f[key] = parsed;
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 function toggleDetailRow(id) {
@@ -4181,7 +4220,7 @@ async function saveCaract(fournitureId) {
     const { error } = await db.from('fournitures').update({ caracteristiques: f.caracteristiques || [] }).eq('id', fournitureId);
     if (error) throw error;
     toast('Caractéristiques enregistrées !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function addFiche(fournitureId) {
@@ -4212,7 +4251,7 @@ async function saveFiches(fournitureId) {
     const { error } = await db.from('fournitures').update({ fiches_techniques: f.fiches_techniques || [] }).eq('id', fournitureId);
     if (error) throw error;
     toast('Fiches techniques enregistrées !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function refreshDetailRow(fournitureId) {
@@ -4259,7 +4298,7 @@ async function saveCaracteristiquesText(fournitureId) {
     closeModal();
     renderFournitures();
     toast('Caractéristiques mises à jour');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openFichesModal(fournitureId) {
@@ -4321,7 +4360,7 @@ async function uploadFichePdf(fournitureId, input) {
     closeModal();
     renderFournitures();
     toast('Fiche technique ajoutée');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function saveFichesInline(fournitureId) {
@@ -4336,7 +4375,7 @@ async function saveFichesInline(fournitureId) {
     closeModal();
     renderFournitures();
     toast('Fiches mises à jour');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ── Variante inline ──
@@ -4413,7 +4452,7 @@ async function saveInlineVariante(parentId) {
     cancelInlineVariante();
     renderFournitures();
     toast('Variante ajoutée !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ── Champs famille ──
@@ -4673,7 +4712,7 @@ async function saveFourniture(parentId) {
     closeModal();
     renderFournitures();
     toast(parentId ? 'Variante ajoutée !' : 'Fourniture ajoutée !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -5108,7 +5147,7 @@ async function donnerVisa(dafId, type) {
     renderLotsSidebar();
     toast(type === 'sans_remarque' ? 'VISA accordé !' : type === 'avec_remarques' ? 'VISA avec remarques envoyé !' : 'Refus notifié à l\'entrepreneur !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -5184,7 +5223,7 @@ async function ajouterDocRequisMoe(indexCategorie, btn) {
     if (!data?.length) throw new Error("L'ajout a été refusé.");
     input.value = '';
     _renderDocRequisMoe();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function ajouterCategorieDocRequis() {
@@ -5206,7 +5245,7 @@ async function supprimerDocRequisMoe(id) {
     if (error) throw error;
     if (!data?.length) throw new Error('La suppression a été refusée.');
     _renderDocRequisMoe();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function renderDocumentsViser() {
@@ -5456,7 +5495,7 @@ async function donnerVisaDoc(docId, type) {
     renderDocumentsViser();
     toast(type === 'sans_remarque' ? 'VISA accordé !' : type === 'avec_remarques' ? 'VISA avec remarques envoyé !' : 'Refus notifié à l\'entrepreneur !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6016,7 +6055,7 @@ async function accepterInviteMoe() {
     toast(`Vous êtes maintenant le Maître d'Œuvre du chantier "${ch.affaire}" !`);
     await loadChantiers();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6094,7 +6133,7 @@ async function creerChantier() {
     await loadChantiers();
     openChantier(data.id);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6170,7 +6209,7 @@ async function creerLot() {
     toast(`Lot "${nom}" créé`);
     await refreshLotsLayout();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6307,7 +6346,7 @@ async function selectionnerEntrepriseLot(entrepriseId, nom, lotId) {
         <button onclick="ouvrirLot('${lotId}')" class="w-full border border-gray-200 text-gray-500 py-2 rounded-lg text-sm hover:bg-gray-50">Retour au lot</button>
       </div>
     `);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function renommerLot(lotId) {
@@ -6374,7 +6413,7 @@ async function inviterEntrepriseLot(lotId) {
       </div>
     `);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 

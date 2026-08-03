@@ -1548,6 +1548,15 @@ async function loadProfile() {
     state.structureId = mem?.structure_id || null;
     state.isReferent = mem?.role === 'referent';
 
+    // Accès restreint : abonnement résilié depuis plus de 30 jours. L'espace reste consultable et
+    // exportable, mais n'accepte plus d'écriture — le RLS l'impose, ceci ne fait que l'annoncer.
+    if (state.structureId) {
+      const { data: st } = await db.from('structures')
+        .select('acces_restreint').eq('id', state.structureId).maybeSingle();
+      state.accesRestreint = st?.acces_restreint === true;
+      _appliquerAccesRestreint();
+    }
+
     // Si membre (pas référent) : utiliser le fournisseur_id du référent
     if (state.structureId && !state.isReferent) {
       const { data: refMem } = await db.from('structure_membres')
@@ -1909,7 +1918,7 @@ async function ouvrirPortailFacturation(btn) {
     if (!resp.ok || !data.url) throw new Error(data.error || 'Portail de facturation indisponible.');
     window.location.href = data.url;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     if (btn) { btn.disabled = false; btn.textContent = libelle; }
   }
 }
@@ -1920,7 +1929,7 @@ async function saveAcceptationAuto(checked) {
     if (error) throw error;
     state.profile = { ...state.profile, acceptation_auto_relations: checked };
     toast(checked ? 'Acceptation automatique activée' : 'Validation manuelle activée');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function loadDemandesRelation() {
@@ -1970,7 +1979,7 @@ async function accepterDemandeRelation(id) {
     if (error) throw error;
     toast('Mise en relation acceptée');
     loadDemandesRelation();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function refuserDemandeRelation(id) {
@@ -1979,7 +1988,7 @@ async function refuserDemandeRelation(id) {
     if (error) throw error;
     toast('Demande refusée');
     loadDemandesRelation();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function ouvrirModalChangeEmail() {
@@ -2098,7 +2107,7 @@ async function saveProfil() {
     state.logoBase64 = null;
     toast('Profil enregistré !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -3276,7 +3285,7 @@ async function loadSaisie() {
 
     renderSaisie();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -3580,6 +3589,36 @@ function getFamilleConfig(nomFamille) {
 }
 // ───────────────────────────────────────────────────────────────────────────
 
+// Traduit une erreur technique en message compréhensible. PostgreSQL renvoie le code 42501 et un
+// texte du genre « new row violates row-level security policy … » quand une écriture est refusée :
+// exact, mais inutilisable pour un utilisateur devant son écran.
+
+// Bandeau permanent signalant la lecture seule. La garantie est côté base ; ceci évite à
+// l'utilisateur de saisir des données qui seront refusées, et lui rappelle d'exporter ses dossiers.
+function _appliquerAccesRestreint() {
+  if (!state.accesRestreint || document.getElementById('acces-restreint-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'acces-restreint-banner';
+  banner.className = 'bg-amber-50 border-b border-amber-200 text-amber-800 text-sm px-4 py-2.5 flex items-center justify-center gap-3 flex-wrap';
+  banner.innerHTML = '<span>🔒 Votre abonnement a pris fin : votre espace est en <strong>lecture seule</strong>. Pensez à récupérer vos dossiers.</span>'
+    + '<button onclick="exporterMesDonnees(this)" class="text-xs bg-amber-700 text-white px-3 py-1 rounded-lg hover:bg-amber-800 whitespace-nowrap">⬇ Télécharger mes données</button>';
+  document.body.prepend(banner);
+}
+
+function _messageErreur(err) {
+  const txt = err?.message || String(err || '');
+  const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
+  if (rls) {
+    return state.accesRestreint
+      ? "Votre abonnement a pris fin : votre espace est en lecture seule. Vous pouvez toujours consulter et télécharger vos dossiers."
+      : "Vous n'avez pas les droits pour effectuer cette action.";
+  }
+  if (err?.code === '23505') return "Cet élément existe déjà.";
+  if (err?.code === '23503') return "Cet élément est utilisé ailleurs et ne peut pas être supprimé.";
+  if (/Failed to fetch/i.test(txt)) return "Connexion au serveur impossible. Vérifiez votre accès internet.";
+  return txt;
+}
+
 function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -3661,7 +3700,7 @@ async function openEquipeModal() {
           : `<p class="text-center text-sm text-orange-500">Limite de licences atteinte. Contactez l'administrateur Pivot pour augmenter votre quota.</p>`}
       </div>`;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     closeModal();
   }
 }
@@ -3741,7 +3780,7 @@ async function inviterMembre() {
       toast('Invitation envoyée par email — lien aussi copié dans le presse-papiers');
     }
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function retirerMembre(userId) {
@@ -3753,7 +3792,7 @@ async function retirerMembre(userId) {
     await db.from('profiles').update({ structure_id: null }).eq('id', userId);
     toast('Membre retiré');
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function supprimerCompteMembre(userId) {
@@ -3769,7 +3808,7 @@ async function supprimerCompteMembre(userId) {
     if (data.error) throw new Error(data.error);
     toast('Compte supprimé');
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function annulerTeamInvite(invId) {
@@ -3819,7 +3858,7 @@ async function processTeamInvite() {
     state.pendingTeamToken = null;
     state.structureId = inv.structure_id;
     toast('Vous avez rejoint l\'équipe avec succès !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function renderVarCaractFields(fournitureId, varOrdre, caract, locked) {
@@ -4459,7 +4498,7 @@ async function saveReponses(send) {
       await loadSaisie();
     }
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -4623,7 +4662,7 @@ async function saveCatalogue(id) {
     renderCatalogue();
     toast('Catalogue mis à jour !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -4639,7 +4678,7 @@ async function deleteCatalogue(id) {
     state.catalogue = state.catalogue.filter(c => c.id !== id);
     renderCatalogue();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 

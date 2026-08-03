@@ -1156,7 +1156,7 @@ async function processInvitation() {
 
     toast(`✅ Invitation acceptée — chantier "${inv.nom_chantier || ''}" ajouté`);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -1229,7 +1229,7 @@ async function processLotInvite() {
       </div>
     `);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -1255,7 +1255,7 @@ async function _accepterLotInvite() {
     toast(`✅ Invitation acceptée — lot "${inv.lotNom}" du chantier "${inv.chNom}"`);
     await loadChantiers();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -1385,6 +1385,23 @@ function _appliquerAccesRestreint() {
       <button onclick="exporterMesDonnees(this)" class="text-xs bg-amber-700 text-white px-3 py-1 rounded-lg hover:bg-amber-800 whitespace-nowrap">⬇ Télécharger mes données</button>`;
     document.body.prepend(banner);
   }
+}
+
+// Traduit une erreur technique en message compréhensible. PostgreSQL renvoie le code 42501 et un
+// texte du genre « new row violates row-level security policy … » quand une écriture est refusée :
+// exact, mais inutilisable pour un paysagiste devant son écran.
+function _messageErreur(err) {
+  const txt = err?.message || String(err || '');
+  const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
+  if (rls) {
+    return state.accesRestreint
+      ? "Votre abonnement a pris fin : votre espace est en lecture seule. Vous pouvez toujours consulter et télécharger vos dossiers."
+      : "Vous n'avez pas les droits pour effectuer cette action.";
+  }
+  if (err?.code === '23505') return "Cet élément existe déjà.";
+  if (err?.code === '23503') return "Cet élément est utilisé ailleurs et ne peut pas être supprimé.";
+  if (/Failed to fetch/i.test(txt)) return "Connexion au serveur impossible. Vérifiez votre accès internet.";
+  return txt;
 }
 
 // Refuse une action d'écriture quand l'espace est en lecture seule. Renvoie true si l'action
@@ -1819,7 +1836,7 @@ async function ouvrirPortailFacturation(btn) {
     if (!resp.ok || !data.url) throw new Error(data.error || 'Portail de facturation indisponible.');
     window.location.href = data.url;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     if (btn) { btn.disabled = false; btn.textContent = libelle; }
   }
 }
@@ -2065,7 +2082,7 @@ async function saveCompte() {
     closeModal();
     toast('Compte mis à jour');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -2150,7 +2167,7 @@ async function openEquipeModal() {
         <button onclick="openGererChantiersEquipe()" class="w-full border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50">🏗 Gérer les chantiers de l'équipe</button>
       </div>`;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     closeModal();
   }
 }
@@ -2233,7 +2250,7 @@ async function inviterMembre() {
       toast('Invitation envoyée par email — lien aussi copié dans le presse-papiers');
     }
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function retirerMembre(userId) {
@@ -2296,7 +2313,7 @@ async function retirerMembre(userId) {
         Retirer sans réassigner
       </button>
     `);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function confirmerRetirerAvecReassign(userId, chantierIds) {
@@ -2310,7 +2327,7 @@ async function confirmerRetirerAvecReassign(userId, chantierIds) {
     if (rErr) throw rErr;
     await _execRetirerMembre(userId);
     toast('Chantiers réassignés et membre retiré');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function confirmerRetirerSansReassign(userId) {
@@ -2417,7 +2434,7 @@ async function openGererChantiersEquipe() {
         </select>
         <button onclick="executerReassignation()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 whitespace-nowrap">Affecter</button>
       </div>`;
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function executerReassignation() {
@@ -2466,7 +2483,7 @@ async function executerReassignation() {
 
     toast(`${chantierIds.length} chantier${chantierIds.length > 1 ? 's' : ''} réaffecté${chantierIds.length > 1 ? 's' : ''}`);
     await openGererChantiersEquipe();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function _execRetirerMembre(userId) {
@@ -2478,7 +2495,7 @@ async function _execRetirerMembre(userId) {
     toast('Membre retiré');
     closeModal();
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function supprimerCompteMembre(userId) {
@@ -2495,7 +2512,7 @@ async function supprimerCompteMembre(userId) {
     toast('Compte supprimé');
     closeModal();
     await openEquipeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function annulerTeamInvite(invId) {
@@ -2545,7 +2562,7 @@ async function processTeamInvite() {
     state.pendingTeamToken = null;
     state.structureId = inv.structure_id;
     toast('Vous avez rejoint l\'équipe avec succès !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -2601,7 +2618,7 @@ async function openPartagerModal(chantierId) {
       <p class="text-sm text-gray-500 mb-3">Choisissez les membres de votre équipe qui peuvent consulter et modifier ce chantier.</p>
       <div>${membresHtml}</div>`;
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
     closeModal();
   }
 }
@@ -2620,7 +2637,7 @@ async function togglePartageAcces(chantierId, userId, hasAccess) {
       toast('Accès accordé');
     }
     await openPartagerModal(chantierId);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function masquerChantier(chantierId) {
@@ -2632,7 +2649,7 @@ async function masquerChantier(chantierId) {
     if (error) throw error;
     toast('Chantier masqué — retrouvez-le via "Voir et restaurer"');
     await loadChantiers();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function afficherChantier(chantierId) {
@@ -2645,7 +2662,7 @@ async function afficherChantier(chantierId) {
     toast('Chantier restauré');
     await loadChantiers();
     closeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openChantiersHiddenModal() {
@@ -3081,7 +3098,7 @@ async function accepterInvitationChantier(invId, chantierId, nom) {
     }
     toast(`✅ Chantier "${nom}" ajouté`);
     await Promise.all([loadChantiers(), loadPendingInvitations()]);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function refuserInvitationChantier(invId) {
@@ -3106,7 +3123,7 @@ async function _accepterLotInviteById(lotEntrepriseId, chantierId, chNom, lotNom
     }
     toast(`✅ Lot "${lotNom}" accepté`);
     await Promise.all([loadChantiers(), loadPendingInvitations()]);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function refuserLotInvite(lotEntrepriseId) {
@@ -3312,7 +3329,7 @@ async function saveMoeCarnet(editId) {
     closeModal();
     renderCarnetMoe();
     toast(editId ? 'Maître d\'œuvre mis à jour' : 'Maître d\'œuvre ajouté');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function deleteMoeCarnet(id) {
@@ -3323,7 +3340,7 @@ async function deleteMoeCarnet(id) {
     state.maitresOeuvre = state.maitresOeuvre.filter(x => x.id !== id);
     renderCarnetMoe();
     toast('Supprimé');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -3902,7 +3919,7 @@ async function createChantier() {
     renderChantiers();
     openChantier(data.id);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -4142,7 +4159,7 @@ async function saveParamCouleur() {
     // Devient aussi la couleur par défaut des prochains chantiers créés
     await db.from('profiles').update({ default_bandeau_bg: bg, default_bandeau_text: text }).eq('id', state.user.id);
     toast('Couleur enregistrée — utilisée aussi pour les prochains chantiers créés');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function _fillParametrageMoe() {
@@ -4202,7 +4219,7 @@ async function saveChantier() {
     toast('Chantier enregistré !');
     await loadChantiers();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -4259,7 +4276,7 @@ async function linkMoeFromCarnet(compteMoeId, nom) {
     if (notifErr) console.warn('notification insert:', notifErr.message);
     toast(`Invitation envoyée à ${nom} ✉️`);
     closeModal();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function linkMoeByEmail() {
@@ -4273,7 +4290,7 @@ async function linkMoeByEmail() {
     toast(`MOE ${data.nom || email} associé !`);
     closeModal();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -4342,7 +4359,7 @@ async function _genererLienMoe(chantierId) {
       </div>
       <button onclick="_regenererLienMoe('${chantierId}')" class="text-xs text-gray-400 hover:text-gray-600 underline">Regénérer un nouveau lien</button>`;
     toast('Lien généré');
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function _regenererLienMoe(chantierId) {
@@ -4594,7 +4611,7 @@ async function addFournisseurCarnet() {
     } else {
       toast('Fournisseur ajouté !');
     }
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // Alias pour compatibilité avec le tab paramétrage
@@ -4650,7 +4667,7 @@ async function saveEditFournisseur(id) {
     renderFournisseursChantier();
     closeModal();
     toast('Fournisseur mis à jour !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function deleteFournisseur(id) {
@@ -4666,7 +4683,7 @@ async function deleteFournisseur(id) {
     renderCarnetFournisseurs();
     renderFournisseursChantier();
     toast('Fournisseur retiré du carnet');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -4819,7 +4836,7 @@ async function addPortailFournisseurToCarnet(compteId, nom) {
       await _notifierDemandeRelation(compteId, nom, data.id);
       toast(`Demande envoyée à ${nom}, en attente de sa validation`);
     }
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -5120,7 +5137,7 @@ async function affecterFamille() {
     updateFamillesChips();
     renderFournitures();
     toast(`${ids.length} fourniture(s) → ${fam?.nom || ''}`);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -5243,7 +5260,7 @@ async function saveFournitureField(id, key, value) {
     try {
       await db.from('fournitures').update({ caracteristiques: caract }).eq('id', id);
       f.caracteristiques = caract;
-    } catch(err) { toast(err.message, 'err'); }
+    } catch(err) { toast(_messageErreur(err), 'err'); }
     return;
   }
   const numKeys = ['qte', 'prix_etude_ht', 'surface', 'longueur', 'largeur'];
@@ -5252,7 +5269,7 @@ async function saveFournitureField(id, key, value) {
   try {
     await db.from('fournitures').update({ [key]: parsed }).eq('id', id);
     f[key] = parsed;
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 function famSelectAll(famId, checked) {
@@ -5374,7 +5391,7 @@ async function saveCaractInline(fournitureId, raw) {
     if (error) throw error;
     const f = state.fournitures.find(x => x.id === fournitureId);
     if (f) f.caracteristiques = data?.caracteristiques ?? toSave;
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openFichesModal(fournitureId) {
@@ -5441,7 +5458,7 @@ async function uploadFichePdf(fournitureId, input) {
     closeModal();
     renderFournitures();
     toast('Fiche technique ajoutée');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openCataloguePicker(onSelectUrl, filterFamSrcId = null) {
@@ -5496,7 +5513,7 @@ async function saveFichesInline(fournitureId) {
     closeModal();
     renderFournitures();
     toast('Fiches mises à jour');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function editCaracteristiques(fournitureId) {
@@ -5544,7 +5561,7 @@ async function saveCaracteristiquesText(fournitureId) {
     renderFournitures();
     toast('Caractéristiques mises à jour');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -5659,7 +5676,7 @@ async function saveInlineVariante(parentId) {
     cancelInlineVariante();
     renderFournitures();
     toast('Variante ajoutée !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function addVariante(parentId) {
@@ -5881,7 +5898,7 @@ async function saveCaract(fournitureId) {
       .eq('id', fournitureId);
     if (error) throw error;
     toast('Caractéristiques enregistrées !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // --- Fiches techniques ---
@@ -5915,7 +5932,7 @@ async function saveFiches(fournitureId) {
       .eq('id', fournitureId);
     if (error) throw error;
     toast('Fiches techniques enregistrées !');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function refreshDetailRow(fournitureId) {
@@ -6113,7 +6130,7 @@ async function saveFourniture(parentId) {
     renderFournitures();
     toast(parentId ? 'Variante ajoutée !' : 'Fourniture ajoutée !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6206,7 +6223,7 @@ async function updateFourniture(id) {
     renderFournitures();
     toast('Fourniture mise à jour !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -6461,7 +6478,7 @@ async function ctSupprimerLignes(mode = 'both') {
     });
     renderFournitures();
     toast(`${aSupprimer.length} ligne(s) supprimée(s)`);
-  }).catch(err => toast(err.message, 'err'));
+  }).catch(err => toast(_messageErreur(err), 'err'));
 }
 
 function ctToggleHeader() {
@@ -6546,7 +6563,7 @@ async function ctImporter() {
     await loadFournitures();
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = `✓ Importer ${toInsert.length} lignes`; }
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -7908,7 +7925,7 @@ async function deleteConsultation(id) {
     delete _consReponses[id];
     renderConsultations();
     toast('Consultation supprimée');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function openAddFournisseurModal(consultationId) {
@@ -8204,7 +8221,7 @@ async function createConsultation() {
     renderConsultations();
     toast(checkedFours.length ? `Consultation créée — ${checkedFours.length} invitation(s) envoyée(s) par email` : 'Consultation créée !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -8272,7 +8289,7 @@ async function renewInvitation(oldToken, consultationId) {
     toast('Lien renouvelé !');
     openConsultationDetail(consultationId);
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -10004,17 +10021,17 @@ function dafSetDesignation(fId,v){ _dafEnsure(fId); window._dafRows[fId]._design
 async function dafSetReference(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].reference = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ reference: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+  if (dafId) { try { await db.from('daf').update({ reference: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
 }
 async function dafSetFabricant(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].fabricant = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ fabricant: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+  if (dafId) { try { await db.from('daf').update({ fabricant: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
 }
 async function dafSetDelai(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].date_livraison_prevue = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ date_livraison_prevue: v || null }).eq('id', dafId); } catch (err) { toast(err.message, 'err'); } }
+  if (dafId) { try { await db.from('daf').update({ date_livraison_prevue: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
 }
 function dafAddCaract(fId)       { _dafEnsure(fId); if(!window._dafRows[fId]._caract) window._dafRows[fId]._caract=[]; window._dafRows[fId]._caract.push({cle:'',valeur:''}); dafRefreshRow(fId); }
 function dafRemoveCaract(fId,idx){ _dafEnsure(fId); window._dafRows[fId]._caract?.splice(idx,1); dafRefreshRow(fId); }
@@ -10184,7 +10201,7 @@ async function ctFusionnerDoublons() {
     });
     renderFournitures();
     toast(`${nbFusions} fusion(s) effectuée(s), ${nbSuppr} ligne(s) supprimée(s)`);
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function dafImportFichesFournisseur(fId, fiches) {
@@ -10477,7 +10494,7 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
     dafRefreshRow(fId);
     toast('DAF sauvegardée !');
     dafGeneratePdf(fId);
-  } catch(err) { toast(err.message,'err'); }
+  } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
 async function dafGeneratePdf(fId) {
@@ -10862,7 +10879,7 @@ async function _sauvegarderParametresDAF() {
     delete _chantierConfigCache[ch.id];
     closeModal();
     toast('Paramètres DAF enregistrés');
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ── Générer DOE complet ──
@@ -11060,7 +11077,7 @@ async function _doeFournHandlePdf(chapIdx, fId, input) {
     const { data: { publicUrl } } = db.storage.from('doe-pdfs').getPublicUrl(path);
     _doeAddFournFiche(chapIdx, fId, file.name, publicUrl);
     toast('Fiche ajoutée');
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function _doeAddFournCatalogue(chapIdx, fId, url) {
@@ -11406,7 +11423,7 @@ async function _doeSousPageUploadPdf(chapIdx, spIdx, input) {
     sp.path = path;
     document.getElementById('doe-chapitres-list').innerHTML = _renderChapitresList();
     toast('PDF chargé');
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 function _doeEditerSousPage(chapIdx, spIdx) {
@@ -11730,7 +11747,7 @@ async function _pageEditorUploadPdf(bi, input) {
     document.getElementById('page-editor-blocs').innerHTML =
       _pageEditorBlocs.map((b,i) => _renderBlocEditor(b,i)).join('');
     toast('PDF chargé');
-  } catch(err) { toast(err.message,'err'); }
+  } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
 function _pageEditorSauvegarder() {
@@ -11991,7 +12008,7 @@ async function soumettreDaf(id) {
     }
     renderDaf();
     toast('DAF soumise au MOE !');
-  } catch(err) { toast(err.message,'err'); }
+  } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
 async function commanderDaf(id) {
@@ -12008,7 +12025,7 @@ async function commanderDaf(id) {
     const row=Object.values(window._dafRows).find(r=>r.daf_id===id);
     if(row) row.statut='commandee';
     renderDaf(); toast('DAF commandée !');
-  } catch(err) { toast(err.message,'err'); }
+  } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
 function createDafFromFourniture(fId) { setTab('daf'); }
@@ -12173,7 +12190,7 @@ async function uploadDocumentViser() {
     fileInput.value = ''; nomInput.value = '';
     toast('Document envoyé au MOE !');
     loadDocumentsViser();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function ouvrirNouvelleVersionDoc(parentId, nom, prevVersion) {
@@ -12207,7 +12224,7 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
     closeModal();
     toast('Nouvelle version envoyée !');
     loadDocumentsViser();
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -12455,7 +12472,7 @@ async function saveSuiviCell(fournitureId, field, value) {
     }
     await db.from('daf').update({ [field]: value || null }).eq('id', d.id);
     d[field] = value || null;
-  } catch (err) { toast(err.message, 'err'); }
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function editSuivi(dafId) {
@@ -12493,7 +12510,7 @@ async function saveSuivi(dafId) {
     loadSuivi();
     toast('Suivi mis à jour !');
   } catch (err) {
-    toast(err.message, 'err');
+    toast(_messageErreur(err), 'err');
   }
 }
 
@@ -12502,7 +12519,7 @@ async function saveSuiviField(dafId, field, value) {
     await db.from('daf').update({ [field]: value || null }).eq('id', dafId);
     const d = state.daf.find(x => x.id === dafId);
     if (d) d[field] = value || null;
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 // ============================================================
@@ -12647,7 +12664,7 @@ async function saveDoeDafField(fournitureId, key, value) {
   try {
     await db.from('daf').update({ [key]: value || null }).eq('id', d.id);
     d[key] = value || null;
-  } catch(err) { toast(err.message, 'err'); }
+  } catch(err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openDoeInfoModal() {
