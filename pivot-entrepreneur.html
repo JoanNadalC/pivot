@@ -4589,7 +4589,7 @@ async function addFournisseurCarnet() {
     renderCarnetFournisseurs();
     closeModal();
     if (portailId && !auto) {
-      await _notifierDemandeRelation(portailId, nom);
+      await _notifierDemandeRelation(portailId, nom, data.id);
       toast(`Demande envoyée à ${nom}, en attente de sa validation`);
     } else {
       toast('Fournisseur ajouté !');
@@ -4763,11 +4763,14 @@ async function _fournisseurAccepteAuto(compteId) {
   } catch (e) { return false; }
 }
 
-async function _notifierDemandeRelation(compteId, nom) {
-  const nomEnt = state.profile?.societe || state.profile?.nom || 'Une entreprise';
+// `relationId` est l'identifiant de la ligne `fournisseurs` créée : il permet au portail
+// fournisseur d'ouvrir la bonne demande depuis la notification, plutôt que la seule liste.
+async function _notifierDemandeRelation(compteId, nom, relationId) {
+  const nomEnt = state.profile?.raison_sociale || state.profile?.societe || state.profile?.nom || 'Une entreprise';
   await db.from('notifications').insert({
     user_id: compteId,
     type: 'demande_relation',
+    relation_id: relationId || null,
     message: `${nomEnt} souhaite vous ajouter à son carnet fournisseur`,
     read: false
   });
@@ -4813,7 +4816,7 @@ async function addPortailFournisseurToCarnet(compteId, nom) {
     if (auto) {
       toast(`${nom} ajouté au carnet (portail) !`);
     } else {
-      await _notifierDemandeRelation(compteId, nom);
+      await _notifierDemandeRelation(compteId, nom, data.id);
       toast(`Demande envoyée à ${nom}, en attente de sa validation`);
     }
   } catch (err) { toast(err.message, 'err'); }

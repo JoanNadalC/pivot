@@ -186,6 +186,10 @@
         class="px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 h-full">
         Réponses photos<span class="tab-dot hidden" id="badge-reponses-photos"></span>
       </button>
+      <button id="dash-btn-rel" onclick="switchDashMode('relations')"
+        class="px-5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 h-full">
+        Relations<span class="tab-dot hidden" id="badge-relations"></span>
+      </button>
     </div>
   </div>
 
@@ -259,6 +263,22 @@
       <div id="reponses-photos-avalider" class="mb-6"></div>
       <div id="reponses-photos-actives" class="mb-6"></div>
       <div id="reponses-photos-cloturees"></div>
+    </div>
+
+    <!-- Demandes de mise en relation : sorti du profil pour être atteignable depuis une notification -->
+    <div id="view-relations" class="hidden">
+      <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <h2 class="text-lg font-bold text-gray-800">🤝 Mises en relation</h2>
+        <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+          Accepter automatiquement les demandes
+          <input id="p-accept-auto" type="checkbox" onchange="saveAcceptationAuto(this.checked)" class="w-4 h-4">
+        </label>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">
+        Quand une entreprise vous ajoute à son carnet fournisseur, elle est acceptée automatiquement
+        si l'option ci-dessus est cochée, sinon chaque demande attend votre validation.
+      </p>
+      <div id="demandes-relation-list" class="bg-white rounded-xl p-5 shadow-sm border border-gray-100"></div>
     </div>
 
     <!-- MODAL RENVOYER UNE DEMANDE (photo ou renseignement) -->
@@ -699,19 +719,6 @@
             <button onclick="ouvrirModalInviter()" class="text-xs bg-green-800 text-white px-2.5 py-1 rounded-lg hover:bg-green-900">+ Inviter</button>
           </div>
           <div id="dash-equipe-list"></div>
-        </div>
-
-        <!-- Demandes de mise en relation -->
-        <div id="demandes-relation-card" class="bg-white rounded-xl p-5 shadow-sm mb-4 border border-gray-100 hidden">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="font-semibold">🤝 Demandes de mise en relation</h3>
-            <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
-              Acceptation automatique
-              <input id="p-accept-auto" type="checkbox" onchange="saveAcceptationAuto(this.checked)" class="w-4 h-4">
-            </label>
-          </div>
-          <p class="text-xs text-gray-500 mb-3">Quand une entreprise vous ajoute à son carnet fournisseur, elle est acceptée automatiquement si activé ci-dessus, sinon vous devez valider chaque demande.</p>
-          <div id="demandes-relation-list"></div>
         </div>
 
         <!-- Filigrane des photos -->
@@ -1603,7 +1610,6 @@ function fillProfil(p) {
   document.getElementById('btn-portail-facturation')?.classList.toggle('hidden', !isRef);
 
   // Demandes de mise en relation : réglage et suivi individuels, propres à chaque compte
-  document.getElementById('demandes-relation-card')?.classList.remove('hidden');
   const acceptAutoEl = document.getElementById('p-accept-auto');
   if (acceptAutoEl) acceptAutoEl.checked = p.acceptation_auto_relations === true;
 
@@ -1932,15 +1938,30 @@ function renderDemandesRelation(demandes) {
   const el = document.getElementById('demandes-relation-list');
   if (!el) return;
   if (!demandes.length) { el.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune demande en attente.</p>'; return; }
+  // `data-relation` permet à une notification de pointer la ligne concernée.
   el.innerHTML = demandes.map(d => `
-    <div class="flex items-center justify-between py-2 border-t first:border-t-0">
-      <p class="text-sm">${escHtml(d.nom || 'Une entreprise')}</p>
+    <div data-relation="${d.id}" class="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg border-t first:border-t-0 transition-colors">
+      <div class="min-w-0">
+        <p class="text-sm">${escHtml(d.nom || 'Une entreprise')}</p>
+        ${d.created_at ? `<p class="text-xs text-gray-400">Demande du ${new Date(d.created_at).toLocaleDateString('fr-FR')}</p>` : ''}
+      </div>
       <div class="flex items-center gap-2 shrink-0">
         <button onclick="accepterDemandeRelation('${d.id}')" class="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700">Accepter</button>
         <button onclick="refuserDemandeRelation('${d.id}')" class="text-xs border border-red-200 text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50">Refuser</button>
       </div>
     </div>
   `).join('');
+
+  // Si l'affichage vient d'une notification, on met la ligne en évidence le temps de l'apercevoir.
+  if (state._relationAMettreEnAvant) {
+    const ligne = el.querySelector(`[data-relation="${state._relationAMettreEnAvant}"]`);
+    state._relationAMettreEnAvant = null;
+    if (ligne) {
+      ligne.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      ligne.classList.add('bg-amber-100', 'ring-2', 'ring-amber-300');
+      setTimeout(() => ligne.classList.remove('bg-amber-100', 'ring-2', 'ring-amber-300'), 3000);
+    }
+  }
 }
 
 async function accepterDemandeRelation(id) {
@@ -2141,8 +2162,8 @@ function switchDashMode(mode, _silent) {
   document.getElementById('cons-tab-bar')?.classList.add('hidden');
   document.getElementById('dash-mode-bar')?.classList.remove('hidden');
   document.getElementById('btn-back-dashboard')?.classList.add('hidden');
-  const views = { consultations: 'view-dashboard', catalogue: 'view-catalogue', prospection: 'view-prospection', 'reponses-photos': 'view-reponses-photos' };
-  const btns  = { consultations: 'dash-btn-cons', catalogue: 'dash-btn-cat', prospection: 'dash-btn-prosp', 'reponses-photos': 'dash-btn-rep' };
+  const views = { consultations: 'view-dashboard', catalogue: 'view-catalogue', prospection: 'view-prospection', 'reponses-photos': 'view-reponses-photos', relations: 'view-relations' };
+  const btns  = { consultations: 'dash-btn-cons', catalogue: 'dash-btn-cat', prospection: 'dash-btn-prosp', 'reponses-photos': 'dash-btn-rep', relations: 'dash-btn-rel' };
   Object.entries(views).forEach(([m, id]) => document.getElementById(id)?.classList.toggle('hidden', m !== mode));
   Object.entries(btns).forEach(([m, id]) => {
     const btn = document.getElementById(id);
@@ -2157,6 +2178,7 @@ function switchDashMode(mode, _silent) {
     if (mode === 'catalogue') { switchCatTab('vegetaux'); }
     else if (mode === 'prospection') { loadDashboardConfig(); }
     else if (mode === 'reponses-photos') { loadReponsesPhotos(); }
+    else if (mode === 'relations') { loadDemandesRelation(); }
     else { loadDashboard(); renderConsultations(); }
   }
 }
@@ -2490,10 +2512,13 @@ function renderNotifList() {
     return;
   }
   el.innerHTML = state.notifications.map(n => {
-    const tab = n.type === 'modification_autorisee' ? 'saisie' : n.type === 'demande_photo' ? 'photos-cons' : 'consultations';
+    const tab = n.type === 'modification_autorisee' ? 'saisie'
+              : n.type === 'demande_photo' ? 'photos-cons'
+              : n.type === 'demande_relation' ? 'relations'
+              : 'consultations';
     const isRead = !!n.read;
     return `<div class="p-3 border-b flex items-start gap-2 ${isRead ? 'bg-white opacity-50' : 'bg-blue-50 hover:bg-blue-100 cursor-pointer'}"
-        ${!isRead ? `onclick="notifNavigate('${n.id}','${tab}','${n.consultation_id||''}')"` : ''}>
+        ${!isRead ? `onclick="notifNavigate('${n.id}','${tab}','${n.consultation_id||''}','${n.relation_id||''}')"` : ''}>
       <div class="flex-1 min-w-0">
         <p class="text-sm ${isRead ? 'text-gray-400' : ''}">${n.message}</p>
         <p class="text-xs text-gray-400 mt-1">${new Date(n.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
@@ -2518,11 +2543,21 @@ async function deleteReadNotifs() {
   renderNotifList();
 }
 
-async function notifNavigate(notifId, tab, consId) {
+async function notifNavigate(notifId, tab, consId, relationId) {
   document.getElementById('notif-panel').classList.add('hidden');
   await db.from('notifications').update({ read: true }).eq('id', notifId);
   state.notifications = state.notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
   _updateNotifBadge();
+
+  // Les mises en relation ne vivent pas dans une consultation : elles ont leur propre vue,
+  // atteinte par la barre de modes du tableau de bord et non par setTab.
+  if (tab === 'relations') {
+    state._relationAMettreEnAvant = relationId || null;
+    showDashboard();
+    switchDashMode('relations');
+    return;
+  }
+
   if (consId) {
     const cons = state.consultations.find(c => c.id === consId);
     if (cons) { enterConsultation(cons, tab); return; }
@@ -2590,7 +2625,6 @@ function setTab(tab, _noHistory) {
   if (tab === 'photos-cons') loadDemandesPhotosForConsultation();
   if (tab === 'profil' && state.profile) fillProfil(state.profile);
   if (tab === 'profil') loadCollaborateurs();
-  if (tab === 'profil') loadDemandesRelation();
 }
 
 function showTabBadge(tabName) {
