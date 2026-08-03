@@ -1141,7 +1141,7 @@ async function exporterMesDonnees(btn) {
       const [fRes, lotsRes, dafRes, docsRes] = await Promise.all([
         db.from('fournitures').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
         db.from('lots').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
-        db.from('daf').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
+        db.from('daf').select('*').eq('chantier_id', ch.id).neq('statut', 'brouillon').then(r => r, () => ({ data: [] })),
         db.from('documents_viser').select('*').eq('chantier_id', ch.id).then(r => r, () => ({ data: [] })),
       ]);
 
@@ -1851,7 +1851,10 @@ async function loadDafForChantier() {
       if (res.error) { console.error('loadDaf:', res.error); toast('Erreur DAF : ' + res.error.message, 'err'); }
       data = res.data;
     }
-    state.allDaf = data || [];
+    // Une DAF en brouillon est un travail en cours côté entreprise : elle n'a pas à être visible
+    // du MOE, qui n'a de toute façon aucune action possible dessus. Elle était affichée avec un
+    // bandeau « l'entrepreneur soumet une v2 » alors que rien n'avait été soumis.
+    state.allDaf = (data || []).filter(d => d.statut !== 'brouillon');
     state.daf = state.allDaf;
   } catch (err) {
     console.error('loadDaf', err);
