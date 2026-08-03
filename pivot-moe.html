@@ -4774,13 +4774,48 @@ function filterDaf(f) {
   renderDafVisa();
 }
 
+// Regroupe les DAF par lignée de versions : une v2 est rattachée à sa v1 via parent_daf_id.
+// Renvoie un tableau de lignées, chacune triée de la plus ancienne version à la plus récente.
+function _grouperVersionsDaf(list) {
+  const parId = {};
+  list.forEach(d => { parId[d.id] = d; });
+
+  // Remonte la chaîne jusqu'à la version d'origine. La borne évite une boucle infinie si des
+  // données incohérentes créaient un cycle.
+  const racine = (d) => {
+    let cur = d, garde = 0;
+    while (cur.parent_daf_id && parId[cur.parent_daf_id] && garde++ < 20) cur = parId[cur.parent_daf_id];
+    return cur.id;
+  };
+
+  const lignees = new Map();
+  list.forEach(d => {
+    const r = racine(d);
+    if (!lignees.has(r)) lignees.set(r, []);
+    lignees.get(r).push(d);
+  });
+  lignees.forEach(versions => versions.sort((a, b) => (a.version || 0) - (b.version || 0)));
+  return [...lignees.values()];
+}
+
+// Affiche la version sélectionnée d'une lignée. On bascule des classes plutôt que de reconstruire
+// le HTML : le reste de la carte et la position de scroll restent intacts.
+function afficherVersionDaf(ligneeId, dafId) {
+  document.querySelectorAll(`[data-lignee="${ligneeId}"][data-panneau]`).forEach(p => {
+    p.classList.toggle('hidden', p.dataset.panneau !== dafId);
+  });
+  document.querySelectorAll(`[data-lignee="${ligneeId}"][data-onglet]`).forEach(o => {
+    const actif = o.dataset.onglet === dafId;
+    o.classList.toggle('bg-white', actif);
+    o.classList.toggle('shadow-sm', actif);
+    o.classList.toggle('text-gray-800', actif);
+    o.classList.toggle('text-gray-400', !actif);
+  });
+}
+
 async function renderDafVisa() {
   const el = document.getElementById('daf-visa-list');
   let list = state.daf;
-  if (state.filterDaf !== 'all') {
-    list = list.filter(d => d.statut === state.filterDaf);
-  }
-  list = list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   if (!list.length) {
     el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucune DAF dans ce filtre.</p>';
     return;
@@ -4801,62 +4836,63 @@ async function renderDafVisa() {
     }
   }
 
-  el.innerHTML = list.map(d => {
+  // Le filtre porte sur la lignée entière : on garde celles dont au moins une version correspond,
+  // sans masquer les autres versions — sinon l'historique deviendrait illisible.
+  let lignees = _grouperVersionsDaf(state.daf);
+  if (state.filterDaf !== 'all') {
+    lignees = lignees.filter(vs => vs.some(d => d.statut === state.filterDaf));
+  }
+  lignees.sort((a, b) => new Date(a[0].created_at) - new Date(b[0].created_at));
+
+  if (!lignees.length) {
+    el.innerHTML = '<p class="text-gray-400 text-sm italic">Aucune DAF dans ce filtre.</p>';
+    return;
+  }
+
+  // Panneau d'une version : tout ce qui lui est propre (statut, dates, actions, visa).
+  const panneau = (d, versions) => {
     const visas = visasMap[d.id] || [];
     const lastVisa = visas[visas.length - 1];
 
-    // V1 refusée supersédée par une V2 → grisée
-    const hasNewerVersion = state.daf.some(x => x.parent_daf_id === d.id);
-    const isSuperseded = hasNewerVersion;
-
-    // Bandeau contextuel si c'est une V2+
-    let parentBanner = '';
+    // Bandeau contextuel expliquant pourquoi cette version existe.
+    let bandeau = '';
     if (d.parent_daf_id) {
-      const parentDaf = state.daf.find(x => x.id === d.parent_daf_id);
+      const parent = versions.find(x => x.id === d.parent_daf_id);
       const parentVisas = visasMap[d.parent_daf_id] || [];
       const parentLastVisa = parentVisas[parentVisas.length - 1];
-      if (parentDaf) {
-        if (parentDaf.statut === 'visa_ok') {
-          parentBanner = `<div class="mb-3 p-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800">
-            ℹ️ <strong>Nouvelle version</strong> — La v${parentDaf.version} avait été <span class="font-semibold text-green-700">validée (VISA OK)</span>. L'entrepreneur soumet une v${d.version}.
+      if (parent) {
+        if (parent.statut === 'visa_ok') {
+          bandeau = `<div class="mb-3 p-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800">
+            ℹ️ La v${parent.version} avait été <span class="font-semibold text-green-700">validée (VISA OK)</span> — cette version la remplace.
           </div>`;
         } else if (parentLastVisa?.remarques) {
-          parentBanner = `<div class="mb-3 p-2 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-800">
-            ⮑ <strong>Révision suite au refus v${parentDaf.version}</strong><br>Observations : <em>${escHtml(parentLastVisa.remarques)}</em>
+          bandeau = `<div class="mb-3 p-2 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-800">
+            ⮑ <strong>Révision suite au refus v${parent.version}</strong><br>Observations : <em>${escHtml(parentLastVisa.remarques)}</em>
           </div>`;
         } else {
-          parentBanner = `<div class="mb-3 p-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600">
-            ⮑ Révision de la v${parentDaf.version}
+          bandeau = `<div class="mb-3 p-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600">
+            ⮑ Révision de la v${parent.version}
           </div>`;
         }
       }
     }
 
-    const cardOpacity = isSuperseded ? 'opacity-50' : '';
-    const supersededBadge = isSuperseded ? `<span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full ml-1">Remplacée</span>` : '';
-
     return `
-      <div class="daf-card ${d.statut} bg-white rounded-xl p-4 shadow-sm ${cardOpacity}" style="border-left-width: 4px">
-        ${parentBanner}
-        <div class="flex items-start justify-between mb-2">
-          <div class="flex-1">
-            <div class="flex items-center gap-2 mb-1 flex-wrap">
-              ${d.parent_daf_id ? '<span class="text-orange-400 font-bold">⮑</span>' : ''}
-              <span class="text-xs text-gray-400 font-mono">${d.numero || 'DAF'}</span>
-              ${statutBadge(d.statut)}${supersededBadge}
-              <span class="text-xs text-gray-400">v${d.version}</span>
-            </div>
-            <h3 class="font-semibold text-sm ${d.pdf_url ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}" ${d.pdf_url ? `onclick="window.open('${escHtml(d.pdf_url)}','_blank')"` : ''}>${escHtml(d.designation || '')}</h3>
-            <p class="text-xs text-gray-400 mt-1">${d.reference ? 'Réf : ' + escHtml(d.reference) : ''} ${d.fabricant ? '· ' + escHtml(d.fabricant) : ''}</p>
+      <div data-lignee="${versions[0].id}" data-panneau="${d.id}" class="hidden">
+        ${bandeau}
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs text-gray-400 font-mono">${escHtml(d.numero || 'DAF')}</span>
+            ${statutBadge(d.statut)}
           </div>
-          <div class="flex gap-2 ml-4 flex-wrap justify-end">
-            ${d.pdf_url ? `<a href="${d.pdf_url}" target="_blank" class="text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded hover:bg-blue-50">📄 Voir DAF</a>` : ''}
-            ${d.pdf_visa_url ? `<a href="${d.pdf_visa_url}" target="_blank" class="text-xs text-purple-600 border border-purple-300 px-2 py-1 rounded hover:bg-purple-50">📥 DAF visée</a>` : ''}
+          <div class="flex gap-2 flex-wrap justify-end shrink-0">
+            ${d.pdf_url ? `<a href="#" onclick="event.preventDefault();ouvrirFichierProtege('${escHtml(d.pdf_url)}','daf-pdfs')" class="text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded hover:bg-blue-50">📄 Voir DAF</a>` : ''}
+            ${d.pdf_visa_url ? `<a href="#" onclick="event.preventDefault();ouvrirFichierProtege('${escHtml(d.pdf_visa_url)}','daf-pdfs')" class="text-xs text-purple-600 border border-purple-300 px-2 py-1 rounded hover:bg-purple-50">📥 DAF visée</a>` : ''}
             ${d.statut === 'soumise' ? `<button onclick="openVisaModal('${d.id}')" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-purple-700">Donner VISA</button>` : ''}
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3 text-xs text-gray-500 mb-2">
-          <div>Qté : <span class="font-medium text-gray-700">${d.qte || '—'} ${d.unite || ''}</span></div>
+        <div class="grid grid-cols-2 gap-3 text-xs text-gray-500">
+          <div>Qté : <span class="font-medium text-gray-700">${d.qte || '—'} ${escHtml(d.unite || '')}</span></div>
           <div>Soumis : <span class="font-medium text-gray-700">${d.date_soumission ? new Date(d.date_soumission).toLocaleDateString('fr-FR') : '—'}</span></div>
         </div>
         ${lastVisa ? `
@@ -4866,11 +4902,53 @@ async function renderDafVisa() {
               <span class="font-normal text-gray-400 ml-2">${lastVisa.date_visa ? new Date(lastVisa.date_visa).toLocaleDateString('fr-FR') : ''}</span>
             </div>
             ${lastVisa.remarques ? `<p class="text-xs text-gray-700 leading-relaxed">${escHtml(lastVisa.remarques)}</p>` : ''}
-          </div>
-        ` : ''}
-      </div>
-    `;
+          </div>` : ''}
+      </div>`;
+  };
+
+  el.innerHTML = lignees.map(versions => {
+    const ligneeId = versions[0].id;
+    // Version affichée par défaut : celle qui appelle une action s'il y en a une, sinon la dernière.
+    const aViser = versions.find(d => d.statut === 'soumise');
+    const active = aViser || versions[versions.length - 1];
+    const derniere = versions[versions.length - 1];
+
+    const onglets = versions.length > 1 ? `
+      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mb-3 w-fit">
+        ${versions.map(d => {
+          const actif = d.id === active.id;
+          const pastille = d.statut === 'visa_ok' ? 'bg-green-500'
+                         : d.statut === 'visa_remarques' ? 'bg-yellow-500'
+                         : d.statut === 'refusee' ? 'bg-red-500'
+                         : d.statut === 'soumise' ? 'bg-purple-500' : 'bg-gray-300';
+          return `<button data-lignee="${ligneeId}" data-onglet="${d.id}"
+            onclick="afficherVersionDaf('${ligneeId}','${d.id}')"
+            class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md transition-all ${actif ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400 hover:text-gray-600'}">
+            <span class="w-1.5 h-1.5 rounded-full ${pastille}"></span>v${d.version}
+          </button>`;
+        }).join('')}
+      </div>` : '';
+
+    return `
+      <div class="daf-card ${derniere.statut} bg-white rounded-xl p-4 shadow-sm" style="border-left-width: 4px">
+        <div class="mb-2">
+          <h3 class="font-semibold text-sm">${escHtml(derniere.designation || '')}</h3>
+          <p class="text-xs text-gray-400 mt-0.5">
+            ${derniere.reference ? 'Réf : ' + escHtml(derniere.reference) : ''} ${derniere.fabricant ? '· ' + escHtml(derniere.fabricant) : ''}
+            ${versions.length > 1 ? `<span class="ml-1 text-gray-300">·</span> <span class="text-gray-400">${versions.length} versions</span>` : ''}
+          </p>
+        </div>
+        ${onglets}
+        ${versions.map(d => panneau(d, versions)).join('')}
+      </div>`;
   }).join('');
+
+  // Ouvre la version par défaut de chaque lignée une fois le HTML en place.
+  lignees.forEach(versions => {
+    const aViser = versions.find(d => d.statut === 'soumise');
+    const active = aViser || versions[versions.length - 1];
+    afficherVersionDaf(versions[0].id, active.id);
+  });
 }
 
 function openDafDetailModal(dafId) {
