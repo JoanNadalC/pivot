@@ -5527,21 +5527,31 @@ document.addEventListener('click', e => {
 // ============================================================
 // SUIVI (lecture seule)
 // ============================================================
-function _suiviRowHtml(f, fam, d) {
+// `pos` situe la ligne dans les versions d'une même fourniture : { premiere, derniere, remplacee }.
+// Les versions d'un même poste sont regroupées visuellement — trait de séparation uniquement sous
+// la dernière, et libellés répétés estompés — pour qu'on voie au premier coup d'œil qu'il s'agit
+// de la même fourniture. Une version remplacée est atténuée : son statut n'est plus celui qui fait foi.
+function _suiviRowHtml(f, fam, d, pos = {}) {
+  const { premiere = true, derniere = true, remplacee = false } = pos;
   const pdfUrl = d?.pdf_visa_url || d?.pdf_url;
-  const statutHtml = !d
+  const badge = !d
     ? '<span class="text-xs text-gray-300 italic">Sans DAF</span>'
     : pdfUrl
-      ? `<a href="${pdfUrl}" target="_blank" title="Télécharger la DAF" class="inline-block hover:opacity-80 cursor-pointer">${statutBadge(d.statut)}</a>`
+      ? `<a href="#" onclick="event.preventDefault();ouvrirFichierProtege('${escHtml(pdfUrl)}','daf-pdfs')" title="Télécharger la DAF" class="inline-block hover:opacity-80 cursor-pointer">${statutBadge(d.statut)}</a>`
       : statutBadge(d.statut);
+  const statutHtml = remplacee
+    ? `<span class="opacity-40" title="Version remplacée par une version ultérieure">${badge}</span>`
+    : badge;
+
   return `
-    <tr class="hover:bg-gray-50 border-b text-sm">
-      <td class="px-3 py-2 text-gray-400 truncate">${f.numero_poste || ''}</td>
-      <td class="px-3 py-2 font-medium truncate" title="${escHtml(d?.designation || f.designation || '')}">
-        ${d?.version > 1 ? `<span class="mr-1 text-xs text-orange-500 font-semibold">v${d.version}</span>` : ''}
-        ${escHtml(d?.designation || f.designation || '')}
+    <tr class="hover:bg-gray-50 text-sm ${derniere ? 'border-b' : ''} ${remplacee ? 'text-gray-400' : ''}">
+      <td class="px-3 py-2 text-gray-400 truncate">${premiere ? escHtml(f.numero_poste || '') : ''}</td>
+      <td class="px-3 py-2 truncate ${premiere ? 'font-medium' : ''}" title="${escHtml(d?.designation || f.designation || '')}">
+        ${premiere
+          ? escHtml(d?.designation || f.designation || '')
+          : `<span class="text-gray-300 mr-1">↳</span><span class="mr-1 text-xs text-orange-500 font-semibold">v${d.version}</span><span class="text-gray-400">${escHtml(d?.designation || f.designation || '')}</span>`}
       </td>
-      <td class="px-3 py-2">${fam ? fam.icone + ' ' + fam.nom : ''}</td>
+      <td class="px-3 py-2">${premiere && fam ? fam.icone + ' ' + fam.nom : ''}</td>
       <td class="px-3 py-2">${statutHtml}</td>
       <td class="px-3 py-2">${d?.date_commande ? new Date(d.date_commande).toLocaleDateString('fr-FR') : '—'}</td>
       <td class="px-3 py-2">${d?.date_livraison_prevue || '—'}</td>
@@ -5649,7 +5659,11 @@ function renderSuivi() {
       .filter(d => d.fourniture_id === f.id && d.statut !== 'brouillon')
       .sort((a, b) => (a.version || 1) - (b.version || 1));
     if (!versions.length) rows.push(_suiviRowHtml(f, fam, null));
-    else versions.forEach(d => rows.push(_suiviRowHtml(f, fam, d)));
+    else versions.forEach((d, i) => rows.push(_suiviRowHtml(f, fam, d, {
+      premiere: i === 0,
+      derniere: i === versions.length - 1,
+      remplacee: i < versions.length - 1,
+    })));
   });
   tbody.innerHTML = rows.join('');
 }
