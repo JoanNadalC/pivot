@@ -4884,16 +4884,13 @@ async function renderDafVisa() {
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-xs text-gray-400 font-mono">${escHtml(d.numero || 'DAF')}</span>
             ${statutBadge(d.statut)}
+            ${d.date_soumission ? `<span class="text-xs text-gray-400">soumis le ${new Date(d.date_soumission).toLocaleDateString('fr-FR')}</span>` : ''}
           </div>
           <div class="flex gap-2 flex-wrap justify-end shrink-0">
             ${d.pdf_url ? `<a href="#" onclick="event.preventDefault();ouvrirFichierProtege('${escHtml(d.pdf_url)}','daf-pdfs')" class="text-xs text-blue-600 border border-blue-300 px-2 py-1 rounded hover:bg-blue-50">📄 Voir DAF</a>` : ''}
             ${d.pdf_visa_url ? `<a href="#" onclick="event.preventDefault();ouvrirFichierProtege('${escHtml(d.pdf_visa_url)}','daf-pdfs')" class="text-xs text-purple-600 border border-purple-300 px-2 py-1 rounded hover:bg-purple-50">📥 DAF visée</a>` : ''}
             ${d.statut === 'soumise' ? `<button onclick="openVisaModal('${d.id}')" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-xs font-medium hover:bg-purple-700">Donner VISA</button>` : ''}
           </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3 text-xs text-gray-500">
-          <div>Qté : <span class="font-medium text-gray-700">${d.qte || '—'} ${escHtml(d.unite || '')}</span></div>
-          <div>Soumis : <span class="font-medium text-gray-700">${d.date_soumission ? new Date(d.date_soumission).toLocaleDateString('fr-FR') : '—'}</span></div>
         </div>
         ${lastVisa ? `
           <div class="mt-2 p-3 rounded-lg border ${lastVisa.type === 'sans_remarque' ? 'bg-green-50 border-green-200' : lastVisa.type === 'refus' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}">
