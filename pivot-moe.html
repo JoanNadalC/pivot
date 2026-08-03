@@ -5111,12 +5111,29 @@ async function _renderDocRequisMoe() {
   const ch = state.currentChantier;
   const bloc = document.getElementById('doc-requis-moe-bloc');
   if (!bloc || !ch) return;
-  const { data: requis } = await db.from('chantier_documents_requis').select('*').eq('chantier_id', ch.id).order('nom');
+  const { data: requis, error } = await db.from('chantier_documents_requis')
+    .select('*').eq('chantier_id', ch.id).order('nom');
+  if (error) { toast('Erreur au chargement des documents exigés : ' + error.message, 'err'); return; }
   state.docsRequisMoe = requis || [];
+
+  // Les catégories par défaut, complétées par celles déjà utilisées sur ce chantier : une
+  // catégorie créée à la volée réapparaît donc naturellement au rechargement.
+  const categories = [...new Set([
+    ...CATEGORIES_DOCUMENTS,
+    ...state.docsRequisMoe.map(r => r.categorie).filter(Boolean),
+    ...(state._catsDocsVides || []),
+  ])];
+  // Les gestionnaires reçoivent un INDICE, jamais le libellé : un nom saisi par l'utilisateur
+  // interpolé dans un onclick permettrait une injection.
+  state._catsDocsRequis = categories;
+
   bloc.innerHTML = `
-    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Documents exigés pour ce chantier</div>
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-xs font-medium text-gray-400 uppercase tracking-wide">Documents exigés pour ce chantier</div>
+      <button onclick="ajouterCategorieDocRequis()" class="text-xs text-blue-600 border border-blue-200 rounded-lg px-2 py-0.5 hover:bg-blue-50">+ Catégorie</button>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      ${CATEGORIES_DOCUMENTS.map(cat => {
+      ${categories.map((cat, i) => {
         const items = state.docsRequisMoe.filter(r => r.categorie === cat);
         return `
         <div class="border rounded-lg p-3">
@@ -5129,26 +5146,56 @@ async function _renderDocRequisMoe() {
               </div>`).join('') || '<p class="text-xs text-gray-300 italic">Aucun document exigé</p>'}
           </div>
           <div class="flex gap-1">
-            <input type="text" placeholder="+ Ajouter un document…" class="flex-1 border rounded px-2 py-1 text-xs" onkeydown="if(event.key==='Enter'){ajouterDocRequisMoe('${escHtml(cat).replace(/'/g,"\\'")}', this); }">
+            <input type="text" placeholder="Nom du document…" class="flex-1 border rounded px-2 py-1 text-xs"
+              onkeydown="if(event.key==='Enter'){ajouterDocRequisMoe(${i}, this.nextElementSibling); }">
+            <button onclick="ajouterDocRequisMoe(${i}, this)" class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-2">+</button>
           </div>
         </div>`;
       }).join('')}
     </div>`;
 }
 
-async function ajouterDocRequisMoe(categorie, input) {
-  const nom = input.value.trim();
+// `btn` est le bouton « + » ; le champ de saisie le précède immédiatement. On passe par le bouton
+// dans les deux cas (clic et touche Entrée) pour n'avoir qu'un seul chemin à maintenir.
+async function ajouterDocRequisMoe(indexCategorie, btn) {
+  const input = btn?.previousElementSibling;
+  const nom = input?.value.trim();
   if (!nom) return;
+  const categorie = state._catsDocsRequis?.[indexCategorie];
   const ch = state.currentChantier;
-  if (!ch) return;
-  await db.from('chantier_documents_requis').insert({ chantier_id: ch.id, categorie, nom });
-  input.value = '';
-  _renderDocRequisMoe();
+  if (!categorie || !ch) return;
+  try {
+    // Contrôle du résultat : un refus RLS ne lève aucune erreur et renvoie zéro ligne. Sans lui,
+    // le document semblait ajouté puis disparaissait au rechargement.
+    const { data, error } = await db.from('chantier_documents_requis')
+      .insert({ chantier_id: ch.id, categorie, nom }).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error("L'ajout a été refusé.");
+    input.value = '';
+    _renderDocRequisMoe();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function ajouterCategorieDocRequis() {
+  const nom = (prompt('Nom de la nouvelle catégorie de documents :') || '').trim();
+  if (!nom) return;
+  if ((state._catsDocsRequis || []).some(c => c.toLowerCase() === nom.toLowerCase())) {
+    return toast('Cette catégorie existe déjà', 'err');
+  }
+  // Une catégorie n'existe en base qu'à travers les documents qu'elle contient. On la garde donc
+  // le temps de la session pour qu'elle s'affiche vide, et elle se pérennise au premier document.
+  state._catsDocsVides = [...(state._catsDocsVides || []), nom];
+  await _renderDocRequisMoe();
 }
 
 async function supprimerDocRequisMoe(id) {
-  await db.from('chantier_documents_requis').delete().eq('id', id);
-  _renderDocRequisMoe();
+  try {
+    const { data, error } = await db.from('chantier_documents_requis')
+      .delete().eq('id', id).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('La suppression a été refusée.');
+    _renderDocRequisMoe();
+  } catch (err) { toast(err.message, 'err'); }
 }
 
 async function renderDocumentsViser() {
