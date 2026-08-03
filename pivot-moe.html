@@ -4914,7 +4914,7 @@ async function renderDafVisa() {
     const derniere = versions[versions.length - 1];
 
     const onglets = versions.length > 1 ? `
-      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 mb-3 w-fit">
+      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 shrink-0">
         ${versions.map(d => {
           const actif = d.id === active.id;
           const pastille = d.statut === 'visa_ok' ? 'bg-green-500'
@@ -4931,14 +4931,15 @@ async function renderDafVisa() {
 
     return `
       <div class="daf-card ${derniere.statut} bg-white rounded-xl p-4 shadow-sm" style="border-left-width: 4px">
-        <div class="mb-2">
-          <h3 class="font-semibold text-sm">${escHtml(derniere.designation || '')}</h3>
-          <p class="text-xs text-gray-400 mt-0.5">
-            ${derniere.reference ? 'Réf : ' + escHtml(derniere.reference) : ''} ${derniere.fabricant ? '· ' + escHtml(derniere.fabricant) : ''}
-            ${versions.length > 1 ? `<span class="ml-1 text-gray-300">·</span> <span class="text-gray-400">${versions.length} versions</span>` : ''}
-          </p>
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="min-w-0">
+            <h3 class="font-semibold text-sm">${escHtml(derniere.designation || '')}</h3>
+            ${derniere.reference || derniere.fabricant ? `<p class="text-xs text-gray-400 mt-0.5">
+              ${derniere.reference ? 'Réf : ' + escHtml(derniere.reference) : ''} ${derniere.fabricant ? '· ' + escHtml(derniere.fabricant) : ''}
+            </p>` : ''}
+          </div>
+          ${onglets}
         </div>
-        ${onglets}
         ${versions.map(d => panneau(d, versions)).join('')}
       </div>`;
   }).join('');
