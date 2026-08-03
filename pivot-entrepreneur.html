@@ -11955,7 +11955,15 @@ async function dafExportFiches() {
 async function soumettreDaf(id) {
   if (!await showConfirm('Soumettre cette DAF au MOE ?')) return;
   try {
-    await db.from('daf').update({ statut: 'soumise', date_soumission: new Date().toISOString() }).eq('id', id);
+    // `.select()` et contrôle du nombre de lignes : un refus RLS ne lève AUCUNE erreur et renvoie
+    // simplement zéro ligne. Sans ce test, l'affichage passait en « soumise » alors que la base
+    // restait en brouillon — la DAF redevenait brouillon au rechargement et le MOE ne voyait rien.
+    const { data: maj, error: majErr } = await db.from('daf')
+      .update({ statut: 'soumise', date_soumission: new Date().toISOString() })
+      .eq('id', id).select('id');
+    if (majErr) throw majErr;
+    if (!maj?.length) throw new Error("La soumission a été refusée : la DAF reste en brouillon.");
+
     const daf = state.daf.find(d => d.id === id);
     if (daf) daf.statut = 'soumise';
     const row = Object.values(window._dafRows).find(r => r.daf_id === id);
@@ -11981,7 +11989,12 @@ async function soumettreDaf(id) {
 async function commanderDaf(id) {
   if (!await showConfirm('Confirmer la commande ?')) return;
   try {
-    await db.from('daf').update({ statut:'commandee', date_commande:new Date().toISOString() }).eq('id',id);
+    // Même précaution que pour la soumission : un refus RLS ne lève aucune erreur.
+    const { data: maj, error: majErr } = await db.from('daf')
+      .update({ statut:'commandee', date_commande:new Date().toISOString() }).eq('id',id).select('id');
+    if (majErr) throw majErr;
+    if (!maj?.length) throw new Error("Le passage en commande a été refusé : la DAF est inchangée.");
+
     const daf=state.daf.find(d=>d.id===id);
     if(daf) daf.statut='commandee';
     const row=Object.values(window._dafRows).find(r=>r.daf_id===id);

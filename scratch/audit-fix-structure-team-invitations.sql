@@ -12,7 +12,7 @@ as $$
   select si.id, si.structure_id, si.role, si.has_licence, si.email, si.expires_at, si.accepted_at, s.nom, s.type
   from structure_invitations si
   join structures s on s.id = si.structure_id
-  where si.token = p_token
+  where si.token = p_token::uuid
   limit 1;
 $$;
 revoke all on function get_structure_invitation_public(text) from public;

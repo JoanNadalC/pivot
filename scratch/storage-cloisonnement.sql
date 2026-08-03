@@ -12,6 +12,7 @@
 -- ── DOE : la suppression était ouverte à tout compte connecté, sur n'importe quel chantier.
 --    Un DOE est le livrable de fin de chantier : sa perte est irréversible.
 drop policy if exists "doe-pdfs delete authenticated" on storage.objects;
+drop policy if exists "doe-pdfs delete owner" on storage.objects;
 create policy "doe-pdfs delete owner" on storage.objects
   for delete to authenticated
   using (bucket_id = 'doe-pdfs' and owner = auth.uid());
@@ -20,6 +21,7 @@ create policy "doe-pdfs delete owner" on storage.objects
 --    Elles se cumulaient par OU, donc en corriger une seule n'aurait rien changé.
 drop policy if exists "authenticated update devis-fournisseurs" on storage.objects;
 drop policy if exists "fournisseur update devis" on storage.objects;
+drop policy if exists "devis update owner" on storage.objects;
 create policy "devis update owner" on storage.objects
   for update to authenticated
   using (bucket_id = 'devis-fournisseurs' and owner = auth.uid());

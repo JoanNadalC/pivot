@@ -13,6 +13,7 @@ insert into admin_notif_settings (categorie, actif, frequence) values
 on conflict (categorie) do nothing;
 
 alter table admin_notif_settings enable row level security;
+drop policy if exists admin_notif_settings_admin_only on admin_notif_settings;
 create policy admin_notif_settings_admin_only on admin_notif_settings for all to authenticated using (
   exists (select 1 from profiles where id = auth.uid() and role = 'admin')
 ) with check (

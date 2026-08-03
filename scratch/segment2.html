@@ -1,0 +1,101 @@
+    <div id="view-catalogue" class="hidden">
+      <!-- Header actions -->
+      <!-- Onglets internes catalogue -->
+      <div class="flex gap-0 border-b border-gray-200 mb-5">
+        <button id="cat-tab-veg" onclick="switchCatTab('vegetaux')"
+          class="px-5 py-2.5 text-sm font-medium border-b-2 border-green-800 text-green-800">🌿 Végétaux</button>
+        <button id="cat-tab-four" onclick="switchCatTab('fournitures')"
+          class="px-5 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📦 Fournitures</button>
+      </div>
+
+      <!-- TAB VÉGÉTAUX -->
+      <div id="cat-view-vegetaux">
+        <!-- Barre d'actions -->
+        <div class="flex gap-2 flex-wrap items-center mb-4">
+          <div class="relative flex-1 min-w-52">
+            <input id="veg-search" type="text" placeholder="🔍 Rechercher dans mon catalogue végétal…"
+              oninput="_renderVegetaux()"
+              class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700">
+          </div>
+          <div class="relative">
+            <input id="veg-add-search" type="text" placeholder="+ Ajouter depuis Tela Botanica…"
+              oninput="_vegTelaSearchLive(this.value)"
+              onfocus="_vegTelaSearchLive(this.value)"
+              onblur="setTimeout(()=>document.getElementById('veg-add-dropdown')?.classList.add('hidden'),200)"
+              class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700 w-64">
+            <div id="veg-add-dropdown" class="hidden absolute z-20 top-full mt-1 left-0 w-80 bg-white border border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+              <div id="veg-add-results" class="divide-y divide-gray-50"></div>
+            </div>
+          </div>
+          <label class="cursor-pointer border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">
+            📂 Import CSV
+            <input type="file" accept=".csv,.txt" class="hidden" onchange="importVegetauxCSV(event)">
+          </label>
+          <button onclick="ouvrirModalDemandeCatalogue('vegetaux')" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
+          <span id="veg-count-badge" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"></span>
+        </div>
+
+        <!-- Tableau végétaux -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs border-b">
+              <tr>
+                <th class="px-3 py-2.5 w-6"></th>
+                <th class="px-3 py-2.5 text-left">Nom scientifique</th>
+                <th class="px-3 py-2.5 text-left text-xs">Variantes dispo</th>
+                <th class="px-3 py-2.5 text-center w-20">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="veg-tbody"></tbody>
+          </table>
+          <div id="veg-empty" class="hidden py-12 text-center text-gray-400 text-sm">
+            Catalogue végétal vide.<br>Recherchez un végétal ci-dessus ou importez un CSV.
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB FOURNITURES -->
+      <div id="cat-view-fournitures" class="hidden">
+        <div class="flex gap-2 flex-wrap items-center mb-4">
+          <input id="cat-full-search" type="text" placeholder="🔍 Rechercher…"
+            oninput="_renderFullCatalogue()"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-green-700 w-52">
+          <span id="cat-count-badge" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"></span>
+          <button onclick="ouvrirModalDemandeCatalogue('fournitures')" class="border border-amber-500 text-amber-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50">📷 Demande de photo / renseignement</button>
+          <button onclick="openAddCatalogueModal()" class="bg-green-800 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-900">+ Ajouter</button>
+          <button onclick="document.getElementById('cat-import2').click()" class="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50">📂 Import CSV</button>
+          <input id="cat-import2" type="file" accept=".csv" class="hidden" onchange="importCatalogue(event)">
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+          <table class="w-full text-sm min-w-max">
+            <thead class="bg-gray-50 text-gray-500 text-xs sticky top-0 z-10">
+              <tr>
+                <th class="px-3 py-2.5 text-left w-14">Photo</th>
+                <th class="px-3 py-2.5 text-left">Désignation</th>
+                <th class="px-3 py-2.5 text-left">Famille</th>
+                <th class="px-3 py-2.5 text-left">Référence</th>
+                <th class="px-3 py-2.5 text-left">Caractéristiques</th>
+                <th class="px-3 py-2.5 text-right">Stock</th>
+                <th class="px-3 py-2.5 text-right">Prix HT</th>
+                <th class="px-3 py-2.5 text-left">Unité</th>
+                <th class="px-3 py-2.5 text-left">Fiche</th>
+                <th class="px-3 py-2.5 text-center w-20">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cat-full-tbody"></tbody>
+          </table>
+          <div id="cat-full-empty" class="hidden py-12 text-center text-gray-400 text-sm">
+            Catalogue fournitures vide. Ajoutez des articles ou importez un CSV.
+          </div>
+        </div>
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-base font-bold text-gray-800">📷 Demandes de photos catalogue</h3>
+            <span id="cat-photos-pending-badge" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full hidden"></span>
+          </div>
+          <div id="cat-photos-demandes" class="bg-white rounded-xl shadow-sm border border-gray-100 divide-y">
+            <p class="text-xs text-gray-400 italic px-4 py-4">Chargement…</p>
+          </div>
+        </div>
+      </div>
+    </div>
