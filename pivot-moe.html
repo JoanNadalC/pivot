@@ -1583,8 +1583,15 @@ async function loadPendingMoeInvitations() {
 
 async function accepterInvitationMoe(invId, chantierId, nom) {
   try {
-    const { error } = await db.from('chantiers').update({ moe_id: state.user.id }).eq('id', chantierId);
+    // `.select('id')` est indispensable : une mise à jour qui ne touche aucune ligne — parce que
+    // le RLS interdit d'écrire sur ce chantier — ne renvoie AUCUNE erreur. Sans ce contrôle,
+    // l'invitation était marquée acceptée alors que le rattachement n'avait pas eu lieu, et le
+    // chantier disparaissait sans explication.
+    const { data: maj, error } = await db.from('chantiers')
+      .update({ moe_id: state.user.id }).eq('id', chantierId).select('id');
     if (error) throw error;
+    if (!maj?.length) throw new Error("Le rattachement au chantier a été refusé : l'invitation reste en attente.");
+
     await db.from('chantier_invitations').update({ statut: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invId);
     state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
     toast(`✅ Vous êtes maintenant MOE sur "${nom}" !`);
