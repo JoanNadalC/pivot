@@ -219,7 +219,29 @@
 <script>
   const SUPABASE_URL      = 'https://djegdtlcvyjtrayrodxj.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
-  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // Chaque portail range sa session sous sa propre clé. Sans cela, tous partagent le même
+  // emplacement dans le navigateur : se connecter à l'un écrase la session de l'autre, et
+  // l'interface continue d'afficher un compte pendant que les requêtes partent sous un second.
+  const AUTH_STORAGE_KEY = 'pivot-auth-lien';
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: AUTH_STORAGE_KEY } });
+
+  // Cette page ouvre une session avant de savoir vers quel portail rediriger : elle la range sous
+  // une clé neutre, puis la recopie sous celle du portail visé. Sans ce transfert, l'utilisateur
+  // arriverait déconnecté sur un portail qui cherche sa session ailleurs.
+  const CLES_PORTAIL = {
+    'pivot-entrepreneur.html': 'pivot-auth-entreprise',
+    'pivot-fournisseur.html':  'pivot-auth-fournisseur',
+    'pivot-moe.html':          'pivot-auth-moe',
+    'pivot-app-photos.html':   'pivot-auth-photos',
+  };
+  function _allerAuPortail(dest) {
+    try {
+      const cible = CLES_PORTAIL[String(dest || '').replace(/^\//, '')];
+      const brut = cible && localStorage.getItem(AUTH_STORAGE_KEY);
+      if (brut) localStorage.setItem(cible, brut);
+    } catch (_) { /* stockage indisponible : l'utilisateur se reconnectera */ }
+    window.location.href = dest || 'index.html';
+  }
 
   const PORTAL_REDIRECT = {
     entrepreneur: 'pivot-entrepreneur.html',
@@ -316,7 +338,7 @@
 
   function setupPortalBtn(type) {
     const btn = document.getElementById('btn-go-portal');
-    if (btn) btn.onclick = () => { window.location.href = PORTAL_REDIRECT[type] || 'index.html'; };
+    if (btn) btn.onclick = () => { _allerAuPortail(PORTAL_REDIRECT[type]); };
   }
 
   async function acceptInvitation(userId) {
@@ -375,7 +397,7 @@
         const struct = _inv.structures;
         document.getElementById('success-auth').textContent = 'Compte créé ! Redirection en cours…';
         document.getElementById('success-auth').classList.add('visible');
-        setTimeout(() => { window.location.href = PORTAL_REDIRECT[struct.type] || 'index.html'; }, 1500);
+        setTimeout(() => { _allerAuPortail(PORTAL_REDIRECT[struct.type]); }, 1500);
       }
     }
     btn.disabled = false; btn.textContent = 'Créer mon compte et rejoindre →';
@@ -399,7 +421,7 @@
       const struct = _inv.structures;
       document.getElementById('success-auth').textContent = 'Connecté ! Redirection en cours…';
       document.getElementById('success-auth').classList.add('visible');
-      setTimeout(() => { window.location.href = PORTAL_REDIRECT[struct.type] || 'index.html'; }, 1500);
+      setTimeout(() => { _allerAuPortail(PORTAL_REDIRECT[struct.type]); }, 1500);
     }
     btn.disabled = false; btn.textContent = 'Se connecter et rejoindre →';
   }

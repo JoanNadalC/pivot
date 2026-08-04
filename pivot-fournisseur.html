@@ -979,7 +979,11 @@ function suggestPwd(id, confirmId) {
 }
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqZWdkdGxjdnlqdHJheXJvZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjkxNjcsImV4cCI6MjA5NjYwNTE2N30.PF-BR0Q02aczjIvZ6dIUbsn3hGJtQjHtjegQ5k-qI3s';
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Chaque portail range sa session sous sa propre clé. Sans cela, tous partagent le même
+// emplacement dans le navigateur : se connecter à l'un écrase la session de l'autre, et
+// l'interface continue d'afficher un compte pendant que les requêtes partent sous un second.
+const AUTH_STORAGE_KEY = 'pivot-auth-fournisseur';
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storageKey: AUTH_STORAGE_KEY } });
 
 // ============================================================
 // ÉTAT GLOBAL
