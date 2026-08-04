@@ -1310,8 +1310,7 @@ function toggleVisibiliteChamp(key) {
 // lignes rigoureusement identiques : la recherche respecte leur choix de visibilité, mais devient
 // inutilisable. On les numérote — c'est le seul repère qu'on puisse ajouter sans divulguer ce
 // qu'ils ont choisi de taire.
-function _formatSearchRows(liste) {
-  const lignes = (liste || []).map(r => ({ r, ..._formatSearchRow(r) }));
+function _numeroterDoublons(lignes) {
   const cles = lignes.map(l => l.titre + '||' + l.sousTitre);
   const total = {};
   cles.forEach(k => { total[k] = (total[k] || 0) + 1; });
@@ -1323,6 +1322,10 @@ function _formatSearchRows(liste) {
     const mention = `contact ${vus[k]} sur ${total[k]}`;
     return { ...l, sousTitre: l.sousTitre ? `${l.sousTitre} · ${mention}` : mention };
   });
+}
+
+function _formatSearchRows(liste) {
+  return _numeroterDoublons((liste || []).map(r => ({ r, ..._formatSearchRow(r) })));
 }
 
 function _formatSearchRow(r) {
@@ -2019,7 +2022,7 @@ function openCompteModal() {
       </div>
     </div>
   `);
-  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'nom_initiale'];
+  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'prenom_initiale', 'nom_initiale'];
   renderVisibiliteChamps();
 }
 
@@ -4727,10 +4730,18 @@ async function searchFournisseurs(q) {
       return;
     }
 
-    const localHtml = local.map(f => {
+    // Une fiche ajoutée depuis le portail porte la raison sociale dans `nom` : sans le contact,
+    // deux collègues du même établissement s'affichaient à l'identique. Le prénom et le nom du
+    // contact sont enregistrés à l'ajout — il suffisait de les montrer.
+    const localLignes = _numeroterDoublons(local.map(f => {
       const societe = f.nom_entreprise || '';
       const titre = societe || f.nom || '—';
-      const sousTitre = [societe && f.nom ? f.nom : '', f.email || ''].filter(Boolean).join(' · ');
+      const contact = [f.contact_prenom, f.contact_nom].filter(Boolean).join(' ');
+      const sousTitre = [contact, societe && f.nom ? f.nom : '', f.email || '']
+        .filter(Boolean).join(' · ');
+      return { r: f, titre, sousTitre };
+    }));
+    const localHtml = localLignes.map(({ r: f, titre, sousTitre }) => {
       return `
       <div class="px-4 py-2.5 flex items-center justify-between hover:bg-gray-50">
         <div class="min-w-0">

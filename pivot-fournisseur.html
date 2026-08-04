@@ -1651,7 +1651,7 @@ function fillProfil(p) {
   document.getElementById('p-filigrane-heure').checked = p.filigrane_heure !== false;
   document.getElementById('p-filigrane-localisation').checked = p.filigrane_localisation !== false;
 
-  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'ville', 'nom_initiale'];
+  state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'ville', 'prenom_initiale', 'nom_initiale'];
   renderVisibiliteChamps();
 }
 
