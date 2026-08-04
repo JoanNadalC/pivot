@@ -320,7 +320,7 @@
       <div class="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 class="font-semibold text-gray-800">Activité des comptes</h2>
-          <p class="text-xs text-gray-400">Création, dernière connexion et sessions actuellement ouvertes.</p>
+          <p class="text-xs text-gray-400">Création, dernière connexion, jours d'activité sur 30 jours et sessions ouvertes.</p>
         </div>
         <input id="cnx-search" oninput="renderConnexions()" placeholder="Rechercher une adresse…"
           class="border rounded-lg px-3 py-1.5 text-sm w-56">
@@ -333,7 +333,7 @@
               <th class="px-3 py-2 text-left">Compte</th>
               <th class="px-3 py-2 text-left">Créé le</th>
               <th class="px-3 py-2 text-left">Dernière connexion</th>
-              <th class="px-3 py-2 text-right">Sessions ouvertes</th>
+              <th class="px-3 py-2 text-right">Jours actifs / 30 j</th><th class="px-3 py-2 text-right">Sessions</th>
               <th class="px-3 py-2 text-left">État</th>
             </tr>
           </thead>
@@ -399,6 +399,15 @@ function _hideLoading() {
   document.getElementById('loading-view')?.classList.add('hidden');
 }
 
+// Journal d'activité : une ligne par compte, portail et jour. La contrainte d'unicité en base rend
+// l'appel idempotent — inutile de savoir si l'utilisateur ouvre sa première session ou son dixième
+// onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
+async function _journaliserConnexion(portail) {
+  try {
+    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+  } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
+}
+
 async function _lancerApp(user) {
   if (state.user) return;
   const { data: prof } = await db.from('profiles').select('role, nom').eq('id', user.id).maybeSingle();
@@ -408,6 +417,7 @@ async function _lancerApp(user) {
     return;
   }
   state.user = user;
+  _journaliserConnexion('admin');
   _hideLoading();
   document.getElementById('auth-view').classList.add('hidden');
   document.getElementById('app-view').classList.remove('hidden');
@@ -1803,10 +1813,10 @@ function switchAdminTab(tab) {
 // l'appelant est administrateur.
 async function loadConnexions() {
   const tbody = document.getElementById('cnx-tbody');
-  tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Chargement…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-400 text-sm">Chargement…</td></tr>';
   const { data, error } = await db.rpc('admin_stats_connexions');
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" class="px-3 py-4 text-center text-red-400 text-sm">${escHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-4 text-center text-red-400 text-sm">${escHtml(error.message)}</td></tr>`;
     return;
   }
   state.connexions = data || [];
@@ -1833,15 +1843,15 @@ function renderConnexions() {
   const total = (state.connexions || []).length;
   const jamais = (state.connexions || []).filter(c => !c.derniere_connexion).length;
   const dormants = (state.connexions || []).filter(c => c.jours_depuis_connexion > 60).length;
-  const avecSession = (state.connexions || []).filter(c => Number(c.sessions_actives) > 0).length;
+  const actifs30 = (state.connexions || []).filter(c => Number(c.jours_actifs_30j) > 0).length;
   document.getElementById('cnx-resume').innerHTML =
     `<span><strong>${total}</strong> comptes</span>` +
-    `<span><strong>${avecSession}</strong> avec une session ouverte</span>` +
+    `<span><strong>${actifs30}</strong> actifs sur 30 jours</span>` +
     `<span><strong>${dormants}</strong> dormants (plus de 60 jours)</span>` +
     `<span><strong>${jamais}</strong> jamais connectés</span>`;
 
   if (!liste.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Aucun compte</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-400 text-sm">Aucun compte</td></tr>';
     return;
   }
   tbody.innerHTML = liste.map(c => {
@@ -1850,6 +1860,7 @@ function renderConnexions() {
       <td class="px-3 py-2">${escHtml(c.email || '—')}</td>
       <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.cree_le)}</td>
       <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.derniere_connexion)}</td>
+      <td class="px-3 py-2 text-right ${Number(c.jours_actifs_30j) ? 'text-gray-700' : 'text-gray-300'}">${c.jours_actifs_30j}</td>
       <td class="px-3 py-2 text-right ${Number(c.sessions_actives) ? 'text-gray-700' : 'text-gray-300'}">${c.sessions_actives}</td>
       <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${classes}">${escHtml(label)}</span></td>
     </tr>`;

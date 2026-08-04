@@ -1005,6 +1005,15 @@ function _hideLoading() {
   document.getElementById('loading-view')?.classList.add('hidden');
 }
 
+// Journal d'activité : une ligne par compte, portail et jour. La contrainte d'unicité en base rend
+// l'appel idempotent — inutile de savoir si l'utilisateur ouvre sa première session ou son dixième
+// onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
+async function _journaliserConnexion(portail) {
+  try {
+    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+  } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
+}
+
 async function _lancerApp(user) {
   if (state.user) return;
   const { data: profil } = await db.from('profiles').select('role').eq('id', user.id).maybeSingle();
@@ -1014,6 +1023,7 @@ async function _lancerApp(user) {
     return;
   }
   state.user = user;
+  _journaliserConnexion('entreprise');
   _requestNotifPermission();
   await loadProfile();
   await loadFamilles();
