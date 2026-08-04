@@ -3300,7 +3300,7 @@ async function loadSaisie() {
       if (consData) state.currentConsultation = { ...(state.currentConsultation || {}), ...consData };
     } else {
       const { data: cons } = await db.from('consultations')
-        .select('chantier_id, inclure_caracteristiques, familles')
+        .select('chantier_id, inclure_caracteristiques, familles, fournitures_ids')
         .eq('id', consId).single();
       if (cons) {
         state.currentConsultation = { ...(state.currentConsultation || {}), ...cons };
@@ -3314,8 +3314,15 @@ async function loadSaisie() {
         }
         const { data } = await fQuery.order('ordre');
         fournitures = data || [];
-        // Filtrer par famille si la consultation le précise
-        if (cons.familles?.length) {
+        // Une consultation envoyée fige son périmètre : le fournisseur répond sur la liste qu'on
+        // lui a soumise, pas sur l'état courant du chantier. Sans cela, une fourniture ajoutée au
+        // DQE après l'envoi apparaissait dans une consultation qu'il croyait close.
+        if (cons.fournitures_ids?.length) {
+          const perimetre = new Set(cons.fournitures_ids);
+          fournitures = fournitures.filter(f => perimetre.has(f.id));
+        }
+        // Consultations antérieures au gel du périmètre : on retombe sur le filtre de familles.
+        else if (cons.familles?.length) {
           fournitures = fournitures.filter(f => !f.famille_id || cons.familles.includes(f.famille_id));
         }
       }

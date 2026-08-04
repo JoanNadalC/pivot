@@ -8231,6 +8231,13 @@ function openNewConsultationModal() {
   `);
 }
 
+// Les fournitures effectivement soumises : celles du chantier — et du lot le cas échéant — que
+// le filtre de familles retient. C'est exactement ce que le fournisseur verra.
+function _perimetreConsultation(familles) {
+  const dansFamilles = f => !familles?.length || !f.famille_id || familles.includes(f.famille_id);
+  return (state.fournitures || []).filter(dansFamilles).map(f => f.id);
+}
+
 async function createConsultation() {
   if (_bloqueSiRestreint()) return;
   const titre = document.getElementById('nc-titre').value.trim();
@@ -8262,7 +8269,11 @@ async function createConsultation() {
       is_ouverte:             isOuverte,
       visibilite_infos:       visibiliteInfos,
       statut:                 (checkedFours.length || isOuverte) ? 'envoyee' : 'brouillon',
-      date_envoi:             (checkedFours.length || isOuverte) ? new Date().toISOString() : null
+      date_envoi:             (checkedFours.length || isOuverte) ? new Date().toISOString() : null,
+      // Périmètre figé à l'envoi. Sans lui, la liste était recalculée à chaque affichage depuis le
+      // chantier : toute fourniture ajoutée ensuite s'invitait dans une consultation déjà close,
+      // et le fournisseur se voyait réclamer des prix qu'il n'avait pas été invité à donner.
+      fournitures_ids:        _perimetreConsultation(checkedFams)
     }).select().single();
     if (error) throw error;
 

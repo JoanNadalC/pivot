@@ -1,0 +1,11 @@
+-- Périmètre figé d'une consultation.
+--
+-- La liste des fournitures soumises était recalculée à chaque affichage, depuis le chantier et le
+-- filtre de familles. Toute fourniture ajoutée au DQE après l'envoi s'invitait donc dans une
+-- consultation déjà partie : le fournisseur se voyait réclamer des prix qu'il n'avait pas été
+-- invité à donner, et l'entreprise comparait des réponses portant sur des périmètres différents.
+--
+-- Colonne laissée nulle pour les consultations antérieures : le portail retombe alors sur l'ancien
+-- filtre de familles. Reconstituer après coup ce qui a été soumis n'est pas possible, et un
+-- périmètre inventé serait pire qu'un périmètre approximatif.
+alter table consultations add column if not exists fournitures_ids uuid[];
