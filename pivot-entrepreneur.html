@@ -430,7 +430,6 @@
             </div>
             <div id="moe-invite-actions" class="mt-3 flex flex-col gap-2">
               <button onclick="openMoeModal()" class="text-sm text-green-600 hover:underline text-left">+ Associer via carnet</button>
-              <button onclick="ouvrirInviterMoe(state.currentChantier?.id)" class="text-sm text-purple-600 hover:underline text-left">🔗 Envoyer un lien d'invitation</button>
             </div>
             <p id="moe-invite-locked" class="hidden text-xs text-gray-400 italic mt-2">Ce chantier a été créé par le Maître d'œuvre — il gère lui-même les invitations.</p>
           </div>
@@ -4239,10 +4238,16 @@ function openMoeModal() {
             <span class="text-sm font-medium">${label}</span>
             <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full shrink-0">Portail ✓</span>
           </div>`;
-        } else {
-          return `<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 opacity-50" title="Ce MOE n\'a pas encore de compte portail gratuit">
+        } else if (m.email) {
+          return `<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 hover:bg-amber-50">
             <span class="text-sm">${label}</span>
-            <span class="text-xs text-gray-400 shrink-0">Sans compte portail</span>
+            <button onclick="inviterMoeSansCompte('${m.id}')"
+              class="shrink-0 text-xs bg-amber-600 text-white px-2.5 py-1 rounded-lg hover:bg-amber-700">Inviter</button>
+          </div>`;
+        } else {
+          return `<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 opacity-50" title="Ajoutez une adresse email a cette fiche pour pouvoir l\'inviter">
+            <span class="text-sm">${label}</span>
+            <span class="text-xs text-gray-400 shrink-0">Sans email</span>
           </div>`;
         }
       }).join('')
@@ -4250,10 +4255,55 @@ function openMoeModal() {
 
   showModal(`
     <h2 class="text-lg font-bold mb-3">Associer un MOE au chantier</h2>
-    <p class="text-xs text-gray-500 mb-2">Sélectionnez un MOE depuis votre carnet. Les MOE sans compte doivent d\'abord s\'inscrire gratuitement sur le portail MOE.</p>
+    <p class="text-xs text-gray-500 mb-2">Sélectionnez un MOE de votre carnet. S\'il n\'a pas encore de compte, Pivot lui envoie une invitation à s\'inscrire — le chantier apparaîtra dans son portail dès la création de son compte.</p>
     <div class="border rounded-lg mb-4 max-h-64 overflow-y-auto bg-white">${carnetHtml}</div>
     <button onclick="closeModal()" class="w-full border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Fermer</button>
   `);
+}
+
+// Le MOE n'a pas de compte : on enregistre l'invitation sur son adresse email et Pivot l'invite
+// à s'inscrire. Aucun droit ne circule par cet email — c'est le rapprochement par adresse, côté
+// base, qui reliera le compte créé à ce chantier. L'invitation reste en attente jusqu'à ce qu'il
+// l'accepte depuis son portail.
+async function inviterMoeSansCompte(carnetId) {
+  const m = (state.maitresOeuvre || []).find(x => x.id === carnetId);
+  const ch = state.currentChantier;
+  if (!m?.email || !ch) return;
+  try {
+    // Ne pas doubler une invitation en attente : le MOE recevrait deux emails et verrait deux fois
+    // le même chantier après inscription.
+    const { data: dejaLa } = await db.from('chantier_invitations')
+      .select('id').eq('chantier_id', ch.id).eq('email_invite', m.email).eq('statut', 'pending').maybeSingle();
+    if (dejaLa) return toast('Une invitation est déjà en attente pour cette adresse', 'err');
+
+    const { error } = await db.from('chantier_invitations').insert({
+      chantier_id: ch.id,
+      email_invite: m.email,
+      nom_chantier: ch.affaire || '',
+      statut: 'pending'
+    });
+    if (error) throw error;
+
+    const { data: { session } } = await db.auth.getSession();
+    const resp = await fetch('https://pivot-pdf.jncoutier.workers.dev/inviter-moe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({
+        email: m.email,
+        nom: m.nom || '',
+        nom_chantier: ch.affaire || '',
+        nom_entrepreneur: state.profile?.raison_sociale || state.profile?.societe || state.profile?.nom || ''
+      })
+    });
+    // L'invitation est enregistrée quoi qu'il arrive : si l'email échoue, on le dit plutôt que de
+    // laisser croire que le MOE a été prévenu.
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(`Invitation enregistrée, mais l'email n'est pas parti : ${d.error || resp.status}`);
+    }
+    toast(`Invitation envoyée à ${m.email}`);
+    closeModal();
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function linkMoeFromCarnet(compteMoeId, nom) {
@@ -4292,86 +4342,6 @@ async function linkMoeByEmail() {
   } catch (err) {
     toast(_messageErreur(err), 'err');
   }
-}
-
-async function ouvrirInviterMoe(chantierId) {
-  const ch = state.chantiers.find(c => c.id === chantierId) || state.currentChantier || {};
-  if (ch.entrepreneur_id !== state.user.id) {
-    return toast('Ce chantier a été créé par le Maître d\'œuvre — il gère lui-même les invitations.', 'err');
-  }
-  const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
-  const moeNom = moe ? (moe.societe ? `${moe.nom} · ${moe.societe}` : moe.nom) : null;
-
-  // Récupérer le token existant si déjà généré
-  const { data: chData } = await db.from('chantiers').select('moe_invite_token').eq('id', chantierId).single();
-  const existingToken = chData?.moe_invite_token;
-  const existingLink = existingToken
-    ? `${location.origin}${location.pathname.replace(/[^/]*$/, '')}pivot-moe.html?token=${existingToken}`
-    : null;
-
-  showModal(`
-    <h2 style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--vert);margin-bottom:4px">
-      Inviter un MOE
-    </h2>
-    <p class="text-xs text-gray-400 mb-5">${escHtml(ch.affaire || '')}</p>
-
-    ${moeNom ? `
-    <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4" style="background:rgba(28,58,42,0.06);border:1px solid rgba(28,58,42,0.1)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--vert)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <span class="text-sm font-medium flex-1" style="color:var(--vert)">${escHtml(moeNom)}</span>
-      <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">MOE lié</span>
-    </div>` : `
-    <div class="px-3 py-2.5 rounded-xl mb-4 text-sm text-amber-700" style="background:#fffbeb;border:1px solid #fde68a">
-      Aucun MOE associé à ce chantier pour l'instant.
-    </div>`}
-
-    <p class="text-xs text-gray-500 mb-3">Envoyez ce lien au MOE. Il pourra accéder au chantier depuis son portail en toute sécurité.</p>
-
-    <div id="moe-invite-link-zone">
-      ${existingLink ? `
-      <div class="flex gap-2 mb-3">
-        <input id="moe-token-link" type="text" readonly value="${existingLink}"
-          class="flex-1 border rounded-lg px-3 py-2 text-xs font-mono bg-gray-50 text-gray-600 focus:outline-none">
-        <button onclick="copyMoeLink()" class="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-white" style="background:var(--vert)">Copier</button>
-      </div>
-      <button onclick="_regenererLienMoe('${chantierId}')" class="text-xs text-gray-400 hover:text-gray-600 underline">Regénérer un nouveau lien</button>
-      ` : `
-      <button onclick="_genererLienMoe('${chantierId}')" class="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style="background:var(--vert)">
-        Générer le lien d'invitation
-      </button>
-      `}
-    </div>
-
-    <button onclick="closeModal()" class="w-full border py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 mt-4">Fermer</button>
-  `);
-}
-
-async function _genererLienMoe(chantierId) {
-  const token = crypto.randomUUID();
-  try {
-    await db.from('chantiers').update({ moe_invite_token: token }).eq('id', chantierId);
-    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}pivot-moe.html?token=${token}`;
-    document.getElementById('moe-invite-link-zone').innerHTML = `
-      <div class="flex gap-2 mb-3">
-        <input id="moe-token-link" type="text" readonly value="${link}"
-          class="flex-1 border rounded-lg px-3 py-2 text-xs font-mono bg-gray-50 text-gray-600 focus:outline-none">
-        <button onclick="copyMoeLink()" class="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-white" style="background:var(--vert)">Copier</button>
-      </div>
-      <button onclick="_regenererLienMoe('${chantierId}')" class="text-xs text-gray-400 hover:text-gray-600 underline">Regénérer un nouveau lien</button>`;
-    toast('Lien généré');
-  } catch(err) { toast(_messageErreur(err), 'err'); }
-}
-
-async function _regenererLienMoe(chantierId) {
-  if (!await showConfirm('Regénérer invalide l\'ancien lien. Confirmer ?')) return;
-  await _genererLienMoe(chantierId);
-}
-
-function copyMoeLink() {
-  const val = document.getElementById('moe-token-link')?.value;
-  if (!val) return;
-  navigator.clipboard.writeText(val);
-  toast('Lien copié !');
 }
 
 async function generateMoeToken() {

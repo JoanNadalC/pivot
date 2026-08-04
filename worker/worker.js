@@ -1205,6 +1205,60 @@ async function handleSendInvitation(request, env) {
   return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
 }
 
+// Invitation d'un maître d'œuvre qui n'a pas encore de compte. Aucun droit ne transite par
+// l'email : il ne fait qu'inviter à s'inscrire. C'est le rapprochement par adresse, côté base,
+// qui reliera ensuite le compte créé aux chantiers qui l'attendaient — un lien porteur d'accès
+// se transfère, se copie et ne sait pas à qui il s'adresse.
+async function handleInviterMoe(request, env) {
+  const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
+  const json = (body, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+
+  const caller = await getAuthUser(request, env);
+  if (!caller?.id) return json({ error: 'Non authentifié.' }, 401);
+
+  const { email, nom, nom_chantier, nom_entrepreneur } = await request.json().catch(() => ({}));
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'Adresse email invalide.' }, 400);
+
+  const siteUrl = (env.SITE_URL || 'https://pivotlaracine.com').replace(/\/$/, '');
+  const lien = `${siteUrl}/pivot-inscription-moe.html?email=${encodeURIComponent(email)}`;
+  const inviteur = nom_entrepreneur || 'Une entreprise';
+
+  const html = `
+    <div style="font-family:'Inter',Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1C3A2A;">
+      <div style="background:#1C3A2A;padding:32px 40px 24px;">
+        <span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#F5F0E8;">Pivot</span><span style="font-family:Georgia,serif;font-size:28px;font-weight:900;color:#B87333;">.</span><span style="font-family:Georgia,serif;font-size:16px;font-weight:400;font-style:italic;color:rgba(245,240,232,0.55);margin-left:6px;">la racine</span>
+      </div>
+      <div style="padding:40px;background:#F5F0E8;">
+        <p style="font-size:15px;margin:0 0 16px;">Bonjour${nom ? ' ' + escapeHtmlEmail(nom) : ''},</p>
+        <p style="font-size:15px;margin:0 0 16px;"><strong>${escapeHtmlEmail(inviteur)}</strong> vous invite à suivre le chantier <strong>${escapeHtmlEmail(nom_chantier || '')}</strong> en tant que maître d'œuvre sur Pivot.</p>
+        <p style="font-size:14px;color:#6B7280;margin:0 0 24px;">Le portail maître d'œuvre est gratuit. Créez votre compte avec cette adresse : les chantiers qui vous attendent y apparaîtront automatiquement.</p>
+        <a href="${lien}" style="display:inline-block;background:#1C3A2A;color:#F5F0E8;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:500;">Créer mon compte maître d'œuvre →</a>
+        <p style="font-size:12px;color:#9CA3AF;margin:32px 0 0;">Inscrivez-vous bien avec l'adresse ${escapeHtmlEmail(email)} : c'est elle qui relie l'invitation à votre compte. Si vous n'attendiez pas cet email, ignorez-le.</p>
+      </div>
+    </div>`;
+
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: env.RESEND_FROM,
+      to: [email],
+      subject: `${inviteur} vous invite comme maître d'œuvre sur Pivot`,
+      html,
+    }),
+  });
+  if (!r.ok) return json({ error: `Resend: ${await r.text()}` }, 500);
+  return json({ success: true });
+}
+
+// Le nom et le chantier viennent d'une saisie utilisateur : sans échappement, une apostrophe
+// suffirait à casser le gabarit, et un fragment de balise à le détourner.
+function escapeHtmlEmail(s) {
+  return String(s || '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // Vérifie le JWT de l'appelant auprès de Supabase Auth et retourne { id, email } ou null
 async function getAuthUser(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
@@ -2785,6 +2839,7 @@ export default {
       if (url.pathname === '/delete-user')             return await handleDeleteUser(request, env);
       if (url.pathname === '/purger-structure')        return await handlePurgerStructure(request, env);
       if (url.pathname === '/send-invitation')         return await handleSendInvitation(request, env);
+      if (url.pathname === '/inviter-moe')              return await handleInviterMoe(request, env);
       if (url.pathname === '/notify-event')            return await handleNotifyEvent(request, env);
       if (url.pathname === '/waitlist-confirm')        return await handleWaitlistConfirm(request, env);
       if (url.pathname === '/help-chat')               return await handleHelpChat(request, env);
