@@ -1290,19 +1290,51 @@ function _formatChampLabel(key, label) {
 function renderVisibiliteChamps() {
   const el = document.getElementById('cpt-visibilite-champs');
   if (!el) return;
-  const selected = new Set(state._visibiliteChamps || []);
-  el.innerHTML = VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
-    const on = selected.has(key);
-    return `<button type="button" onclick="toggleVisibiliteChamp('${key}')"
-      class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'}">
-      ${on ? '✓ ' : ''}${_formatChampLabel(key, label)}
-    </button>`;
-  }).join('');
+  const pub = new Set(state._visibiliteChamps || []);
+  const rel = new Set(state._visibiliteRelations || []);
+  el.innerHTML = `
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-gray-500">
+          <th class="text-left font-medium pb-2"></th>
+          <th class="font-medium pb-2 px-2 w-28">Recherche</th>
+          <th class="font-medium pb-2 px-2 w-28">Mes contacts</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
+          const p = pub.has(key);
+          // Ce qui est public l'est forcément pour un partenaire : la case est cochée et
+          // verrouillée, plutôt que de laisser composer une combinaison sans effet.
+          const r = p || rel.has(key);
+          return `<tr class="border-t border-gray-100">
+            <td class="py-1.5 pr-2">${_formatChampLabel(key, label)}</td>
+            <td class="text-center"><input type="checkbox" ${p ? 'checked' : ''}
+              onchange="toggleVisibiliteChamp('${key}')" class="w-4 h-4 accent-blue-600 cursor-pointer"></td>
+            <td class="text-center"><input type="checkbox" ${r ? 'checked' : ''} ${p ? 'disabled' : ''}
+              onchange="toggleVisibiliteRelation('${key}')"
+              class="w-4 h-4 accent-green-600 ${p ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}"></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <p class="text-xs text-gray-400 mt-3 leading-relaxed">
+      <strong>Recherche</strong> : ce que voit toute personne qui vous cherche sur la plateforme.<br>
+      <strong>Mes contacts</strong> : ce que voient en plus ceux dont vous avez accepté la mise en relation.
+    </p>`;
 }
+
 function toggleVisibiliteChamp(key) {
   const set = new Set(state._visibiliteChamps || []);
   if (set.has(key)) set.delete(key); else set.add(key);
   state._visibiliteChamps = [...set];
+  renderVisibiliteChamps();
+}
+
+function toggleVisibiliteRelation(key) {
+  const set = new Set(state._visibiliteRelations || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  state._visibiliteRelations = [...set];
   renderVisibiliteChamps();
 }
 // Construit {titre, sousTitre} à partir d'une ligne de recherche masquée renvoyée par la RPC
@@ -1930,7 +1962,7 @@ function openCompteModal() {
       <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
         <label class="block text-xs font-semibold text-blue-800 mb-1">👁 Visibilité dans les recherches</label>
         <p class="text-xs text-blue-600 mb-2">Ce que les autres voient de vous quand ils vous cherchent pour vous inviter.</p>
-        <div id="cpt-visibilite-champs" class="flex flex-wrap gap-2"></div>
+        <div id="cpt-visibilite-champs"></div>
       </div>
       <div>
         <label class="block text-xs text-gray-500 mb-1">Téléphone</label>
@@ -2023,6 +2055,7 @@ function openCompteModal() {
     </div>
   `);
   state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'prenom_initiale', 'nom_initiale'];
+  state._visibiliteRelations = Array.isArray(p.visibilite_relations) ? p.visibilite_relations : ['entreprise', 'ville', 'prenom', 'nom', 'fonction', 'telephone', 'email'];
   renderVisibiliteChamps();
 }
 
@@ -2089,6 +2122,7 @@ async function saveCompte() {
   const raison_sociale = document.getElementById('cpt-raison-sociale')?.value.trim() || '';
   const fonction      = document.getElementById('cpt-fonction')?.value.trim() || '';
   const visibilite_champs = state._visibiliteChamps || [];
+  const visibilite_relations = state._visibiliteRelations || [];
   const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
   const file          = document.getElementById('cpt-logo-file')?.files?.[0];
 
@@ -2105,11 +2139,11 @@ async function saveCompte() {
     }
 
     const { error } = await db.from('compte_entrepreneur')
-      .update({ prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite_champs, notif_preference, logo_url })
+      .update({ prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite_champs, visibilite_relations, notif_preference, logo_url })
       .eq('id', state.user.id);
     if (error) throw error;
 
-    state.profile = { ...state.profile, prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite_champs, notif_preference, logo_url };
+    state.profile = { ...state.profile, prenom, nom, telephone, adresse, code_postal, ville, siret, tva_intracom, raison_sociale, fonction, visibilite_champs, visibilite_relations, notif_preference, logo_url };
     state.logoBase64 = null;
     const displayName = [prenom, nom].filter(Boolean).join(' ') || state.user.email || '';
     const societe2 = state.profile.raison_sociale || state.profile.societe || '';
@@ -4459,7 +4493,7 @@ async function loadContactsFournisseurs() {
     const { data, error } = await db.rpc('contacts_fournisseurs_lies');
     if (error) throw error;
     state.contactsFournisseurs = Object.fromEntries(
-      (data || []).map(c => [c.compte_id, { societe: c.societe, prenom: c.prenom, nom: c.nom }])
+      (data || []).map(c => [c.compte_id, c])
     );
   } catch (err) { console.error('loadContactsFournisseurs', err); }
 }

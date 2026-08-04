@@ -812,7 +812,7 @@
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
           <h3 class="font-semibold mb-1">👁 Visibilité dans les recherches</h3>
           <p class="text-xs text-gray-500 mb-3">Sélectionnez ce que les entreprises voient de vous quand elles vous cherchent sur la plateforme.</p>
-          <div id="p-visibilite-champs" class="flex flex-wrap gap-2"></div>
+          <div id="p-visibilite-champs"></div>
         </div>
         <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
           <h3 class="font-semibold mb-3">Préférences mails de notifications</h3>
@@ -1652,6 +1652,7 @@ function fillProfil(p) {
   document.getElementById('p-filigrane-localisation').checked = p.filigrane_localisation !== false;
 
   state._visibiliteChamps = Array.isArray(p.visibilite_champs) ? p.visibilite_champs : ['entreprise', 'ville', 'prenom_initiale', 'nom_initiale'];
+  state._visibiliteRelations = Array.isArray(p.visibilite_relations) ? p.visibilite_relations : ['entreprise', 'ville', 'prenom', 'nom', 'fonction', 'tel_standard', 'email'];
   renderVisibiliteChamps();
 }
 
@@ -1680,20 +1681,51 @@ function _formatChampLabel(key, label) {
 function renderVisibiliteChamps() {
   const el = document.getElementById('p-visibilite-champs');
   if (!el) return;
-  const selected = new Set(state._visibiliteChamps || []);
-  el.innerHTML = VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
-    const on = selected.has(key);
-    return `<button type="button" onclick="toggleVisibiliteChamp('${key}')"
-      class="text-xs px-3 py-1.5 rounded-full border-2 font-medium transition-all ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'}">
-      ${on ? '✓ ' : ''}${_formatChampLabel(key, label)}
-    </button>`;
-  }).join('');
+  const pub = new Set(state._visibiliteChamps || []);
+  const rel = new Set(state._visibiliteRelations || []);
+  el.innerHTML = `
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-gray-500">
+          <th class="text-left font-medium pb-2"></th>
+          <th class="font-medium pb-2 px-2 w-28">Recherche</th>
+          <th class="font-medium pb-2 px-2 w-28">Mes contacts</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${VISIBILITE_CHAMPS_OPTIONS.map(([key, label]) => {
+          const p = pub.has(key);
+          // Ce qui est public l'est forcément pour un partenaire : la case est cochée et
+          // verrouillée, plutôt que de laisser composer une combinaison sans effet.
+          const r = p || rel.has(key);
+          return `<tr class="border-t border-gray-100">
+            <td class="py-1.5 pr-2">${_formatChampLabel(key, label)}</td>
+            <td class="text-center"><input type="checkbox" ${p ? 'checked' : ''}
+              onchange="toggleVisibiliteChamp('${key}')" class="w-4 h-4 accent-blue-600 cursor-pointer"></td>
+            <td class="text-center"><input type="checkbox" ${r ? 'checked' : ''} ${p ? 'disabled' : ''}
+              onchange="toggleVisibiliteRelation('${key}')"
+              class="w-4 h-4 accent-green-600 ${p ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}"></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <p class="text-xs text-gray-400 mt-3 leading-relaxed">
+      <strong>Recherche</strong> : ce que voit toute personne qui vous cherche sur la plateforme.<br>
+      <strong>Mes contacts</strong> : ce que voient en plus ceux dont vous avez accepté la mise en relation.
+    </p>`;
 }
 
 function toggleVisibiliteChamp(key) {
   const set = new Set(state._visibiliteChamps || []);
   if (set.has(key)) set.delete(key); else set.add(key);
   state._visibiliteChamps = [...set];
+  renderVisibiliteChamps();
+}
+
+function toggleVisibiliteRelation(key) {
+  const set = new Set(state._visibiliteRelations || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  state._visibiliteRelations = [...set];
   renderVisibiliteChamps();
 }
 
@@ -2105,6 +2137,7 @@ async function saveProfil() {
       tel_fixe_direct: document.getElementById('p-tel-fixe-direct').value.trim(),
       tel_portable: document.getElementById('p-tel-portable').value.trim(),
       visibilite_champs: state._visibiliteChamps || [],
+      visibilite_relations: state._visibiliteRelations || [],
       notif_preference: document.getElementById('p-notif').value,
       filigrane_date: document.getElementById('p-filigrane-date').checked,
       filigrane_heure: document.getElementById('p-filigrane-heure').checked,
