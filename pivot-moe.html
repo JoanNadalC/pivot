@@ -980,9 +980,11 @@ async function loadProfile() {
     // exportable, mais n'accepte plus d'écriture — le RLS l'impose, ceci ne fait que l'annoncer.
     if (state.structureId) {
       const { data: st } = await db.from('structures')
-        .select('acces_restreint').eq('id', state.structureId).maybeSingle();
+        .select('acces_restreint, plan').eq('id', state.structureId).maybeSingle();
       state.accesRestreint = st?.acces_restreint === true;
+      state.plan = st?.plan || null;
       _appliquerAccesRestreint();
+      _appliquerPlan();
     }
     if (state.isReferent) document.getElementById('btn-mon-equipe').classList.remove('hidden');
   } catch (err) {
@@ -5935,7 +5937,24 @@ function copyInviteLink(link, btn) {
 // ============================================================
 // CRÉATION DE CHANTIER (par le MOE)
 // ============================================================
+// La formule Consultant s'adresse aux maîtres d'œuvre invités par une entreprise : ils visent,
+// suivent et consultent, mais ne pilotent pas d'opération propre. Créer un chantier relève de
+// Pilote. Le bouton est masqué en Consultant ; cette fonction reste le garde-fou, une interface
+// pouvant toujours être contournée.
+function _peutCreerChantier() {
+  return state.plan === 'pilote';
+}
+
+// Masque ce que la formule ne couvre pas, plutôt que de laisser l'utilisateur buter dessus.
+function _appliquerPlan() {
+  const btn = document.querySelector('[onclick="ouvrirCreerChantier()"]');
+  if (btn) btn.classList.toggle('hidden', !_peutCreerChantier());
+}
+
 function ouvrirCreerChantier() {
+  if (!_peutCreerChantier()) {
+    return toast("La création de chantier est réservée à la formule Pilote. En Consultant, vous intervenez sur les chantiers auxquels une entreprise vous invite.", 'err');
+  }
   showModal(`
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-gray-800">🏗 Nouveau chantier</h2>
