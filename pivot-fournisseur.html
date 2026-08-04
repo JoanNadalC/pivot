@@ -4588,7 +4588,7 @@ async function saveReponses(send) {
           devis_pdf_url: send ? (state.devisPdfUrl || null) : null,
           devis_valide_at: send ? new Date().toISOString() : null,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'fourniture_id,fournisseur_id,variante_ordre' });
+        }, { onConflict: 'consultation_id,fourniture_id,fournisseur_id,variante_ordre' });
         if (upsertErr) throw new Error('Erreur upsert réponse : ' + upsertErr.message);
         if (send) state.reponsesEnvoyees[key] = true;
       }
