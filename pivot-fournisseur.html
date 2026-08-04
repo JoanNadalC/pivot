@@ -2022,6 +2022,45 @@ async function loadRelationsAcceptees() {
   }
 }
 
+// Un même compte fournisseur figure au carnet de plusieurs entreprises, sous une fiche par
+// client. `state.fournisseurId` n'en retient qu'une, prise au hasard au moment de la connexion :
+// écrire ses prix sous cette fiche-là revenait à les déposer chez un autre client, qui ne les
+// attendait pas, tandis que le donneur d'ordre ne trouvait rien sous la sienne.
+//
+// La bonne fiche est celle par laquelle la consultation nous a été adressée.
+async function _ficheCarnetPourConsultation(consId) {
+  if (!consId) return state.fournisseurId || state.user?.id;
+  if (state._fichesParConsultation?.[consId]) return state._fichesParConsultation[consId];
+  let fiche = null;
+  try {
+    const { data: parCompte } = await db.from('consultation_fournisseurs')
+      .select('fournisseur_id')
+      .eq('consultation_id', consId)
+      .eq('compte_fournisseur_id', state.user.id)
+      .maybeSingle();
+    fiche = parCompte?.fournisseur_id || null;
+
+    // Consultations antérieures au rattachement par compte : on cherche parmi les fiches connues.
+    if (!fiche && state.fournisseurIds?.length) {
+      const { data: parFiche } = await db.from('consultation_fournisseurs')
+        .select('fournisseur_id')
+        .eq('consultation_id', consId)
+        .in('fournisseur_id', state.fournisseurIds)
+        .maybeSingle();
+      fiche = parFiche?.fournisseur_id || null;
+    }
+    if (!fiche) {
+      const { data: inv } = await db.from('invitations')
+        .select('fournisseur_id').eq('consultation_id', consId).maybeSingle();
+      fiche = inv?.fournisseur_id || null;
+    }
+  } catch (err) { console.error('_ficheCarnetPourConsultation', err); }
+
+  fiche = fiche || state.fournisseurId || state.user?.id;
+  state._fichesParConsultation = { ...(state._fichesParConsultation || {}), [consId]: fiche };
+  return fiche;
+}
+
 async function loadDemandesRelation() {
   try {
     const { data, error } = await db.from('fournisseurs')
@@ -3334,7 +3373,7 @@ async function loadSaisie() {
     state.reponsesEnvoyees = {};
     state.fraisPort = 0;
     if (!state.isGuest) {
-      const fId = state.fournisseurId || state.user?.id;
+      const fId = await _ficheCarnetPourConsultation(consId);
       if (fId) {
         const [repsRes, cfRes] = await Promise.all([
           db.from('reponses_fournisseurs').select('*')
@@ -4075,10 +4114,9 @@ async function supprimerVarianteFournisseur(fournitureId, ordre) {
   if (!ok) return;
   const key = `${fournitureId}_${ordre}`;
   const row = document.querySelector(`tr[data-fourniture="${fournitureId}"][data-ordre="${ordre}"]`);
-  const fId = state.fournisseurId || state.user?.id;
-
   // Si elle avait déjà été envoyée, la retirer aussi de la base
   const consId = state.currentConsultation?.id;
+  const fId = await _ficheCarnetPourConsultation(consId);
   if (consId && fId) {
     await db.from('reponses_fournisseurs').delete()
       .eq('consultation_id', consId).eq('fourniture_id', fournitureId)
@@ -4527,7 +4565,7 @@ async function saveReponses(send) {
     } else {
       // Récupérer entrepreneur_id et fournisseur_id (carnet) depuis invitations
       const { data: inv } = await db.from('invitations').select('entrepreneur_id, fournisseur_id').eq('consultation_id', consId).maybeSingle();
-      const fournisseurId = state.fournisseurId || inv?.fournisseur_id || state.user.id;
+      const fournisseurId = await _ficheCarnetPourConsultation(consId);
       const cons = { entrepreneur_id: inv?.entrepreneur_id };
       for (const ligne of lignes) {
         const key = `${ligne.fourniture_id}_${ligne.variante_ordre}`;
