@@ -8245,6 +8245,11 @@ async function createConsultation() {
     telephone:      document.getElementById('nc-info-telephone')?.checked || false,
     email:          document.getElementById('nc-info-email')?.checked || false,
   } : null;
+  // Le bouton annonce « Créer & envoyer » : sans destinataire ni ouverture au portail, rien ne
+  // part, et la consultation reste un brouillon que personne ne voit. Autant le demander.
+  if (!checkedFours.length && !isOuverte) {
+    if (!await showConfirm("Aucun fournisseur n'est sélectionné et la consultation n'est pas ouverte au portail : elle sera enregistrée en brouillon, sans être envoyée. Continuer ?")) return;
+  }
   try {
     const { data: cons, error } = await db.from('consultations').insert({
       chantier_id:            state.currentChantier.id,
@@ -8284,12 +8289,15 @@ async function createConsultation() {
         }
       }
 
-      await db.from('consultation_fournisseurs').insert({
+      const { error: cfErr } = await db.from('consultation_fournisseurs').insert({
         consultation_id: cons.id,
         fournisseur_id: fid,
         entrepreneur_id: state.user.id,
         compte_fournisseur_id: compteFournisseurId
       });
+      // Sans ce contrôle, un refus d'écriture laissait une consultation sans destinataire, que
+      // l'entreprise croyait envoyée et que le fournisseur ne voyait jamais.
+      if (cfErr) throw new Error(`Le fournisseur n'a pas pu être rattaché à la consultation : ${_messageErreur(cfErr)}`);
       const token = crypto.randomUUID();
       await db.from('invitations').insert({
         consultation_id: cons.id,
