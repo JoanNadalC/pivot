@@ -4823,7 +4823,11 @@ async function addPortailFournisseurToCarnet(compteId, nom) {
       type_fournisseur: 'portail',
       statut: auto ? 'accepted' : 'pending',
       contact_prenom: cached?.prenom || null,
-      contact_nom: cached?.nom || null
+      contact_nom: cached?.nom || null,
+      // Le fournisseur déclare sa spécialité dans son profil : on en préremplit le classement du
+      // carnet, quitte à ce que l'entreprise l'ajuste ensuite. Sans elle, la fiche arrivait sans
+      // famille et n'apparaissait dans aucun filtre.
+      familles: cached?.famille_principale_id ? [cached.famille_principale_id] : []
     }).select('*').single();
     if (error) throw error;
     state.fournisseurs.push(data);

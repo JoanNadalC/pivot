@@ -796,6 +796,11 @@
                 <input id="p-tva" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="FR00000000000">
               </div>
             </div>
+            <label class="block text-xs text-gray-500 mb-1">Famille principale</label>
+            <p class="text-[11px] text-gray-400 mb-1">Votre spécialité : elle classe automatiquement votre fiche lorsqu'une entreprise vous ajoute à son carnet.</p>
+            <select id="p-famille-principale" class="w-full border rounded px-3 py-2 text-sm mb-4">
+              <option value="">— Aucune —</option>
+            </select>
             <label class="block text-xs text-gray-500 mb-1">Forme juridique</label>
             <input id="p-forme-juridique" type="text" class="w-full border rounded px-3 py-2 text-sm mb-4" placeholder="ex : SARL, SAS, EI…">
             <label class="block text-xs text-gray-500 mb-1">Logo (apparaît dans les PDFs)</label>
@@ -1596,6 +1601,12 @@ function fillProfil(p) {
   document.getElementById('p-siret').value = p.siret || '';
   document.getElementById('p-tva').value = p.tva || '';
   document.getElementById('p-forme-juridique').value = p.forme_juridique || '';
+  const selFam = document.getElementById('p-famille-principale');
+  if (selFam) {
+    selFam.innerHTML = '<option value="">— Aucune —</option>' + (state.familles || []).map(f =>
+      `<option value="${f.id}">${escHtml((f.icone ? f.icone + ' ' : '') + f.nom)}</option>`).join('');
+    selFam.value = p.famille_principale_id || '';
+  }
   document.getElementById('p-fonction').value = p.fonction || '';
   document.getElementById('p-tel-fixe-direct').value = p.tel_fixe_direct || '';
   document.getElementById('p-tel-portable').value = p.tel_portable || '';
@@ -2097,6 +2108,7 @@ async function saveProfil() {
         siret: document.getElementById('p-siret').value.trim(),
         tva: document.getElementById('p-tva').value.trim(),
         forme_juridique: document.getElementById('p-forme-juridique').value.trim(),
+        famille_principale_id: document.getElementById('p-famille-principale').value || null,
         logo_url
       });
     }
