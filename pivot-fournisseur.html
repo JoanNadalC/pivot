@@ -4564,9 +4564,19 @@ async function saveReponses(send) {
       }
     } else {
       // Récupérer entrepreneur_id et fournisseur_id (carnet) depuis invitations
-      const { data: inv } = await db.from('invitations').select('entrepreneur_id, fournisseur_id').eq('consultation_id', consId).maybeSingle();
       const fournisseurId = await _ficheCarnetPourConsultation(consId);
-      const cons = { entrepreneur_id: inv?.entrepreneur_id };
+
+      // Le donneur d'ordre se lit sur la consultation, qui en est la source. Il était repris de
+      // l'invitation : quand celle-ci manquait, la réponse partait sans propriétaire, et le RLS
+      // la rendait invisible à l'entreprise même — elle croyait n'avoir reçu aucun prix.
+      const { data: consRow } = await db.from('consultations')
+        .select('entrepreneur_id').eq('id', consId).maybeSingle();
+      const { data: inv } = consRow?.entrepreneur_id ? { data: null } : await db.from('invitations')
+        .select('entrepreneur_id').eq('consultation_id', consId).limit(1).maybeSingle();
+      const cons = { entrepreneur_id: consRow?.entrepreneur_id || inv?.entrepreneur_id || null };
+      if (!cons.entrepreneur_id) {
+        throw new Error("Le destinataire de cette consultation est introuvable : vos prix ne seraient visibles par personne.");
+      }
       for (const ligne of lignes) {
         const key = `${ligne.fourniture_id}_${ligne.variante_ordre}`;
         const { error: upsertErr } = await db.from('reponses_fournisseurs').upsert({
