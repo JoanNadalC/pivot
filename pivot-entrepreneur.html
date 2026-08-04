@@ -8318,41 +8318,52 @@ async function createConsultation() {
         token,
         expires_at: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString()
       });
-      // Notifier le fournisseur : email magique si nouveau, notification + email préférentiel si déjà inscrit
-      if (carnetEntry?.email) {
-        const portail = compteFournisseurId ? 'existant' : 'nouveau';
-        const nomChantier = state.currentChantier?.nom || 'chantier';
-        const nomEntrepreneur = state.structure?.nom || state.profile?.prenom || 'Un entrepreneur';
+      // Prévenir le fournisseur. Le compte prime sur l'email : une fiche ajoutée depuis la
+      // recherche portail n'a pas d'adresse — le fournisseur ne l'a pas rendue visible — et
+      // conditionner toute la notification à l'email revenait à ne jamais l'avertir, ni par la
+      // cloche ni autrement, alors qu'il était bien rattaché à la consultation.
+      const nomChantier = state.currentChantier?.nom || 'chantier';
+      const nomEntrepreneur = state.structure?.nom || state.profile?.prenom || 'Un entrepreneur';
 
-        if (portail === 'existant') {
-          const msgNc = `${nomEntrepreneur} vous invite à répondre à une consultation${titre ? ` — "${titre}"` : ''}${nomChantier ? ` · ${nomChantier}` : ''}`;
-          await db.from('notifications').insert({
-            type: 'nouvelle_consultation',
-            user_id: compteFournisseurId,
-            message: msgNc,
-            consultation_id: cons.id,
-            chantier_id: state.currentChantier?.id || null,
-            read: false
-          });
-          fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: 'Nouvelle consultation', message: msgNc })
-          }).catch(() => {});
-        } else {
-          fetch('https://pivot-pdf.jncoutier.workers.dev/send-invitation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: carnetEntry.email,
-              nom_fournisseur: carnetEntry.nom || '',
-              nom_chantier: nomChantier,
-              ville_chantier: state.currentChantier?.ville || '',
-              nom_entrepreneur: nomEntrepreneur,
-              token,
-              portail,
-            }),
-          }).catch(e => console.error('[invite] worker error:', e));
+      if (compteFournisseurId) {
+        const msgNc = `${nomEntrepreneur} vous invite à répondre à une consultation${titre ? ` — "${titre}"` : ''}${nomChantier ? ` · ${nomChantier}` : ''}`;
+        const { error: notifErr } = await db.from('notifications').insert({
+          type: 'nouvelle_consultation',
+          user_id: compteFournisseurId,
+          message: msgNc,
+          consultation_id: cons.id,
+          chantier_id: state.currentChantier?.id || null,
+          read: false
+        });
+        // Le rattachement a réussi : ne pas faire échouer l'envoi pour une notification, mais ne
+        // pas le taire non plus — le fournisseur ne saurait pas qu'on l'attend.
+        if (notifErr) {
+          console.error('notification consultation:', notifErr);
+          toast("Consultation envoyée, mais le fournisseur n'a pas pu être notifié.", 'err');
         }
+        // Le worker retrouve lui-même l'adresse du compte : l'email de la fiche n'est pas requis.
+        fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: 'Nouvelle consultation', message: msgNc })
+        }).catch(() => {});
+      } else if (carnetEntry?.email) {
+        // Fournisseur hors Pivot : lien d'inscription par email, seul moyen de le joindre.
+        fetch('https://pivot-pdf.jncoutier.workers.dev/send-invitation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: carnetEntry.email,
+            nom_fournisseur: carnetEntry.nom || '',
+            nom_chantier: nomChantier,
+            ville_chantier: state.currentChantier?.ville || '',
+            nom_entrepreneur: nomEntrepreneur,
+            token,
+            portail: 'nouveau',
+          }),
+        }).catch(e => console.error('[invite] worker error:', e));
+      } else {
+        // Ni compte, ni adresse : rien ne permet de le joindre. L'entreprise doit le savoir.
+        toast(`${carnetEntry?.nom || 'Ce fournisseur'} n'a ni compte Pivot ni adresse email : il ne sera pas prévenu.`, 'err');
       }
     }
 
