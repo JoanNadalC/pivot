@@ -2017,7 +2017,7 @@ function _lotMemberLabel(m) {
 // saisi sur l'invitation était vide, ce qui était le cas le plus fréquent.
 function _libelleEntrepriseInvitee(inv) {
   const c = inv?._compte;
-  const societe = c?.raison_sociale || c?.societe || inv?.nom_entreprise || '';
+  const societe = c?.societe || inv?.nom_entreprise || '';
   const contact = [c?.prenom, c?.nom].filter(Boolean).join(' ');
   const parts = [societe, contact].filter(Boolean);
   return escHtml(parts.length ? parts.join(' · ') : (inv?.email_invite || 'Entreprise'));
@@ -5814,10 +5814,13 @@ async function loadInvitations() {
   ])];
 
   if (ids.length) {
-    const { data: comptes } = await db.from('compte_entrepreneur')
-      .select('id, raison_sociale, societe, prenom, nom').in('id', ids);
+    // Passer par la fonction plutôt que lire `compte_entrepreneur` en direct : elle applique les
+    // réglages de visibilité de chaque entreprise, que la lecture brute contournait — le prénom et
+    // le nom s'affichaient même quand leur titulaire ne les avait pas publiés.
+    const { data: comptes } = await db.rpc('contacts_entreprises_liees');
     const parId = {};
-    (comptes || []).forEach(c => { parId[c.id] = c; });
+    (comptes || []).filter(c => ids.includes(c.compte_id))
+      .forEach(c => { parId[c.compte_id] = c; });
     // Une seule entreprise par chantier hors mode lots : l'intervenant sert de repli quand
     // l'invitation ne porte pas l'identifiant.
     const repli = parId[idsIntervenants[0]] || null;

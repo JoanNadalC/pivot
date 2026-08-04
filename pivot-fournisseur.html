@@ -279,6 +279,12 @@
         si l'option ci-dessus est cochée, sinon chaque demande attend votre validation.
       </p>
       <div id="demandes-relation-list" class="bg-white rounded-xl p-5 shadow-sm border border-gray-100"></div>
+
+      <h3 class="text-sm font-semibold text-gray-700 mt-6 mb-2">Entreprises avec qui vous travaillez</h3>
+      <p class="text-xs text-gray-500 mb-3">
+        Leurs coordonnées dépendent de ce que chacune a choisi de partager avec ses partenaires.
+      </p>
+      <div id="relations-acceptees-list" class="bg-white rounded-xl p-5 shadow-sm border border-gray-100"></div>
     </div>
 
     <!-- MODAL RENVOYER UNE DEMANDE (photo ou renseignement) -->
@@ -1989,6 +1995,33 @@ async function saveAcceptationAuto(checked) {
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
+// Les entreprises avec lesquelles la relation est établie, et ce qu'elles ont accepté d'en
+// montrer. La fonction applique leurs réglages : être partenaire ouvre le second niveau, pas
+// l'accès à tout.
+async function loadRelationsAcceptees() {
+  const el = document.getElementById('relations-acceptees-list');
+  if (!el) return;
+  try {
+    const { data, error } = await db.rpc('contacts_entreprises_liees');
+    if (error) throw error;
+    const liste = data || [];
+    if (!liste.length) {
+      el.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune entreprise pour l\'instant.</p>';
+      return;
+    }
+    el.innerHTML = liste.map(c => {
+      const contact = [c.prenom, c.nom].filter(Boolean).join(' ');
+      const details = [contact, c.fonction, c.ville, c.telephone, c.email].filter(Boolean).join(' · ');
+      return `<div class="py-2 border-t first:border-t-0">
+        <p class="text-sm font-medium">${escHtml(c.societe || 'Entreprise')}</p>
+        ${details ? `<p class="text-xs text-gray-400">${escHtml(details)}</p>` : ''}
+      </div>`;
+    }).join('');
+  } catch (err) {
+    el.innerHTML = `<p class="text-xs text-red-400">${escHtml(_messageErreur(err))}</p>`;
+  }
+}
+
 async function loadDemandesRelation() {
   try {
     const { data, error } = await db.from('fournisseurs')
@@ -1997,6 +2030,7 @@ async function loadDemandesRelation() {
       .eq('statut', 'pending');
     if (error) throw error;
     renderDemandesRelation(data || []);
+    loadRelationsAcceptees();
   } catch (err) { console.error('loadDemandesRelation', err); }
 }
 
