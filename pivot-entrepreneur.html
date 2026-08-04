@@ -1787,7 +1787,7 @@ async function exporterMesDonnees(btn) {
     maj('Carnet fournisseurs…');
     _ajouterFeuille(racine, 'carnet-fournisseurs', (tousFournisseurs || []).map(f => ({
       'Fournisseur': f.nom || '',
-      'Contact': [f.contact_prenom, f.contact_nom].filter(Boolean).join(' '),
+      'Contact': _contactFournisseur(f),
       'Email': f.email || '',
       'Téléphone': f.tel || '',
       'SIRET': f.siret || '',
@@ -3178,6 +3178,7 @@ async function loadFournisseursCarnet() {
       ...f,
       familles_fournitures: state.familles.find(fam => fam.id === f.famille_id) || null
     }));
+    await loadContactsFournisseurs();
     renderCarnetFournisseurs();
   } catch (err) { console.error('[loadFournisseursCarnet] catch:', err); }
 }
@@ -4424,8 +4425,34 @@ function renderFournisseursChantier() {
   `).join('');
 }
 
+// Le nom du contact vient du compte lié, pas de la copie faite à l'ajout : un fournisseur qui
+// complète son profil ou change de commercial se met ainsi à jour partout. La copie ne sert plus
+// que de recours — fiches saisies à la main, ou compte devenu illisible.
+function _contactFournisseur(f) {
+  const compteId = f.compte_fournisseur_id || f.fournisseur_portail_id;
+  const vivant = compteId ? state.contactsFournisseurs?.[compteId] : null;
+  if (vivant) {
+    const nom = [vivant.prenom, vivant.nom].filter(Boolean).join(' ');
+    if (nom) return nom;
+  }
+  return [f.contact_prenom, f.contact_nom].filter(Boolean).join(' ');
+}
+
+// Une seule requête pour tout le carnet : la fonction ne renvoie que les comptes qui y figurent
+// déjà, et applique les réglages de visibilité de chacun — être au carnet de quelqu'un ne donne
+// pas plus de droits qu'y apparaître.
+async function loadContactsFournisseurs() {
+  try {
+    const { data, error } = await db.rpc('contacts_fournisseurs_lies');
+    if (error) throw error;
+    state.contactsFournisseurs = Object.fromEntries(
+      (data || []).map(c => [c.compte_id, { prenom: c.prenom, nom: c.nom }])
+    );
+  } catch (err) { console.error('loadContactsFournisseurs', err); }
+}
+
 function _contactLigne(f) {
-  const contact = [f.contact_prenom, f.contact_nom].filter(Boolean).join(' ');
+  const contact = _contactFournisseur(f);
   return contact ? `<span class="text-gray-400">· 👤 ${escHtml(contact)}</span>` : '';
 }
 
@@ -4736,7 +4763,7 @@ async function searchFournisseurs(q) {
     const localLignes = _numeroterDoublons(local.map(f => {
       const societe = f.nom_entreprise || '';
       const titre = societe || f.nom || '—';
-      const contact = [f.contact_prenom, f.contact_nom].filter(Boolean).join(' ');
+      const contact = _contactFournisseur(f);
       const sousTitre = [contact, societe && f.nom ? f.nom : '', f.email || '']
         .filter(Boolean).join(' · ');
       return { r: f, titre, sousTitre };
