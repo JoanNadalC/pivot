@@ -2374,6 +2374,18 @@ async function handleScheduled(env) {
   // n'est jamais automatique : elle est irréversible et reste déclenchée à la main.
   await traiterCycleVieResiliations(env, supabaseUrl, headers);
 
+  // ── 0 bis. Purge des journaux d'authentification ──────────
+  // La politique de confidentialité annonce six mois de conservation ; Supabase ne purge rien de
+  // lui-même. Un engagement de durée qu'aucune tâche n'applique n'est pas un engagement.
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/rpc/purger_journaux_auth`, { method: 'POST', headers });
+    if (!r.ok) throw new Error(await r.text());
+    const n = await r.json();
+    if (n) console.log(`Journaux d'authentification purgés : ${n} entrées.`);
+  } catch (e) {
+    console.error('purger_journaux_auth:', e.message);
+  }
+
   // ── 1. Relances J-7 ───────────────────────────────────────
   const relRes = await fetch(
     `${supabaseUrl}/rest/v1/structures?select=id,nom,date_echeance,referent_id&mode_paiement=eq.virement&statut_abonnement=eq.actif&relance_envoyee=eq.false&date_echeance=eq.${in7str}`,
