@@ -7,19 +7,25 @@
 -- relèverait du contrôle de l'activité des salariés, avec information individuelle, consultation
 -- du CSE et exigence de proportionnalité. Le périmètre reste l'exploitation du service.
 --
--- Minimisation : ni adresse IP, ni agent utilisateur, ni horodatage page à page. Seulement la
--- création du compte, la dernière connexion et un décompte sur trente jours.
+-- Minimisation : ni adresse IP, ni agent utilisateur, ni horodatage page à page. Aucune collecte
+-- nouvelle non plus — tout est déjà tenu par Supabase pour le fonctionnement de l'authentification.
+--
+-- Note : `auth.audit_log_entries` reste vide sur ce projet, Supabase ne journalisant pas les
+-- événements d'authentification. Un décompte des connexions sur trente jours en tirerait zéro pour
+-- tout le monde. On s'en tient donc à la dernière connexion, fiable, et au nombre de sessions
+-- ouvertes, qui distingue un compte réellement utilisé d'un compte connecté une fois.
 
 -- Le schéma `auth` n'est pas interrogeable depuis les portails, qui utilisent la session de
 -- l'utilisateur. D'où une fonction `security definer` — qui doit vérifier elle-même que l'appelant
 -- est administrateur, sans quoi elle ouvrirait à tous ce qu'elle est censée protéger.
+drop function if exists public.admin_stats_connexions();
 create or replace function public.admin_stats_connexions()
 returns table (
   user_id uuid,
   email text,
   cree_le timestamptz,
   derniere_connexion timestamptz,
-  connexions_30j bigint,
+  sessions_actives bigint,
   jours_depuis_connexion int
 )
 language plpgsql
@@ -38,11 +44,7 @@ begin
     u.email::text,
     u.created_at,
     u.last_sign_in_at,
-    (select count(*)
-       from auth.audit_log_entries a
-      where a.created_at > now() - interval '30 days'
-        and a.payload->>'action' = 'login'
-        and (a.payload->>'actor_id') = u.id::text),
+    (select count(*) from auth.sessions s where s.user_id = u.id),
     case when u.last_sign_in_at is null then null
          else extract(day from now() - u.last_sign_in_at)::int end
   from auth.users u

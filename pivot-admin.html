@@ -320,7 +320,7 @@
       <div class="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 class="font-semibold text-gray-800">Activité des comptes</h2>
-          <p class="text-xs text-gray-400">Création, dernière connexion et nombre de connexions sur 30 jours.</p>
+          <p class="text-xs text-gray-400">Création, dernière connexion et sessions actuellement ouvertes.</p>
         </div>
         <input id="cnx-search" oninput="renderConnexions()" placeholder="Rechercher une adresse…"
           class="border rounded-lg px-3 py-1.5 text-sm w-56">
@@ -333,7 +333,7 @@
               <th class="px-3 py-2 text-left">Compte</th>
               <th class="px-3 py-2 text-left">Créé le</th>
               <th class="px-3 py-2 text-left">Dernière connexion</th>
-              <th class="px-3 py-2 text-right">Connexions 30 j</th>
+              <th class="px-3 py-2 text-right">Sessions ouvertes</th>
               <th class="px-3 py-2 text-left">État</th>
             </tr>
           </thead>
@@ -1833,10 +1833,10 @@ function renderConnexions() {
   const total = (state.connexions || []).length;
   const jamais = (state.connexions || []).filter(c => !c.derniere_connexion).length;
   const dormants = (state.connexions || []).filter(c => c.jours_depuis_connexion > 60).length;
-  const actifs30 = (state.connexions || []).filter(c => Number(c.connexions_30j) > 0).length;
+  const avecSession = (state.connexions || []).filter(c => Number(c.sessions_actives) > 0).length;
   document.getElementById('cnx-resume').innerHTML =
     `<span><strong>${total}</strong> comptes</span>` +
-    `<span><strong>${actifs30}</strong> connectés sur 30 jours</span>` +
+    `<span><strong>${avecSession}</strong> avec une session ouverte</span>` +
     `<span><strong>${dormants}</strong> dormants (plus de 60 jours)</span>` +
     `<span><strong>${jamais}</strong> jamais connectés</span>`;
 
@@ -1850,7 +1850,7 @@ function renderConnexions() {
       <td class="px-3 py-2">${escHtml(c.email || '—')}</td>
       <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.cree_le)}</td>
       <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.derniere_connexion)}</td>
-      <td class="px-3 py-2 text-right ${Number(c.connexions_30j) ? 'text-gray-700' : 'text-gray-300'}">${c.connexions_30j}</td>
+      <td class="px-3 py-2 text-right ${Number(c.sessions_actives) ? 'text-gray-700' : 'text-gray-300'}">${c.sessions_actives}</td>
       <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${classes}">${escHtml(label)}</span></td>
     </tr>`;
   }).join('');
