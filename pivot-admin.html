@@ -138,6 +138,8 @@
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">💬 Conversations aide</button>
       <button id="admin-tab-notif" onclick="switchAdminTab('notif')"
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🔔 Notifications</button>
+      <button id="admin-tab-connexions" onclick="switchAdminTab('connexions')"
+        class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📊 Connexions</button>
     </div>
   </div>
 
@@ -313,6 +315,38 @@
   </div><!-- /admin-view-helpchat -->
 
   <!-- VUE NOTIFICATIONS -->
+  <div id="admin-view-connexions" class="hidden space-y-5">
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 class="font-semibold text-gray-800">Activité des comptes</h2>
+          <p class="text-xs text-gray-400">Création, dernière connexion et nombre de connexions sur 30 jours.</p>
+        </div>
+        <input id="cnx-search" oninput="renderConnexions()" placeholder="Rechercher une adresse…"
+          class="border rounded-lg px-3 py-1.5 text-sm w-56">
+      </div>
+      <div id="cnx-resume" class="px-4 py-3 border-b bg-gray-50 text-xs text-gray-600 flex flex-wrap gap-x-6 gap-y-1"></div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500">
+            <tr>
+              <th class="px-3 py-2 text-left">Compte</th>
+              <th class="px-3 py-2 text-left">Créé le</th>
+              <th class="px-3 py-2 text-left">Dernière connexion</th>
+              <th class="px-3 py-2 text-right">Connexions 30 j</th>
+              <th class="px-3 py-2 text-left">État</th>
+            </tr>
+          </thead>
+          <tbody id="cnx-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="text-xs text-gray-400 px-1">
+      Ces données servent à la sécurité du service et au suivi des licences. Elles ne sont visibles
+      que de l'administrateur de la plateforme, jamais des référents de structure.
+    </p>
+  </div><!-- /admin-view-connexions -->
+
   <div id="admin-view-notif" class="hidden space-y-5">
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
       <h2 class="font-semibold text-gray-800 mb-1">🔔 Notifications</h2>
@@ -1747,7 +1781,7 @@ init();
 
 // ─── NAVIGATION ONGLETS ADMIN ─────────────────────────────────
 function switchAdminTab(tab) {
-  ['users','tela','waitlist','helpchat','notif'].forEach(t => {
+  ['users','tela','waitlist','helpchat','notif','connexions'].forEach(t => {
     document.getElementById(`admin-view-${t}`)?.classList.toggle('hidden', t !== tab);
     const btn = document.getElementById(`admin-tab-${t}`);
     if (btn) {
@@ -1761,6 +1795,65 @@ function switchAdminTab(tab) {
   if (tab === 'waitlist') loadWaitlist();
   if (tab === 'helpchat') loadHelpConversations();
   if (tab === 'notif') loadAdminNotifSettings();
+  if (tab === 'connexions') loadConnexions();
+}
+
+// Activité des comptes. Les données viennent du schéma `auth`, inaccessible depuis le portail :
+// c'est la fonction `admin_stats_connexions` qui les expose, après avoir vérifié elle-même que
+// l'appelant est administrateur.
+async function loadConnexions() {
+  const tbody = document.getElementById('cnx-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Chargement…</td></tr>';
+  const { data, error } = await db.rpc('admin_stats_connexions');
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="px-3 py-4 text-center text-red-400 text-sm">${escHtml(error.message)}</td></tr>`;
+    return;
+  }
+  state.connexions = data || [];
+  renderConnexions();
+}
+
+function _cnxDate(v) {
+  return v ? new Date(v).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+}
+
+// Trois états qui répondent à des questions différentes : un compte jamais activé signale une
+// invitation restée lettre morte ; un compte dormant, une licence payée sans usage.
+function _cnxEtat(c) {
+  if (!c.derniere_connexion) return ['Jamais connecté', 'bg-red-100 text-red-700'];
+  if (c.jours_depuis_connexion > 60) return [`Dormant · ${c.jours_depuis_connexion} j`, 'bg-amber-100 text-amber-700'];
+  return ['Actif', 'bg-green-100 text-green-700'];
+}
+
+function renderConnexions() {
+  const q = (document.getElementById('cnx-search')?.value || '').trim().toLowerCase();
+  const liste = (state.connexions || []).filter(c => !q || (c.email || '').toLowerCase().includes(q));
+  const tbody = document.getElementById('cnx-tbody');
+
+  const total = (state.connexions || []).length;
+  const jamais = (state.connexions || []).filter(c => !c.derniere_connexion).length;
+  const dormants = (state.connexions || []).filter(c => c.jours_depuis_connexion > 60).length;
+  const actifs30 = (state.connexions || []).filter(c => Number(c.connexions_30j) > 0).length;
+  document.getElementById('cnx-resume').innerHTML =
+    `<span><strong>${total}</strong> comptes</span>` +
+    `<span><strong>${actifs30}</strong> connectés sur 30 jours</span>` +
+    `<span><strong>${dormants}</strong> dormants (plus de 60 jours)</span>` +
+    `<span><strong>${jamais}</strong> jamais connectés</span>`;
+
+  if (!liste.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Aucun compte</td></tr>';
+    return;
+  }
+  tbody.innerHTML = liste.map(c => {
+    const [label, classes] = _cnxEtat(c);
+    return `<tr class="border-t hover:bg-gray-50">
+      <td class="px-3 py-2">${escHtml(c.email || '—')}</td>
+      <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.cree_le)}</td>
+      <td class="px-3 py-2 text-gray-500 text-xs">${_cnxDate(c.derniere_connexion)}</td>
+      <td class="px-3 py-2 text-right ${Number(c.connexions_30j) ? 'text-gray-700' : 'text-gray-300'}">${c.connexions_30j}</td>
+      <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${classes}">${escHtml(label)}</span></td>
+    </tr>`;
+  }).join('');
 }
 
 async function loadWaitlist() {
