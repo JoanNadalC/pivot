@@ -1306,6 +1306,25 @@ function toggleVisibiliteChamp(key) {
   renderVisibiliteChamps();
 }
 // Construit {titre, sousTitre} à partir d'une ligne de recherche masquée renvoyée par la RPC
+// Deux collègues d'un même établissement qui n'ont publié que leur raison sociale produisent des
+// lignes rigoureusement identiques : la recherche respecte leur choix de visibilité, mais devient
+// inutilisable. On les numérote — c'est le seul repère qu'on puisse ajouter sans divulguer ce
+// qu'ils ont choisi de taire.
+function _formatSearchRows(liste) {
+  const lignes = (liste || []).map(r => ({ r, ..._formatSearchRow(r) }));
+  const cles = lignes.map(l => l.titre + '||' + l.sousTitre);
+  const total = {};
+  cles.forEach(k => { total[k] = (total[k] || 0) + 1; });
+  const vus = {};
+  return lignes.map((l, i) => {
+    const k = cles[i];
+    if (total[k] < 2) return l;
+    vus[k] = (vus[k] || 0) + 1;
+    const mention = `contact ${vus[k]} sur ${total[k]}`;
+    return { ...l, sousTitre: l.sousTitre ? `${l.sousTitre} · ${mention}` : mention };
+  });
+}
+
 function _formatSearchRow(r) {
   const titre = r.societe || [r.prenom, r.nom].filter(Boolean).join(' ') || 'Contact';
   const nomLigne = [r.prenom, r.nom].filter(Boolean).join(' ');
@@ -3278,8 +3297,7 @@ async function searchMoePortailAutocomplete(query) {
     if (error) { console.error('search_moe', error); box.classList.add('hidden'); return; }
     const results = data || [];
     if (!results.length) { box.classList.add('hidden'); return; }
-    box.innerHTML = results.map(r => {
-      const { titre, sousTitre } = _formatSearchRow(r);
+    box.innerHTML = _formatSearchRows(results).map(({ r, titre, sousTitre }) => {
       return `<div class="flex items-center gap-3 px-3 py-2.5 hover:bg-purple-50 cursor-pointer border-b last:border-0"
           onclick="selectMoePortail(${JSON.stringify(r).replace(/"/g,'&quot;')})">
         <span class="text-purple-500">🟣</span>
@@ -4726,9 +4744,8 @@ async function searchFournisseurs(q) {
     }).join('');
 
     window._portailSearchCache = window._portailSearchCache || {};
-    const portailHtml = portailFiltered.map(p => {
+    const portailHtml = _formatSearchRows(portailFiltered).map(({ r: p, titre, sousTitre }) => {
       window._portailSearchCache[p.id] = p;
-      const { titre, sousTitre } = _formatSearchRow(p);
       const safeNom = (titre || '').replace(/'/g, "\\'");
       return `
       <div class="px-4 py-2.5 flex items-center justify-between hover:bg-green-50 bg-green-50/30">
