@@ -1156,7 +1156,7 @@ async function handleCreateCheckout(request, env) {
     'metadata[portail]': portail,
     'metadata[plan]': plan || '',
     'metadata[licences]': String(licences),
-    'success_url': `${origin}/pivot-inscription-succes.html?session_id={CHECKOUT_SESSION_ID}`,
+    'success_url': `${origin}/pivot-inscription-succes.html?session_id={CHECKOUT_SESSION_ID}&portail=${encodeURIComponent(portail)}&email=${encodeURIComponent(email)}`,
     'cancel_url': cancelUrl,
   });
 

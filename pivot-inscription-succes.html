@@ -29,8 +29,8 @@
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
       </svg>
     </div>
-    <h1>Paiement confirmé !</h1>
-    <p>Votre abonnement Pivot La Racine est actif. Un email vous a été envoyé pour finaliser votre compte.</p>
+    <h1 id="titre">Inscription confirmée !</h1>
+    <p id="intro">Un email vous a été envoyé pour finaliser votre compte.</p>
     <div class="email-box" id="email-display">Vérifiez votre boîte mail</div>
     <div class="steps">
       <div class="step">
@@ -39,20 +39,46 @@
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-text"><strong>Connectez-vous</strong> sur le portail Entrepreneur avec votre email et votre nouveau mot de passe.</div>
+        <div class="step-text"><strong>Connectez-vous</strong> sur <span id="step-portail">votre portail</span> avec votre email et votre nouveau mot de passe.</div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-text"><strong>Créez votre premier chantier</strong> et invitez vos collègues depuis "Mon équipe".</div>
+        <div class="step-text"><span id="step-demarrage"><strong>Créez votre premier chantier</strong> et invitez vos collègues depuis « Mon équipe ».</span></div>
       </div>
     </div>
-    <a href="pivot-login-entreprise.html" class="btn">Accéder au portail</a>
+    <a id="lien-portail" href="pivot-login-entreprise.html" class="btn">Accéder au portail</a>
   </div>
   <script>
-    // Récupérer l'email depuis les params si disponible
     const params = new URLSearchParams(location.search);
     const email = params.get('email');
     if (email) document.getElementById('email-display').textContent = `Email envoyé à : ${email}`;
+
+    // La page sert les trois portails, en souscription payante comme en formule gratuite.
+    // Annoncer un paiement à qui n'a rien payé est au mieux déroutant, au pire inquiétant.
+    const PORTAILS = {
+      entreprise:  { label: 'le portail Entreprise',      login: 'pivot-login-entreprise.html',
+                     demarrage: '<strong>Créez votre premier chantier</strong> et invitez vos collègues depuis « Mon équipe ».' },
+      fournisseur: { label: 'le portail Fournisseur',     login: 'pivot-login-fournisseur.html',
+                     demarrage: '<strong>Complétez votre catalogue</strong> pour répondre plus vite aux consultations.' },
+      moe:         { label: 'le portail Maître d\u2019œuvre', login: 'pivot-login-moe.html',
+                     demarrage: '<strong>Retrouvez vos chantiers</strong> : les invitations reçues vous attendent dès la connexion.' },
+    };
+    const portail = PORTAILS[params.get('portail')] || PORTAILS.entreprise;
+    // Le paiement est le seul cas où Stripe nous renvoie un identifiant de session.
+    const paye = !!params.get('session_id');
+
+    if (paye) {
+      document.getElementById('titre').textContent = 'Paiement confirmé !';
+      document.getElementById('intro').textContent =
+        'Votre abonnement Pivot La Racine est actif. Un email vous a été envoyé pour finaliser votre compte.';
+    } else {
+      document.getElementById('titre').textContent = 'Compte créé !';
+      document.getElementById('intro').textContent =
+        'Votre compte gratuit Pivot La Racine est ouvert. Un email vous a été envoyé pour définir votre mot de passe.';
+    }
+    document.getElementById('step-portail').textContent = portail.label;
+    document.getElementById('step-demarrage').innerHTML = portail.demarrage;
+    document.getElementById('lien-portail').href = portail.login;
   </script>
 </body>
 </html>

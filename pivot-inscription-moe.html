@@ -293,7 +293,7 @@
       if (data.url) {
         window.location.href = data.url;
       } else {
-        window.location.href = 'pivot-inscription-succes.html';
+        window.location.href = 'pivot-inscription-succes.html?portail=moe&email=' + encodeURIComponent(email);
       }
     } catch (err) {
       showError('Erreur : ' + err.message);
