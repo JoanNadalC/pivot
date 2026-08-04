@@ -8,8 +8,9 @@
 -- La fonction applique les mêmes réglages de visibilité que la recherche : être au carnet de
 -- quelqu'un ne donne pas plus de droits qu'y apparaître. Elle ne renvoie que les comptes déjà
 -- présents dans le carnet de l'appelant — elle ne peut pas servir à parcourir l'annuaire.
+drop function if exists public.contacts_fournisseurs_lies();
 create or replace function public.contacts_fournisseurs_lies()
-returns table (compte_id uuid, prenom text, nom text)
+returns table (compte_id uuid, societe text, prenom text, nom text)
 language sql
 security definer
 set search_path = public
@@ -17,6 +18,7 @@ stable
 as $$
   select
     c.id,
+    case when c.champs ? 'entreprise' then coalesce(nullif(c.nom_entreprise,''), c.nom) end,
     case when c.champs ? 'prenom' then c.prenom
          when c.champs ? 'prenom_initiale' and coalesce(c.prenom,'') <> '' then upper(left(c.prenom,1))||'.' end,
     case when c.champs ? 'nom' then c.nom

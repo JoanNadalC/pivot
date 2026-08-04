@@ -4428,6 +4428,19 @@ function renderFournisseursChantier() {
 // Le nom du contact vient du compte lié, pas de la copie faite à l'ajout : un fournisseur qui
 // complète son profil ou change de commercial se met ainsi à jour partout. La copie ne sert plus
 // que de recours — fiches saisies à la main, ou compte devenu illisible.
+// Une fiche adossée à un compte portail décrit une entité qui tient elle-même ses informations.
+// L'entreprise en dispose dans son carnet, mais n'en est pas propriétaire : elle peut la classer
+// et l'annoter, pas la réécrire.
+function _fournisseurLie(f) {
+  return f?.compte_fournisseur_id || f?.fournisseur_portail_id || null;
+}
+
+// Même principe pour la raison sociale : elle appartient au compte lié, qui la tient à jour.
+function _nomFournisseur(f) {
+  const compteId = _fournisseurLie(f);
+  return (compteId && state.contactsFournisseurs?.[compteId]?.societe) || f.nom || '';
+}
+
 function _contactFournisseur(f) {
   const compteId = f.compte_fournisseur_id || f.fournisseur_portail_id;
   const vivant = compteId ? state.contactsFournisseurs?.[compteId] : null;
@@ -4446,7 +4459,7 @@ async function loadContactsFournisseurs() {
     const { data, error } = await db.rpc('contacts_fournisseurs_lies');
     if (error) throw error;
     state.contactsFournisseurs = Object.fromEntries(
-      (data || []).map(c => [c.compte_id, { prenom: c.prenom, nom: c.nom }])
+      (data || []).map(c => [c.compte_id, { societe: c.societe, prenom: c.prenom, nom: c.nom }])
     );
   } catch (err) { console.error('loadContactsFournisseurs', err); }
 }
@@ -4492,7 +4505,7 @@ function renderCarnetFournisseurs() {
         ${items.map(f => `
           <div class="px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-gray-50">
             <div>
-              <p class="text-sm font-medium">${escHtml(f.nom || '')}</p>
+              <p class="text-sm font-medium">${escHtml(_nomFournisseur(f))}</p>
               <p class="text-xs text-gray-400 flex items-center gap-1 flex-wrap">${escHtml(f.email || '')} ${f.siret ? '· ' + escHtml(f.siret) : ''} ${_contactLigne(f)}</p>
             </div>
             <div class="flex items-center gap-2 ml-2 shrink-0">
@@ -4656,14 +4669,21 @@ function openEditFournisseurCarnetModal(id) {
   const famOptions = state.familles.filter(f => f.actif !== false).map(fam =>
     `<option value="${fam.id}" ${f.famille_id === fam.id ? 'selected' : ''}>${fam.icone} ${fam.nom}</option>`
   ).join('');
+  const lie = _fournisseurLie(f);
+  const champ = (id, val, ph, type = 'text') => lie
+    ? `<div class="w-full border rounded px-3 py-2 text-sm mb-3 bg-gray-50 text-gray-500">${escHtml(val || '—')}</div>`
+    : `<input id="${id}" type="${type}" value="${escHtml(val || '')}" placeholder="${escHtml(ph)}" class="w-full border rounded px-3 py-2 text-sm mb-3">`;
   showModal(`
     <h2 class="text-lg font-bold mb-4">Modifier fournisseur</h2>
-    <input id="ef-nom" type="text" value="${escHtml(f.nom)}" placeholder="Nom *" class="w-full border rounded px-3 py-2 text-sm mb-3">
-    <input id="ef-siret" type="text" value="${escHtml(f.siret || '')}" placeholder="SIRET / N° identifiant *" class="w-full border rounded px-3 py-2 text-sm mb-3">
-    <input id="ef-email" type="email" value="${escHtml(f.email || '')}" placeholder="Email" class="w-full border rounded px-3 py-2 text-sm mb-3">
-    <input id="ef-tel" type="text" value="${escHtml(f.tel || '')}" placeholder="Téléphone" class="w-full border rounded px-3 py-2 text-sm mb-3">
-    <input id="ef-adresse" type="text" value="${escHtml(f.adresse || '')}" placeholder="Adresse" class="w-full border rounded px-3 py-2 text-sm mb-3">
-    <input id="ef-pays" type="text" value="${escHtml(f.pays || '')}" placeholder="Pays" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    ${lie ? `<p class="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+      Ce fournisseur est inscrit sur Pivot et tient lui-même ses informations. Vous pouvez le classer dans une famille, pas modifier sa fiche.
+    </p>` : ''}
+    ${champ('ef-nom', f.nom, 'Nom *')}
+    ${champ('ef-siret', f.siret, 'SIRET / N° identifiant *')}
+    ${champ('ef-email', f.email, 'Email', 'email')}
+    ${champ('ef-tel', f.tel, 'Téléphone')}
+    ${champ('ef-adresse', f.adresse, 'Adresse')}
+    ${champ('ef-pays', f.pays, 'Pays')}
     <label class="block text-xs text-gray-500 mb-1">Famille principale</label>
     <select id="ef-famille" class="w-full border rounded px-3 py-2 text-sm mb-4">
       <option value="">— Sans famille —</option>
@@ -4677,12 +4697,30 @@ function openEditFournisseurCarnetModal(id) {
 }
 
 async function saveEditFournisseur(id) {
+  const fiche = state.fournisseurs.find(x => x.id === id);
+  const lie = _fournisseurLie(fiche);
+  const famVal = document.getElementById('ef-famille').value;
+
+  // Fiche adossée à un compte portail : le classement est le seul champ qui appartienne à
+  // l'entreprise. Le reste décrit une entité qui tient elle-même ses informations, et l'interface
+  // ne propose même pas de les saisir — ce garde-fou couvre les autres chemins.
+  if (lie) {
+    try {
+      const { error } = await db.from('fournisseurs').update({ familles: famVal ? [famVal] : [] }).eq('id', id);
+      if (error) throw error;
+      if (fiche) fiche.familles = famVal ? [famVal] : [];
+      renderCarnetFournisseurs();
+      closeModal();
+      toast('Famille enregistrée');
+    } catch (err) { toast(_messageErreur(err), 'err'); }
+    return;
+  }
+
   const nom   = document.getElementById('ef-nom').value.trim();
   const siret = document.getElementById('ef-siret').value.trim();
   if (!nom)   return toast('Nom obligatoire', 'err');
   if (!siret) return toast('SIRET / identifiant obligatoire', 'err');
   try {
-    const famVal = document.getElementById('ef-famille').value;
     const updates = {
       nom, siret,
       email:    document.getElementById('ef-email').value.trim(),
@@ -7977,7 +8015,7 @@ async function openAddFournisseurModal(consultationId) {
     .filter(f => !knownIds.includes(f.id))
     .map(f => `<label class="flex items-center gap-2 text-sm p-1 rounded hover:bg-gray-50 cursor-pointer">
       <input type="checkbox" name="add-fours" value="${f.id}">
-      <span>${escHtml(f.nom)}</span><span class="text-gray-400 text-xs">${escHtml(f.email || '')} ${_contactLigne(f)}</span>
+      <span>${escHtml(_nomFournisseur(f))}</span><span class="text-gray-400 text-xs">${escHtml(f.email || '')} ${_contactLigne(f)}</span>
     </label>`).join('');
   showModal(`
     <h2 class="text-lg font-bold mb-3">Inviter des fournisseurs</h2>
@@ -8081,7 +8119,7 @@ async function addFournisseursToConsultation(consultationId) {
 function openNewConsultationModal() {
   if (_bloqueSiRestreint()) return;
   const foursOptions = state.fournisseurs.map(f =>
-    `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cf" value="${f.id}"> ${f.nom} <span class="text-gray-400">${f.email || ''}</span> ${_contactLigne(f)}</label>`
+    `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cf" value="${f.id}"> ${escHtml(_nomFournisseur(f))} <span class="text-gray-400">${f.email || ''}</span> ${_contactLigne(f)}</label>`
   ).join('');
 
   // Familles présentes sur le chantier (actives + utilisées)
