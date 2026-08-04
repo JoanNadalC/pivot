@@ -4876,8 +4876,8 @@ async function searchFournisseurs(q) {
           ${dejaChezCeFournisseur(titre) ? `<p class="text-xs text-amber-600 truncate pl-4">Vous avez déjà un contact chez ce fournisseur</p>` : ''}
         </div>
         <button onclick="addPortailFournisseurToCarnet('${p.id}','${safeNom}')"
-          class="ml-3 shrink-0 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium">
-          ★ Favoris
+          class="ml-3 shrink-0 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium whitespace-nowrap">
+          Se mettre en relation
         </button>
       </div>`;
     }).join('');
