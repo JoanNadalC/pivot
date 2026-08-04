@@ -10,6 +10,10 @@ alter table compte_entrepreneur add column if not exists visibilite_relations js
 
 -- Contacts fournisseurs du carnet, résolus depuis le compte lié.
 --
+-- Le défaut du second niveau reproduit exactement les cases pré-cochées du portail : sans cela, un
+-- compte qui n'a jamais enregistré son profil verrait des cases cochées à l'écran sans que ses
+-- partenaires en profitent — il croirait partager ce qu'il ne partage pas.
+--
 -- Le niveau appliqué dépend de l'état de la relation : une demande encore en attente ne donne
 -- accès qu'au niveau public, sinon accepter n'aurait plus de sens — l'information serait déjà
 -- obtenue. Les deux ensembles sont réunis, le second n'étant qu'un supplément : un champ public
@@ -34,7 +38,7 @@ as $$
     select c.*, l.accepte,
       coalesce(c.visibilite_champs, '["entreprise","prenom_initiale","nom_initiale"]'::jsonb)
       || case when l.accepte
-              then coalesce(c.visibilite_relations, '[]'::jsonb)
+              then coalesce(c.visibilite_relations, '["entreprise","ville","prenom","nom","fonction","tel_standard","email"]'::jsonb)
               else '[]'::jsonb end as champs
     from compte_fournisseur c
     join lien l on l.compte_id = c.id
