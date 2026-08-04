@@ -4853,6 +4853,14 @@ async function searchFournisseurs(q) {
       </div>`;
     }).join('');
 
+    // Deux collègues d'un même établissement portent la même raison sociale : la ligne proposée
+    // se lit alors comme un doublon de celle du carnet, alors qu'il s'agit d'une autre personne.
+    // On le dit, plutôt que de masquer un contact que l'entreprise a de bonnes raisons d'ajouter.
+    const societesAuCarnet = new Set(
+      (state.fournisseurs || []).map(f => (_nomFournisseur(f) || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const dejaChezCeFournisseur = (titre) => societesAuCarnet.has((titre || '').trim().toLowerCase());
+
     window._portailSearchCache = window._portailSearchCache || {};
     const portailHtml = _formatSearchRows(portailFiltered).map(({ r: p, titre, sousTitre }) => {
       window._portailSearchCache[p.id] = p;
@@ -4865,6 +4873,7 @@ async function searchFournisseurs(q) {
             <p class="text-sm font-medium truncate">${escHtml(titre)}</p>
           </div>
           ${sousTitre ? `<p class="text-xs text-gray-400 truncate pl-4">${escHtml(sousTitre)}</p>` : ''}
+          ${dejaChezCeFournisseur(titre) ? `<p class="text-xs text-amber-600 truncate pl-4">Vous avez déjà un contact chez ce fournisseur</p>` : ''}
         </div>
         <button onclick="addPortailFournisseurToCarnet('${p.id}','${safeNom}')"
           class="ml-3 shrink-0 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium">
