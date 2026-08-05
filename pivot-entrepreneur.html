@@ -4513,12 +4513,18 @@ async function linkMoeFromCarnet(compteMoeId, nom) {
       .eq('statut', 'pending').maybeSingle();
     if (dejaLa) return toast(`Une invitation est déjà en attente pour ${nom}`, 'err');
 
+    // Ce contrôle interroge une table que l'entreprise ne peut pas toujours lire : il cherche
+    // alors à l'aveugle et ne trouve rien. La contrainte d'unicité en base, elle, ne se trompe
+    // pas — on traduit son refus plutôt que d'afficher « cet élément existe déjà ».
     const { error } = await db.from('chantier_invitations').insert({
       chantier_id: ch.id,
       moe_invited_id: compteMoeId,
       nom_chantier: ch.affaire || '',
       statut: 'pending'
     });
+    if (error?.code === '23505') {
+      return toast(`Une invitation est déjà en attente pour ${nom} sur ce chantier.`, 'err');
+    }
     if (error) throw error;
     const { error: notifErr } = await db.from('notifications').insert({
       user_id: compteMoeId,
