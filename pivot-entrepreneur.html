@@ -4253,9 +4253,12 @@ function setTab(tab, _noHistory) {
     activeBtn.classList.add('tab-active');
     activeBtn.classList.remove('text-gray-500');
   }
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  // Vérifier que l'onglet existe AVANT de masquer les autres : un nom erroné laissait une page
+  // blanche, sans erreur ni moyen de comprendre ce qui s'était passé.
   const tc = document.getElementById(`tab-${tab}`);
-  if (tc) tc.classList.remove('hidden');
+  if (!tc) { console.error('Onglet inconnu :', tab); return; }
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  tc.classList.remove('hidden');
 
   clearTabBadge(tab);
 

@@ -1320,7 +1320,7 @@ async function processInviteToken() {
   if (cons) {
     goToSaisie(cons.id);
   } else {
-    setTab('consultations');
+    showDashboard();
     toast('Consultation reçue — saisissez vos prix ci-dessous');
   }
 }
@@ -2726,10 +2726,13 @@ function renderNotifList() {
     return;
   }
   el.innerHTML = state.notifications.map(n => {
+    // `consultations` n'est pas un onglet de ce portail : les consultations sont la vue d'accueil.
+    // Le donner à setTab masquait tous les contenus sans en afficher aucun — un écran blanc.
     const tab = n.type === 'modification_autorisee' ? 'saisie'
               : n.type === 'demande_photo' ? 'photos-cons'
               : n.type === 'demande_relation' ? 'relations'
-              : 'consultations';
+              : n.type === 'photo_validee' ? 'photos'
+              : '';
     const isRead = !!n.read;
     return `<div class="p-3 border-b flex items-start gap-2 ${isRead ? 'bg-white opacity-50' : 'bg-blue-50 hover:bg-blue-100 cursor-pointer'}"
         onclick="notifNavigate('${n.id}','${tab}','${n.consultation_id||''}','${n.relation_id||''}')">
@@ -2774,8 +2777,11 @@ async function notifNavigate(notifId, tab, consId, relationId) {
 
   if (consId) {
     const cons = state.consultations.find(c => c.id === consId);
-    if (cons) { enterConsultation(cons, tab); return; }
+    if (cons) { enterConsultation(cons, tab || 'saisie'); return; }
   }
+  // Sans consultation identifiée ni onglet cible, la liste des consultations est le seul endroit
+  // sensé : c'est là que se trouve ce dont la notification parle.
+  if (!tab) { showDashboard(); return; }
   setTab(tab);
 }
 
@@ -2822,9 +2828,12 @@ function setTab(tab, _noHistory) {
     activeBtn.classList.add('tab-active');
     activeBtn.classList.remove('text-gray-500');
   }
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  // Vérifier que l'onglet existe AVANT de masquer les autres : sinon un nom erroné laisse une
+  // page blanche, sans erreur ni moyen de comprendre.
   const tc = document.getElementById(`tab-${tab}`);
-  if (tc) tc.classList.remove('hidden');
+  if (!tc) { console.error('Onglet inconnu :', tab); return; }
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  tc.classList.remove('hidden');
 
   if (!_noHistory) history.pushState({ view: 'tab', tab }, '');
   clearTabBadge(tab);
