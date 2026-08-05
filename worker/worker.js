@@ -1372,7 +1372,7 @@ async function handlePurgerStructure(request, env) {
       method: 'DELETE', headers: { ...headers, 'Prefer': 'return=representation' },
     });
     if (!r.ok) throw new Error(`${table} : ${await r.text()}`);
-    supprimees[table] = ((await r.json()) || []).length;
+    supprimees[table] = (supprimees[table] || 0) + ((await r.json()) || []).length;
   };
   const lire = async (chemin) => {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${chemin}`, { headers });
@@ -1422,10 +1422,20 @@ async function handlePurgerStructure(request, env) {
           }
         }
 
+        // `comparatif_selections` se rattache à la consultation et à la fourniture, jamais au
+        // chantier : il faut relever ces identifiants avant de supprimer les tables porteuses.
+        const fournIds = (await lire(`fournitures?chantier_id=${chListe}&select=id`)).map(f => f.id);
+
         await del('reponses_fournisseurs', `entrepreneur_id=${liste}`);
-        await del('comparatif_selections', `chantier_id=${chListe}`);
-        await del('commande_lignes', `chantier_id=${chListe}`);
+        if (consIds.length) await del('comparatif_selections', `consultation_id=in.(${consIds.join(',')})`);
+        if (fournIds.length) await del('comparatif_selections', `fourniture_id=in.(${fournIds.join(',')})`);
+        await del('comparatif_masques', `chantier_id=${chListe}`);
+        // Les lignes de commande se rattachent à leur commande, pas au chantier.
+        const cmdIds = (await lire(`commandes?chantier_id=${chListe}&select=id`)).map(c => c.id);
+        if (cmdIds.length) await del('commande_lignes', `commande_id=in.(${cmdIds.join(',')})`);
         await del('commandes', `chantier_id=${chListe}`);
+        // Les photos étaient relevées pour leurs fichiers, mais leurs lignes restaient en base.
+        if (consIds.length) await del('photos_fournitures', `consultation_id=in.(${consIds.join(',')})`);
         await del('daf', `chantier_id=${chListe}`);
         await del('documents_viser', `chantier_id=${chListe}`);
         await del('fournitures', `chantier_id=${chListe}`);
