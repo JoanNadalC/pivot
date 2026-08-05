@@ -174,6 +174,20 @@
         <!-- Les invitations en attente s'insèrent en tête de cette grille -->
         <div id="chantiers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
+
+      <!-- Pièces visées par ce maître d'œuvre, y compris celles dont le chantier a disparu -->
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-1 gap-3 flex-wrap">
+          <h2 class="text-lg font-bold text-gray-800">Mes visas</h2>
+          <button onclick="chargerMesVisas()" id="btn-mes-visas"
+            class="text-xs border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50">Afficher</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">
+          Les DAF et documents que vous avez visés. Un visa engage votre responsabilité : il reste
+          consultable même après la clôture du chantier ou le départ de l'entreprise.
+        </p>
+        <div id="mes-visas-list"></div>
+      </div>
     </div>
 
     <!-- CHANTIER VIEW : onglets d'un chantier / lot ouvert -->
@@ -1613,6 +1627,72 @@ async function refuserInvitationMoe(invId) {
   state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
   renderChantiersList();
   toast('Invitation refusée');
+}
+
+// Les pièces visées ne sont plus retrouvables par le chantier : celui-ci peut avoir disparu, et
+// le lien s'annule alors au lieu d'emporter la pièce. On interroge donc par `moe_id`, seul repère
+// qui survive — et chaque pièce porte le contexte recopié à son émission.
+// Une pièce peut porter plusieurs visas successifs : on retient le plus récent.
+function _dernierVisa(liste) {
+  const dates = (liste || []).map(v => v?.date_visa).filter(Boolean).sort();
+  return dates.length ? dates[dates.length - 1] : null;
+}
+
+async function chargerMesVisas() {
+  const el = document.getElementById('mes-visas-list');
+  const btn = document.getElementById('btn-mes-visas');
+  if (!el) return;
+  el.innerHTML = '<p class="text-sm text-gray-400">Chargement…</p>';
+  if (btn) btn.classList.add('hidden');
+  try {
+    const [dafRes, docRes] = await Promise.all([
+      // La date du visa vit dans visa_moe / visa_documents, pas sur la pièce : on la joint.
+      db.from('daf')
+        .select('id, numero, version, designation, chantier_id, ctx_chantier, ctx_client, pdf_visa_url, visa_moe(date_visa)')
+        .eq('moe_id', state.user.id).not('pdf_visa_url', 'is', null),
+      db.from('documents_viser')
+        .select('id, nom, categorie, version, chantier_id, ctx_chantier, ctx_client, pdf_visa_url, visa_documents(date_visa)')
+        .eq('moe_id', state.user.id).not('pdf_visa_url', 'is', null),
+    ]);
+    if (dafRes.error) throw dafRes.error;
+    if (docRes.error) throw docRes.error;
+
+    const pieces = [
+      ...(dafRes.data || []).map(d => ({
+        type: 'DAF', titre: `${d.numero || 'DAF'}${d.version ? ' · v' + d.version : ''}`,
+        detail: d.designation || '', ...d, date_visa: _dernierVisa(d.visa_moe)
+      })),
+      ...(docRes.data || []).map(d => ({
+        type: 'Document', titre: d.nom || 'Document',
+        detail: d.categorie || '', ...d, date_visa: _dernierVisa(d.visa_documents)
+      })),
+    ].sort((a, b) => new Date(b.date_visa || 0) - new Date(a.date_visa || 0));
+
+    if (!pieces.length) {
+      el.innerHTML = '<p class="text-sm text-gray-400 italic">Aucun visa pour l\'instant.</p>';
+      return;
+    }
+    el.innerHTML = `<div class="bg-white rounded-xl shadow-sm divide-y">${pieces.map(pc => `
+      <div class="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <div class="min-w-0">
+          <p class="text-sm font-medium truncate">
+            <span class="text-xs text-gray-400 mr-1">${pc.type}</span>${escHtml(pc.titre)}
+          </p>
+          <p class="text-xs text-gray-400 truncate">
+            ${[pc.detail, pc.ctx_chantier, pc.ctx_client].filter(Boolean).map(escHtml).join(' · ')}
+            ${pc.chantier_id ? '' : '<span class="ml-1 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">chantier clôturé</span>'}
+          </p>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          ${pc.date_visa ? `<span class="text-xs text-gray-400">${new Date(pc.date_visa).toLocaleDateString('fr-FR')}</span>` : ''}
+          <button onclick="ouvrirFichierProtege('${pc.pdf_visa_url}', 'daf-pdfs')"
+            class="text-xs bg-purple-600 text-white px-2.5 py-1 rounded-lg hover:bg-purple-700">Ouvrir</button>
+        </div>
+      </div>`).join('')}</div>`;
+  } catch (err) {
+    el.innerHTML = `<p class="text-sm text-red-500">${escHtml(_messageErreur(err))}</p>`;
+    if (btn) btn.classList.remove('hidden');
+  }
 }
 
 function renderChantiersList() {
