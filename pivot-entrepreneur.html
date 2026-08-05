@@ -12364,7 +12364,21 @@ async function dafExportFiches() {
 }
 
 async function soumettreDaf(id) {
-  if (!await showConfirm('Soumettre cette DAF au MOE ?')) return;
+  // Sans maître d'œuvre rattaché, la soumission ne parvient à personne : la DAF change d'état et
+  // le message annonçait pourtant « soumise au MOE ». On ne l'interdit pas — un maître d'œuvre
+  // hors Pivot reste possible, l'entreprise renseignant alors les visas dans le Suivi — mais on
+  // dit ce qui va réellement se passer.
+  const moeId = state.currentChantier?.moe_id;
+  if (!moeId) {
+    await chargerMoeEnAttente();
+    const enAttente = state._moeEnAttente?.length;
+    const message = enAttente
+      ? "Le maître d'œuvre invité n'a pas encore accepté : il ne recevra pas cette DAF tant qu'il n'aura pas répondu. La soumettre quand même ?"
+      : "Aucun maître d'œuvre n'est rattaché à ce chantier : personne ne recevra cette DAF. Vous pourrez renseigner son visa vous-même dans l'onglet Suivi. Continuer ?";
+    if (!await showConfirm(message, { title: 'Soumettre sans destinataire ?' })) return;
+  } else if (!await showConfirm('Soumettre cette DAF au MOE ?')) {
+    return;
+  }
   try {
     // `.select()` et contrôle du nombre de lignes : un refus RLS ne lève AUCUNE erreur et renvoie
     // simplement zéro ligne. Sans ce test, l'affichage passait en « soumise » alors que la base
@@ -12379,7 +12393,6 @@ async function soumettreDaf(id) {
     if (daf) daf.statut = 'soumise';
     const row = Object.values(window._dafRows).find(r => r.daf_id === id);
     if (row) row.statut = 'soumise';
-    const moeId = state.currentChantier.moe_id;
     if (moeId) {
       const msgDaf = `Nouvelle DAF soumise : ${daf?.numero||id} — ${state.currentChantier.affaire||''}`;
       await _discret(db.from('notifications').insert({
@@ -12393,7 +12406,7 @@ async function soumettreDaf(id) {
       }).catch(() => {});
     }
     renderDaf();
-    toast('DAF soumise au MOE !');
+    toast(moeId ? 'DAF soumise au MOE !' : 'DAF soumise — aucun destinataire à prévenir');
   } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
