@@ -284,6 +284,17 @@
       <p class="text-xs text-gray-500 mb-3">
         Leurs coordonnées dépendent de ce que chacune a choisi de partager avec ses partenaires.
       </p>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <input id="rel-recherche" oninput="renderRelationsAcceptees()" placeholder="Rechercher…"
+          class="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[180px]">
+        <select id="rel-tri" onchange="renderRelationsAcceptees()"
+          class="border rounded-lg px-2 py-1.5 text-sm text-gray-600">
+          <option value="societe">Trier par entreprise</option>
+          <option value="nom">Trier par nom</option>
+          <option value="prenom">Trier par prénom</option>
+          <option value="ville">Trier par ville</option>
+        </select>
+      </div>
       <div id="relations-acceptees-list" class="bg-white rounded-xl p-5 shadow-sm border border-gray-100"></div>
     </div>
 
@@ -2007,22 +2018,50 @@ async function loadRelationsAcceptees() {
     // La fonction renvoie aussi les relations en attente — la liste des demandes en a besoin.
     // Ici on ne garde que celles qui sont établies : une demande non acceptée n'est pas un
     // partenariat, et l'afficher comme tel effacerait la portée du consentement.
-    const liste = (data || []).filter(c => c.accepte);
-    if (!liste.length) {
-      el.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune entreprise pour l\'instant.</p>';
-      return;
-    }
-    el.innerHTML = liste.map(c => {
-      const contact = [c.prenom, c.nom].filter(Boolean).join(' ');
-      const details = [contact, c.fonction, c.ville, c.telephone, c.email].filter(Boolean).join(' · ');
-      return `<div class="py-2 border-t first:border-t-0">
-        <p class="text-sm font-medium">${escHtml(c.societe || 'Entreprise')}</p>
-        ${details ? `<p class="text-xs text-gray-400">${escHtml(details)}</p>` : ''}
-      </div>`;
-    }).join('');
+    state.relations = (data || []).filter(c => c.accepte);
+    renderRelationsAcceptees();
   } catch (err) {
     el.innerHTML = `<p class="text-xs text-red-400">${escHtml(_messageErreur(err))}</p>`;
   }
+}
+
+// La recherche ne porte que sur ce qui est affiché — c'est-à-dire sur ce que chaque entreprise a
+// choisi de rendre visible. Chercher dans un champ masqué reviendrait à en révéler l'existence :
+// une adresse qu'on ne montre pas ne doit pas non plus permettre de retrouver son titulaire.
+function renderRelationsAcceptees() {
+  const el = document.getElementById('relations-acceptees-list');
+  if (!el) return;
+  const q = (document.getElementById('rel-recherche')?.value || '').trim().toLowerCase();
+  const tri = document.getElementById('rel-tri')?.value || 'societe';
+
+  const visible = c => [c.societe, c.prenom, c.nom, c.fonction, c.ville, c.telephone, c.email]
+    .filter(Boolean).join(' ').toLowerCase();
+
+  const liste = (state.relations || [])
+    .filter(c => !q || visible(c).includes(q))
+    .sort((a, b) => {
+      // Les fiches sans la donnée du tri passent en fin de liste plutôt qu'en tête : trier par
+      // prénom ne doit pas remonter ceux qui n'en publient pas.
+      const va = (a[tri] || '').toLowerCase(), vb = (b[tri] || '').toLowerCase();
+      if (!va && !vb) return (a.societe || '').localeCompare(b.societe || '', 'fr');
+      if (!va) return 1;
+      if (!vb) return -1;
+      return va.localeCompare(vb, 'fr');
+    });
+
+  if (!liste.length) {
+    el.innerHTML = `<p class="text-xs text-gray-400 italic">${
+      q ? 'Aucun résultat.' : 'Aucune entreprise pour l\'instant.'}</p>`;
+    return;
+  }
+  el.innerHTML = liste.map(c => {
+    const contact = [c.prenom, c.nom].filter(Boolean).join(' ');
+    const details = [contact, c.fonction, c.ville, c.telephone, c.email].filter(Boolean).join(' · ');
+    return `<div class="py-2 border-t first:border-t-0">
+      <p class="text-sm font-medium">${escHtml(c.societe || 'Entreprise')}</p>
+      ${details ? `<p class="text-xs text-gray-400">${escHtml(details)}</p>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // Un même compte fournisseur figure au carnet de plusieurs entreprises, sous une fiche par
