@@ -7878,10 +7878,15 @@ async function toggleConsDetail(id) {
 }
 
 function renderConsDetailInline(c) {
-  // Fournitures liées aux familles de cette consultation
+  // Périmètre figé à l'envoi : une consultation partie ne bouge plus. Une fourniture ajoutée
+  // ensuite au DQE relève d'une nouvelle consultation, pas d'un élargissement rétroactif de
+  // celle-ci — le fournisseur a répondu sur une liste précise.
+  const perimetre = c.fournitures_ids?.length ? new Set(c.fournitures_ids) : null;
   const fourns = state.fournitures.filter(f =>
-    !f.is_variante &&
-    (!c.familles?.length || c.familles.includes(f.famille_id))
+    !f.is_variante && (perimetre
+      ? perimetre.has(f.id)
+      // Consultations antérieures au gel : on retombe sur le filtre de familles.
+      : (!c.familles?.length || c.familles.includes(f.famille_id)))
   );
   const reponses = _consReponses[c.id] || [];
 
