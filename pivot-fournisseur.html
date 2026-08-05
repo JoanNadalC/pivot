@@ -2004,7 +2004,10 @@ async function loadRelationsAcceptees() {
   try {
     const { data, error } = await db.rpc('contacts_entreprises_liees');
     if (error) throw error;
-    const liste = data || [];
+    // La fonction renvoie aussi les relations en attente — la liste des demandes en a besoin.
+    // Ici on ne garde que celles qui sont établies : une demande non acceptée n'est pas un
+    // partenariat, et l'afficher comme tel effacerait la portée du consentement.
+    const liste = (data || []).filter(c => c.accepte);
     if (!liste.length) {
       el.innerHTML = '<p class="text-xs text-gray-400 italic">Aucune entreprise pour l\'instant.</p>';
       return;
