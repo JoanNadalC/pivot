@@ -1014,11 +1014,31 @@ async function loadFamilles() {
   }
 }
 
+// Fusionne plusieurs sources de profil : une valeur vide ne remplace jamais une valeur
+// renseignée, et les sources sont prises dans l'ordre croissant d'autorité.
+function _fusionnerProfil(...sources) {
+  const r = {};
+  for (const src of sources) {
+    for (const [cle, val] of Object.entries(src || {})) {
+      if (val !== null && val !== undefined && val !== '') r[cle] = val;
+      else if (!(cle in r)) r[cle] = val;
+    }
+  }
+  return r;
+}
+
 async function loadProfile() {
   try {
     const { data } = await db.from('compte_moe').select('*').eq('id', state.user.id).maybeSingle();
     const { data: prof } = await db.from('profiles').select('*').eq('id', state.user.id).maybeSingle();
-    state.profile = { ...(data || {}), ...(prof || {}) };
+    // `profiles` ne porte qu'une poignée de champs, souvent nuls, tandis que `compte_moe` porte le
+    // profil métier. Les étaler dans cet ordre laissait un nom nul effacer un nom renseigné : le
+    // formulaire s'ouvrait vide, et l'enregistrement écrivait ce vide en base.
+    state.profile = _fusionnerProfil(prof, data);
+    // La colonne s'appelle `tel` dans compte_moe et `telephone` dans profiles : le formulaire lit
+    // la seconde, et sans cet alias le numéro disparaissait à chaque enregistrement.
+    state.profile.telephone = state.profile.telephone || state.profile.tel || '';
+    state.profile.tel = state.profile.telephone;
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = state.profile.nom || data?.email || '';
 
@@ -1486,6 +1506,10 @@ async function changeEmail() {
 }
 
 async function saveCompte() {
+  // Sans profil chargé, le formulaire est vide et l'enregistrement écraserait tout par du vide.
+  if (!state.profile || !Object.keys(state.profile).length) {
+    return toast('Profil non chargé — rechargez la page avant d\'enregistrer.', 'err');
+  }
   const prenom = document.getElementById('cpt-prenom')?.value.trim() || '';
   const nom = document.getElementById('cpt-nom')?.value.trim() || '';
   const telephone = document.getElementById('cpt-tel')?.value.trim() || '';
