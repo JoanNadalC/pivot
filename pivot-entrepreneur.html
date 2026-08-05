@@ -335,7 +335,8 @@
               onmouseover="this.style.borderColor='var(--cuivre)'" onmouseout="this.style.borderColor='var(--gris-lt)'">+ Créer</button>
           </div>
           <div class="mb-3">
-            <input id="moe-carnet-search" type="text" placeholder="🔍 Rechercher…" class="w-full border rounded-lg px-3 py-2 text-sm" oninput="searchMoeCarnet(this.value)">
+            <input id="moe-carnet-search" type="text" placeholder="🔍 Rechercher (carnet + portail)…" class="w-full border rounded-lg px-3 py-2 text-sm" oninput="searchMoeCarnet(this.value)">
+            <div id="carnet-moe-portail"></div>
           </div>
           <div id="carnet-moe-list" class="space-y-2"></div>
         </div>
@@ -3300,14 +3301,68 @@ function renderCarnetMoe(liste) {
   }).join('');
 }
 
+let _moeCarnetTimer;
+// La recherche du carnet fournisseurs interroge le portail ; celle des maîtres d'œuvre se limitait
+// au carnet local. Un MOE inscrit sur Pivot restait donc introuvable tant qu'on ne l'avait pas
+// saisi soi-même — le détour n'avait pas lieu d'être.
 function searchMoeCarnet(query) {
-  const q = query.toLowerCase();
+  const q = (query || '').trim().toLowerCase();
   const filtered = (state.maitresOeuvre || []).filter(m =>
     (m.nom || '').toLowerCase().includes(q) ||
     (m.societe || '').toLowerCase().includes(q) ||
     (m.email || '').toLowerCase().includes(q)
   );
   renderCarnetMoe(filtered);
+  _chercherMoePortail(q, filtered);
+}
+
+async function _chercherMoePortail(q, dejaAffiches) {
+  const el = document.getElementById('carnet-moe-portail');
+  if (!el) return;
+  clearTimeout(_moeCarnetTimer);
+  if (q.length < 2) { el.innerHTML = ''; return; }
+  _moeCarnetTimer = setTimeout(async () => {
+    const { data, error } = await db.rpc('search_moe', { q });
+    if (error) { console.error('search_moe', error); el.innerHTML = ''; return; }
+    // Écarter ceux qui sont déjà au carnet : les proposer à l'ajout n'aurait aucun sens.
+    const auCarnet = new Set((state.maitresOeuvre || []).map(m => m.compte_moe_id).filter(Boolean));
+    const nouveaux = (data || []).filter(r => !auCarnet.has(r.id));
+    if (!nouveaux.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <p class="text-xs text-gray-400 px-1 mt-3 mb-1">Inscrits sur Pivot</p>
+      ${_formatSearchRows(nouveaux).map(({ r, titre, sousTitre }) => `
+        <div class="bg-white rounded-xl shadow-sm px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-purple-50">
+          <div class="min-w-0">
+            <p class="text-sm font-medium truncate">🟣 ${escHtml(titre)}</p>
+            ${sousTitre ? `<p class="text-xs text-gray-400 truncate">${escHtml(sousTitre)}</p>` : ''}
+          </div>
+          <button onclick='_ajouterMoePortailAuCarnet(${JSON.stringify(r).replace(/'/g, "&#39;")})'
+            class="ml-3 shrink-0 text-xs bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 whitespace-nowrap">
+            Ajouter au carnet</button>
+        </div>`).join('')}`;
+  }, 250);
+}
+
+// L'ajout ne recopie que ce que le maître d'œuvre a rendu visible : le reste sera résolu à
+// l'affichage depuis son compte, qu'il tient lui-même à jour.
+async function _ajouterMoePortailAuCarnet(r) {
+  if (_bloqueSiRestreint()) return;
+  try {
+    const { data, error } = await db.from('maitres_oeuvre').insert({
+      entrepreneur_id: state.user.id,
+      compte_moe_id: r.id,
+      nom: [r.prenom, r.nom].filter(Boolean).join(' ') || r.societe || 'Maître d\'œuvre',
+      societe: r.societe || null,
+      email: r.email || null,
+      telephone: r.telephone || null,
+    }).select().single();
+    if (error) throw error;
+    state.maitresOeuvre.push(data);
+    document.getElementById('moe-carnet-search').value = '';
+    document.getElementById('carnet-moe-portail').innerHTML = '';
+    renderCarnetMoe();
+    toast(`${r.societe || data.nom} ajouté au carnet`);
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 function openAddMoeCarnetModal() {
