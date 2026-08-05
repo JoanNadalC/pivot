@@ -5929,7 +5929,8 @@ async function loadInvitations() {
     // Passer par la fonction plutôt que lire `compte_entrepreneur` en direct : elle applique les
     // réglages de visibilité de chaque entreprise, que la lecture brute contournait — le prénom et
     // le nom s'affichaient même quand leur titulaire ne les avait pas publiés.
-    const { data: comptes } = await db.rpc('contacts_entreprises_liees');
+    const { data: comptes, error: cErr } = await db.rpc('contacts_entreprises_liees');
+    if (cErr) console.error('contacts_entreprises_liees', cErr);
     const parId = {};
     (comptes || []).filter(c => ids.includes(c.compte_id))
       .forEach(c => { parId[c.compte_id] = c; });

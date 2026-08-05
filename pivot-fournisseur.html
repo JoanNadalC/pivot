@@ -2073,7 +2073,8 @@ async function loadDemandesRelation() {
     // revenait à montrer au fournisseur son propre nom au lieu de celui de son interlocuteur.
     // L'identité du demandeur vient de la fonction, qui applique ses réglages de visibilité —
     // une demande en attente n'ouvre que le niveau public, ce qui est bien l'intention.
-    const { data: entreprises } = await db.rpc('contacts_entreprises_liees');
+    const { data: entreprises, error: entErr } = await db.rpc('contacts_entreprises_liees');
+    if (entErr) console.error('contacts_entreprises_liees', entErr);
     const parCompte = Object.fromEntries((entreprises || []).map(e => [e.compte_id, e]));
     renderDemandesRelation((data || []).map(d => ({ ...d, _ent: parCompte[d.entrepreneur_id] || null })));
     loadRelationsAcceptees();
