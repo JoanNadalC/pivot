@@ -4929,21 +4929,27 @@ async function loadHistorique() {
       const key = r.consultation_id;
       const stCons = state.consultations.find(c => c.id === key);
       if (!consMap[key]) consMap[key] = {
-        titre: r.consultations?.titre || 'Consultation',
-        chantier: stCons?._chantier || null,
-        entrepreneur: stCons?.entrepreneur || null,
+        // Le contexte recopié dans la pièce prend le relais quand la consultation a disparu :
+        // c'est ce qui rend un devis conservé encore lisible des années plus tard.
+        titre: r.consultations?.titre || r.ctx_consultation || 'Consultation',
+        chantier: stCons?._chantier || (r.ctx_chantier ? { affaire: r.ctx_chantier } : null),
+        entrepreneur: stCons?.entrepreneur || (r.ctx_client ? { societe: r.ctx_client } : null),
+        archive: !r.consultation_id,
         items: []
       };
       consMap[key].items.push(r);
     });
-    el.innerHTML = Object.values(consMap).map(({ titre, chantier: ch, entrepreneur: ent, items }) => {
+    el.innerHTML = Object.values(consMap).map(({ titre, chantier: ch, entrepreneur: ent, archive, items }) => {
       const entNom = ent ? (ent.societe || ent.nom || '') : '';
       const prenomNom = ent ? [ent.prenom, ent.nom].filter(Boolean).join(' ') : '';
       const contextLine = [entNom, ch?.ville, ch?.affaire, prenomNom && prenomNom !== entNom ? prenomNom : ''].filter(Boolean).join(' · ');
       return `
       <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="px-4 py-3 bg-gray-50">
-          <div class="font-semibold text-sm">${escHtml(titre)}</div>
+          <div class="font-semibold text-sm flex items-center gap-2 flex-wrap">
+            ${escHtml(titre)}
+            ${archive ? '<span class="text-xs font-normal bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Archivé — le client a quitté Pivot</span>' : ''}
+          </div>
           ${contextLine ? `<div class="text-xs text-gray-500 mt-0.5">${escHtml(contextLine)}</div>` : ''}
         </div>
         <table class="w-full text-sm">
@@ -4980,14 +4986,15 @@ async function loadHistorique() {
 // MES RÉPONSES
 // ============================================================
 async function renderMesReponses() {
-  const fId = state.fournisseurId || state.user?.id;
   const el = document.getElementById('reponses-content');
-  if (!fId) { el.innerHTML = '<p class="text-gray-400 text-sm italic">Compte non lié.</p>'; return; }
   el.innerHTML = '<p class="text-gray-400 text-sm">Chargement…</p>';
   try {
+    // Filtrer par compte et non par fiche de carnet : une fiche appartient à un client, et ce
+    // compte en a autant que de clients. Chercher par l'une d'elles ne montrait qu'une part des
+    // devis émis — et plus rien du tout une fois le client parti, sa fiche étant supprimée.
     const { data: reps } = await db.from('reponses_fournisseurs')
       .select('*, consultations(titre), fournitures(designation, numero_poste)')
-      .eq('fournisseur_id', fId)
+      .eq('compte_fournisseur_id', state.user.id)
       .not('devis_valide_at', 'is', null)
       .order('updated_at', { ascending: false })
       .limit(50);
