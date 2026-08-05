@@ -611,6 +611,13 @@ async function inviterMembre() {
       return afficherDemandeRattachement(email);
     } else {
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
+      // Une invitation déjà en attente pour cette adresse : la renvoyer produirait un second
+      // email et un second lien, dont un seul serait consommable.
+      const { data: invEnCours } = await db.from('team_invitations')
+        .select('id').eq('structure_id', state.structureId).ilike('email_invite', email)
+        .eq('statut', 'pending').maybeSingle();
+      if (invEnCours) return toast(`Une invitation est déjà en attente pour ${email}`, 'err');
+
       const { error } = await db.from('team_invitations').insert({
         structure_id: state.structureId, email_invite: email,
         token, statut: 'pending', referent_id: state.user.id
@@ -6424,6 +6431,13 @@ async function selectionnerEntrepriseLot(entrepriseId, nom, lotId) {
   // Invitation par id de compte : l'email n'est jamais manipulé côté client
   try {
     const ch = state.currentChantier;
+    // Deux invitations ouvertes sur le même lot seraient indiscernables pour l'entreprise, qui
+    // en accepterait une au hasard — et l'autre resterait en attente indéfiniment.
+    const { data: dejaLa } = await db.from('lot_entreprises')
+      .select('id').eq('lot_id', lotId).eq('entreprise_id', entrepriseId)
+      .eq('statut', 'invited').maybeSingle();
+    if (dejaLa) return toast(`Une invitation est déjà en attente pour ${nom}`, 'err');
+
     const { data: inv, error } = await db.from('lot_entreprises').insert({
       lot_id: lotId,
       entreprise_id: entrepriseId,
@@ -6488,6 +6502,11 @@ async function inviterEntrepriseLot(lotId) {
   if (!email) return toast('Email requis', 'err');
   try {
     const ch = state.currentChantier;
+    const { data: dejaLa } = await db.from('lot_entreprises')
+      .select('id').eq('lot_id', lotId).ilike('email_invite', email)
+      .eq('statut', 'invited').maybeSingle();
+    if (dejaLa) return toast(`Une invitation est déjà en attente pour ${email}`, 'err');
+
     const { data: inv, error } = await db.from('lot_entreprises').insert({
       lot_id: lotId,
       email_invite: email,

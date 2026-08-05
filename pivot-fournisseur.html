@@ -3984,6 +3984,13 @@ async function inviterMembre() {
       return afficherDemandeRattachement(email);
     } else {
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
+      // Une invitation déjà en attente pour cette adresse : la renvoyer produirait un second
+      // email et un second lien, dont un seul serait consommable.
+      const { data: invEnCours } = await db.from('team_invitations')
+        .select('id').eq('structure_id', state.structureId).ilike('email_invite', email)
+        .eq('statut', 'pending').maybeSingle();
+      if (invEnCours) return toast(`Une invitation est déjà en attente pour ${email}`, 'err');
+
       const { error } = await db.from('team_invitations').insert({
         structure_id: state.structureId, email_invite: email,
         token, statut: 'pending', referent_id: state.user.id
@@ -6279,7 +6286,14 @@ async function envoyerInvitationUnifiee() {
         toast(`${email} ajouté à l'équipe ✓`);
       } else {
         const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2,'0')).join('');
-        const { error } = await db.from('team_invitations').insert({
+        // Une invitation déjà en attente pour cette adresse : la renvoyer produirait un second
+      // email et un second lien, dont un seul serait consommable.
+      const { data: invEnCours } = await db.from('team_invitations')
+        .select('id').eq('structure_id', state.structureId).ilike('email_invite', email)
+        .eq('statut', 'pending').maybeSingle();
+      if (invEnCours) return toast(`Une invitation est déjà en attente pour ${email}`, 'err');
+
+      const { error } = await db.from('team_invitations').insert({
           structure_id: state.structureId, email_invite: email,
           token, statut: 'pending', referent_id: state.user.id
         });
