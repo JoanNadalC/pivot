@@ -952,7 +952,7 @@ async function doRegister() {
     const { data, error } = await db.auth.signUp({ email, password });
     if (error) throw error;
     if (data.user) {
-      await db.from('compte_entrepreneur').upsert({ id: data.user.id, prenom, nom, societe, email }, { onConflict: 'id' });
+      await _ecrire(db.from('compte_entrepreneur').upsert({ id: data.user.id, prenom, nom, societe, email }, { onConflict: 'id' }), 'Profil non enregistré');
     }
     toast('Compte créé ! Vérifiez votre email.');
     showAuthTab('login');
@@ -1014,7 +1014,7 @@ function _hideLoading() {
 // onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
 async function _journaliserConnexion(portail) {
   try {
-    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }), 'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
 
@@ -1257,10 +1257,10 @@ async function _accepterLotInvite() {
     if (error) throw error;
 
     if (inv.chantierId) {
-      await db.from('chantier_intervenants').upsert({
+      await _ecrire(db.from('chantier_intervenants').upsert({
         chantier_id: inv.chantierId,
         entrepreneur_id: state.user.id
-      }, { onConflict: 'chantier_id,entrepreneur_id' });
+      }, { onConflict: 'chantier_id,entrepreneur_id' }), 'Rattachement au chantier non enregistré');
     }
 
     state._pendingLotInvite = null;
@@ -1461,6 +1461,15 @@ function _appliquerAccesRestreint() {
 // UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
 // indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
 // jamais été écrit.
+// Écriture accessoire : son échec n'enlève rien à ce que l'utilisateur a saisi — une notification
+// perdue, un réglage d'affichage non mémorisé. On le journalise sans l'interrompre, plutôt que de
+// noyer les vrais problèmes sous des alertes sans conséquence.
+async function _discret(requete, quoi) {
+  const { error } = await requete;
+  if (error) console.error('Écriture ignorée (' + quoi + ') :', error.message || error);
+  return !error;
+}
+
 async function _ecrire(requete, contexte) {
   const { error } = await requete;
   if (error) {
@@ -2555,13 +2564,13 @@ async function executerReassignation() {
     }
 
     for (const [prevId, { affaires, chantierIds: cIds }] of Object.entries(notifsByPrev)) {
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         user_id: prevId,
         type: 'reassignation_chantier',
         message: `⚠️ ${affaires.length > 1 ? affaires.length + ' chantiers ont été' : `"${affaires[0]}" a été`} réaffecté${affaires.length > 1 ? 's' : ''} à ${nomCible} par le référent`,
         chantier_id: cIds[0],
         read: false
-      });
+      }), 'notification');
     }
 
     toast(`${chantierIds.length} chantier${chantierIds.length > 1 ? 's' : ''} réaffecté${chantierIds.length > 1 ? 's' : ''}`);
@@ -3173,14 +3182,14 @@ async function loadPendingInvitations() {
 
 async function accepterInvitationChantier(invId, chantierId, nom) {
   try {
-    await db.from('chantier_intervenants').upsert(
+    await _ecrire(db.from('chantier_intervenants').upsert(
       { chantier_id: chantierId, entrepreneur_id: state.user.id },
       { onConflict: 'chantier_id,entrepreneur_id' }
-    );
+    ), 'Rattachement au chantier non enregistré');
     const { data: inv } = await db.from('chantier_invitations').update({ statut: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invId).select('moe_id').maybeSingle();
     if (inv?.moe_id) {
       const nomEnt = state.profile?.societe || state.profile?.nom || 'Une entreprise';
-      await db.from('notifications').insert({ user_id: inv.moe_id, type: 'invitation_acceptee', message: `${nomEnt} a accepté l'invitation au chantier "${nom}"`, chantier_id: chantierId, read: false });
+      await _discret(db.from('notifications').insert({ user_id: inv.moe_id, type: 'invitation_acceptee', message: `${nomEnt} a accepté l'invitation au chantier "${nom}"`, chantier_id: chantierId, read: false }), 'notification');
     }
     toast(`✅ Chantier "${nom}" ajouté`);
     await Promise.all([loadChantiers(), loadPendingInvitations()]);
@@ -3198,15 +3207,15 @@ async function _accepterLotInviteById(lotEntrepriseId, chantierId, chNom, lotNom
   try {
     const { data: lotInv } = await db.from('lot_entreprises').update({ entreprise_id: state.user.id, statut: 'accepted' }).eq('id', lotEntrepriseId).select('lots(created_by)').maybeSingle();
     if (chantierId) {
-      await db.from('chantier_intervenants').upsert(
+      await _ecrire(db.from('chantier_intervenants').upsert(
         { chantier_id: chantierId, entrepreneur_id: state.user.id },
         { onConflict: 'chantier_id,entrepreneur_id' }
-      );
+      ), 'Rattachement au chantier non enregistré');
     }
     const moeId = lotInv?.lots?.created_by;
     if (moeId) {
       const nomEnt = state.profile?.societe || state.profile?.nom || 'Une entreprise';
-      await db.from('notifications').insert({ user_id: moeId, type: 'invitation_acceptee', message: `${nomEnt} a accepté l'invitation au lot "${lotNom}" (${chNom})`, chantier_id: chantierId || null, read: false });
+      await _discret(db.from('notifications').insert({ user_id: moeId, type: 'invitation_acceptee', message: `${nomEnt} a accepté l'invitation au lot "${lotNom}" (${chNom})`, chantier_id: chantierId || null, read: false }), 'notification');
     }
     toast(`✅ Lot "${lotNom}" accepté`);
     await Promise.all([loadChantiers(), loadPendingInvitations()]);
@@ -3998,7 +4007,7 @@ async function createChantier() {
     // Reprend la couleur PDF par défaut de l'entreprise (définie dans un chantier précédent)
     const { data: prof } = await db.from('profiles').select('default_bandeau_bg, default_bandeau_text').eq('id', state.user.id).maybeSingle();
     if (prof?.default_bandeau_bg) {
-      await db.from('chantier_config').insert({ chantier_id: data.id, bandeau_bg: prof.default_bandeau_bg, bandeau_text: prof.default_bandeau_text || '#ffffff' });
+      await _discret(db.from('chantier_config').insert({ chantier_id: data.id, bandeau_bg: prof.default_bandeau_bg, bandeau_text: prof.default_bandeau_text || '#ffffff' }), 'configuration du chantier');
     }
 
     closeModal();
@@ -4239,13 +4248,13 @@ async function saveParamCouleur() {
   try {
     const existing = await _loadChantierConfig(c.id);
     if (existing.id) {
-      await db.from('chantier_config').update({ bandeau_bg: bg, bandeau_text: text, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      await _discret(db.from('chantier_config').update({ bandeau_bg: bg, bandeau_text: text, updated_at: new Date().toISOString() }).eq('id', existing.id), 'configuration du chantier');
     } else {
-      await db.from('chantier_config').insert({ chantier_id: c.id, bandeau_bg: bg, bandeau_text: text });
+      await _discret(db.from('chantier_config').insert({ chantier_id: c.id, bandeau_bg: bg, bandeau_text: text }), 'configuration du chantier');
     }
     delete _chantierConfigCache[c.id];
     // Devient aussi la couleur par défaut des prochains chantiers créés
-    await db.from('profiles').update({ default_bandeau_bg: bg, default_bandeau_text: text }).eq('id', state.user.id);
+    await _ecrire(db.from('profiles').update({ default_bandeau_bg: bg, default_bandeau_text: text }).eq('id', state.user.id), 'Profil non enregistré');
     toast('Couleur enregistrée — utilisée aussi pour les prochains chantiers créés');
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
@@ -4924,13 +4933,13 @@ async function _fournisseurAccepteAuto(compteId) {
 // fournisseur d'ouvrir la bonne demande depuis la notification, plutôt que la seule liste.
 async function _notifierDemandeRelation(compteId, nom, relationId) {
   const nomEnt = state.profile?.raison_sociale || state.profile?.societe || state.profile?.nom || 'Une entreprise';
-  await db.from('notifications').insert({
+  await _discret(db.from('notifications').insert({
     user_id: compteId,
     type: 'demande_relation',
     relation_id: relationId || null,
     message: `${nomEnt} souhaite vous ajouter à son carnet fournisseur`,
     read: false
-  });
+  }), 'notification');
 }
 
 async function addPortailFournisseurToCarnet(compteId, nom) {
@@ -8138,14 +8147,14 @@ async function addFournisseursToConsultation(consultationId) {
       // Fournisseur déjà inscrit : notification in-app + email selon ses préférences (pas de lien magique)
       const chNomNc = state.currentChantier?.affaire || nomChantier;
       const msgNc = `${nomEntrepreneur} vous invite à répondre à une consultation${cons?.titre ? ` — "${cons.titre}"` : ''}${chNomNc ? ` · ${chNomNc}` : ''}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'nouvelle_consultation',
         user_id: fid,
         message: msgNc,
         consultation_id: consultationId,
         chantier_id: state.currentChantier?.id || null,
         read: false
-      });
+      }), 'notification');
       fetch(`${WORKER_URL}/notify-event`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: fid, portail: 'fournisseur', title: 'Nouvelle consultation', message: msgNc })
@@ -8318,10 +8327,10 @@ async function createConsultation() {
         if (compteMatch) {
           compteFournisseurId = compteMatch.id;
           // Mémoriser le lien pour les prochaines fois
-          await db.from('fournisseurs').update({
+          await _ecrire(db.from('fournisseurs').update({
             compte_fournisseur_id: compteFournisseurId,
             fournisseur_portail_id: compteFournisseurId
-          }).eq('id', fid);
+          }).eq('id', fid), 'Fournisseur non enregistré');
           if (carnetEntry) {
             carnetEntry.compte_fournisseur_id = compteFournisseurId;
             carnetEntry.fournisseur_portail_id = compteFournisseurId;
@@ -8339,14 +8348,14 @@ async function createConsultation() {
       // l'entreprise croyait envoyée et que le fournisseur ne voyait jamais.
       if (cfErr) throw new Error(`Le fournisseur n'a pas pu être rattaché à la consultation : ${_messageErreur(cfErr)}`);
       const token = crypto.randomUUID();
-      await db.from('invitations').insert({
+      await _ecrire(db.from('invitations').insert({
         consultation_id: cons.id,
         fournisseur_id: fid,
         entrepreneur_id: state.user.id,
         email_fournisseur: carnetEntry?.email || null,
         token,
         expires_at: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString()
-      });
+      }), 'Invitation non enregistrée');
       // Prévenir le fournisseur. Le compte prime sur l'email : une fiche ajoutée depuis la
       // recherche portail n'a pas d'adresse — le fournisseur ne l'a pas rendue visible — et
       // conditionner toute la notification à l'email revenait à ne jamais l'avertir, ni par la
@@ -8465,10 +8474,10 @@ async function openConsultationDetail(id) {
 async function renewInvitation(oldToken, consultationId) {
   const newToken = crypto.randomUUID();
   try {
-    await db.from('invitations').update({
+    await _ecrire(db.from('invitations').update({
       token: newToken,
       expires_at: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString()
-    }).eq('token', oldToken);
+    }).eq('token', oldToken), 'Invitation non enregistrée');
     toast('Lien renouvelé !');
     openConsultationDetail(consultationId);
   } catch (err) {
@@ -8542,10 +8551,10 @@ async function toggleConsSelection(consId, checked) {
     if (!state.hiddenConsultations) state.hiddenConsultations = new Set();
     if (checked) {
       state.hiddenConsultations.delete(consId);
-      await db.from('comparatif_masques').delete().eq('chantier_id', chId).eq('consultation_id', consId);
+      await _discret(db.from('comparatif_masques').delete().eq('chantier_id', chId).eq('consultation_id', consId), 'masques du comparatif');
     } else {
       state.hiddenConsultations.add(consId);
-      await db.from('comparatif_masques').upsert({ chantier_id: chId, consultation_id: consId }, { onConflict: 'chantier_id,consultation_id' });
+      await _discret(db.from('comparatif_masques').upsert({ chantier_id: chId, consultation_id: consId }, { onConflict: 'chantier_id,consultation_id' }), 'masques du comparatif');
     }
   }
 
@@ -8684,7 +8693,7 @@ async function loadComparatif() {
   // Clear notifications
   if (state.user) {
     const ids = state.notifications.filter(n => n.type === 'reponse_fournisseur' && state.selectedConsIds.includes(n.consultation_id)).map(n => n.id);
-    if (ids.length) { await db.from('notifications').update({ read: true }).in('id', ids); state.notifications = state.notifications.map(n => ids.includes(n.id) ? { ...n, read: true } : n); _updateNotifBadge(); }
+    if (ids.length) { await _discret(db.from('notifications').update({ read: true }).in('id', ids), 'notification'); state.notifications = state.notifications.map(n => ids.includes(n.id) ? { ...n, read: true } : n); _updateNotifBadge(); }
   }
 
   const jeuId = window._compCurrentJeuId;
@@ -9145,7 +9154,7 @@ async function saveCompFraisPort(consId, fournisseurId, input) {
     const cf = state.compCaches[consId].foursList.find(f => f.fournisseur_id === fournisseurId);
     if (cf) cf.frais_port = val;
   }
-  await db.from('consultation_fournisseurs').update({ frais_port: val }).eq('consultation_id', consId).eq('fournisseur_id', fournisseurId);
+  await _ecrire(db.from('consultation_fournisseurs').update({ frais_port: val }).eq('consultation_id', consId).eq('fournisseur_id', fournisseurId), 'Consultation non mise à jour');
 }
 
 // Persiste immédiatement une sélection du comparatif (sans attendre un clic sur 💾)
@@ -10909,9 +10918,9 @@ async function showConfigPalettePanel() {
   document.getElementById('daf-palette-save').addEventListener('click', async () => {
     const existing = await _loadChantierConfig(ch.id);
     if (existing.id) {
-      await db.from('chantier_config').update({ bandeau_bg: selBg, bandeau_text: selText, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      await _discret(db.from('chantier_config').update({ bandeau_bg: selBg, bandeau_text: selText, updated_at: new Date().toISOString() }).eq('id', existing.id), 'configuration du chantier');
     } else {
-      await db.from('chantier_config').insert({ chantier_id: ch.id, bandeau_bg: selBg, bandeau_text: selText });
+      await _discret(db.from('chantier_config').insert({ chantier_id: ch.id, bandeau_bg: selBg, bandeau_text: selText }), 'configuration du chantier');
     }
     delete _chantierConfigCache[ch.id];
     panel.remove();
@@ -11059,9 +11068,9 @@ async function _sauvegarderParametresDAF() {
     const existing = await _loadChantierConfig(ch.id);
     const payload = { bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques };
     if (existing.id) {
-      await db.from('chantier_config').update(payload).eq('id', existing.id);
+      await _discret(db.from('chantier_config').update(payload).eq('id', existing.id), 'configuration du chantier');
     } else {
-      await db.from('chantier_config').insert({ chantier_id: ch.id, ...payload });
+      await _discret(db.from('chantier_config').insert({ chantier_id: ch.id, ...payload }), 'configuration du chantier');
     }
     delete _chantierConfigCache[ch.id];
     closeModal();
@@ -11954,8 +11963,8 @@ async function _doeSauvegarder() {
   // Sauvegarder config couleur dans chantier_config
   const { data: cfgExist } = await db.from('chantier_config').select('id').eq('chantier_id', ch.id).maybeSingle();
   const colorPayload = { chantier_id: ch.id, bandeau_bg: _doeState.bandeau_bg, bandeau_text: _doeState.bandeau_text };
-  if (cfgExist?.id) await db.from('chantier_config').update(colorPayload).eq('id', cfgExist.id);
-  else await db.from('chantier_config').insert(colorPayload);
+  if (cfgExist?.id) await _discret(db.from('chantier_config').update(colorPayload).eq('id', cfgExist.id), 'configuration du chantier');
+  else await _discret(db.from('chantier_config').insert(colorPayload), 'configuration du chantier');
   delete _chantierConfigCache[ch.id];
   // Sauvegarder doe_config
   const { data: existing } = await db.from('doe_config').select('id').eq('chantier_id', ch.id).maybeSingle();
@@ -11972,8 +11981,8 @@ async function _doeSauvegarder() {
       }))),
     updated_at: new Date().toISOString()
   };
-  if (existing?.id) await db.from('doe_config').update(payload).eq('id', existing.id);
-  else await db.from('doe_config').insert(payload);
+  if (existing?.id) await _discret(db.from('doe_config').update(payload).eq('id', existing.id), 'configuration du DOE');
+  else await _discret(db.from('doe_config').insert(payload), 'configuration du DOE');
   toast('Configuration DOE enregistrée');
 }
 
@@ -12183,11 +12192,11 @@ async function soumettreDaf(id) {
     const moeId = state.currentChantier.moe_id;
     if (moeId) {
       const msgDaf = `Nouvelle DAF soumise : ${daf?.numero||id} — ${state.currentChantier.affaire||''}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type:'daf_soumise', user_id:moeId,
         message: msgDaf,
         chantier_id:state.currentChantier.id, daf_id:id, read: false
-      });
+      }), 'notification');
       fetch(`${WORKER_URL}/notify-event`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: moeId, portail: 'moe', title: 'DAF à viser', message: msgDaf })
@@ -13107,7 +13116,7 @@ async function generateDoePdfFull(niveau) {
 async function accepterModification(requestId, consId, fournisseurId) {
   try {
     // Marquer la demande acceptée
-    await db.from('demandes_modification').update({ statut: 'acceptee' }).eq('id', requestId);
+    await _ecrire(db.from('demandes_modification').update({ statut: 'acceptee' }).eq('id', requestId), 'Demande non enregistrée');
     // Déverrouiller les réponses du fournisseur (retirer devis_valide_at)
     await db.from('reponses_fournisseurs')
       .update({ devis_valide_at: null })
@@ -13124,13 +13133,13 @@ async function accepterModification(requestId, consId, fournisseurId) {
     if (fourCpt?.user_id) {
       const cons = state.consultations.find(c => c.id === consId);
       const chMod = cons?.chantier_id ? state.chantiers.find(c => c.id === cons.chantier_id) : null;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'modification_autorisee',
         user_id: fourCpt.user_id,
         message: `Modification autorisée — "${cons?.titre || ''}"${chMod ? ` · ${chMod.affaire}` : ''}. Vous pouvez mettre à jour vos prix.`,
         consultation_id: consId,
         read: false
-      });
+      }), 'notification');
     }
     // Vider les sélections locales pour ce fournisseur
     for (const [fid, sel] of Object.entries(state.compSelections)) {
@@ -13145,7 +13154,7 @@ async function accepterModification(requestId, consId, fournisseurId) {
 
 async function refuserModification(requestId) {
   try {
-    await db.from('demandes_modification').update({ statut: 'refusee' }).eq('id', requestId);
+    await _ecrire(db.from('demandes_modification').update({ statut: 'refusee' }).eq('id', requestId), 'Demande non enregistrée');
     toast('Demande refusée.');
     loadComparatif();
   } catch (err) {
@@ -13215,7 +13224,7 @@ function renderNotifList() {
 }
 
 async function deleteNotif(id) {
-  await db.from('notifications').delete().eq('id', id);
+  await _discret(db.from('notifications').delete().eq('id', id), 'notification');
   state.notifications = state.notifications.filter(n => n.id !== id);
   _updateNotifBadge();
   renderNotifList();
@@ -13224,14 +13233,14 @@ async function deleteNotif(id) {
 async function deleteReadNotifs() {
   const readIds = state.notifications.filter(n => n.read).map(n => n.id);
   if (!readIds.length) return;
-  await db.from('notifications').delete().in('id', readIds);
+  await _discret(db.from('notifications').delete().in('id', readIds), 'notification');
   state.notifications = state.notifications.filter(n => !n.read);
   renderNotifList();
 }
 
 async function notifNavigate(notifId, chantierId, tab, consId, dafId) {
   document.getElementById('notif-panel').classList.add('hidden');
-  await db.from('notifications').update({ read: true }).eq('id', notifId);
+  await _discret(db.from('notifications').update({ read: true }).eq('id', notifId), 'notification');
   state.notifications = state.notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
   _updateNotifBadge();
   // Si pas de chantier_id, tenter de le résoudre depuis la consultation
@@ -13309,7 +13318,7 @@ async function _showDemandeModifBanner(consId) {
 
 async function repondreDemandeModif(demandeId, consId, fournisseurId, decision) {
   try {
-    await db.from('demandes_modification').update({ statut: decision }).eq('id', demandeId);
+    await _ecrire(db.from('demandes_modification').update({ statut: decision }).eq('id', demandeId), 'Demande non enregistrée');
     if (decision === 'acceptee') {
       // Déverrouiller les réponses (remettre devis_valide_at à null)
       await db.from('reponses_fournisseurs')
@@ -13320,24 +13329,24 @@ async function repondreDemandeModif(demandeId, consId, fournisseurId, decision) 
       const consAcc = state.consultations.find(c => c.id === consId);
       const chAcc = consAcc?.chantier_id ? state.chantiers.find(c => c.id === consAcc.chantier_id) : null;
       const ctxAcc = `"${consAcc?.titre || ''}"${chAcc ? ` · ${chAcc.affaire}` : ''}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'modification_autorisee',
         user_id: fournisseurId,
         message: `Modification acceptée pour ${ctxAcc}. Vous pouvez à nouveau modifier vos prix.`,
         consultation_id: consId,
         read: false
-      });
+      }), 'notification');
       toast('Modification autorisée — le fournisseur peut à nouveau modifier ses prix.');
     } else {
       const consRef = state.consultations.find(c => c.id === consId);
       const chRef = consRef?.chantier_id ? state.chantiers.find(c => c.id === consRef.chantier_id) : null;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'modification_autorisee',
         user_id: fournisseurId,
         message: `Modification refusée pour "${consRef?.titre || ''}"${chRef ? ` · ${chRef.affaire}` : ''}.`,
         consultation_id: consId,
         read: false
-      });
+      }), 'notification');
       toast('Demande refusée.');
     }
     // Retirer le banner
@@ -13358,14 +13367,14 @@ async function _markChantierNotifsRead(chantierId, type) {
   if (!state.user) return;
   const ids = state.notifications.filter(n => n.chantier_id === chantierId && (!type || n.type === type)).map(n => n.id);
   if (!ids.length) return;
-  await db.from('notifications').update({ read: true }).in('id', ids);
+  await _discret(db.from('notifications').update({ read: true }).in('id', ids), 'notification');
   state.notifications = state.notifications.map(n => ids.includes(n.id) ? { ...n, read: true } : n);
   _updateNotifBadge();
 }
 
 async function markAllRead() {
   try {
-    await db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false);
+    await _discret(db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false), 'notification');
     state.notifications = state.notifications.map(n => ({ ...n, read: true }));
     _updateNotifBadge();
     renderNotifList();
@@ -13457,13 +13466,13 @@ async function envoyerDemandePh() {
     if (compteFournisseurId) {
       const nomChantierPh = state.currentChantier?.affaire || '';
       const msgPh = `${checked.length} photo(s) demandée(s)${nomChantierPh ? ` — ${nomChantierPh}` : ''}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'demande_photo',
         user_id: compteFournisseurId,
         message: msgPh,
         consultation_id: _dphState.consId,
         read: false
-      });
+      }), 'notification');
       fetch(`${WORKER_URL}/notify-event`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: compteFournisseurId, portail: 'fournisseur', title: 'Demande de photos', message: msgPh })

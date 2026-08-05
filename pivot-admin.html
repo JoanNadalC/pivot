@@ -408,7 +408,7 @@ function _hideLoading() {
 // onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
 async function _journaliserConnexion(portail) {
   try {
-    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }), 'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
 
@@ -473,7 +473,7 @@ async function doSignup() {
 
   // Créer l'entrée profiles (sans is_admin — à activer manuellement en SQL)
   if (data.user) {
-    await db.from('profiles').upsert({ id: data.user.id, email }, { onConflict: 'id' });
+    await _ecrire(db.from('profiles').upsert({ id: data.user.id, email }, { onConflict: 'id' }), 'Profil non enregistré');
   }
 
   errEl.className = 'text-green-600 text-xs mt-3';
@@ -843,7 +843,10 @@ async function saveMemberEdit(structId, userId) {
     db.from('structure_membres').update({ role, has_licence: hasLicence }).eq('structure_id', structId).eq('user_id', userId),
     db.from('profiles').upsert({ id: userId, role: portailRole || null }, { onConflict: 'id' })
   ]);
-  if (r1.error) { toast('Erreur : ' + r1.error.message, 'err'); return; }
+  // Les deux écritures comptent : le rôle de portail conditionne l'accès, et son échec passait
+  // inaperçu alors que le message annonçait la mise à jour.
+  const echec = r1.error || r2.error;
+  if (echec) { toast('Erreur : ' + _messageErreur(echec), 'err'); return; }
   closeModal();
   toast('Membre mis à jour ✓');
   await loadAll();
@@ -1187,10 +1190,10 @@ async function saveEditCompte(userId, type) {
 
   if (error) return toast(error.message, 'err');
 
-  await db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' });
+  await _ecrire(db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' }), 'Membre non enregistré');
 
   if (plan && type === 'fournisseur') {
-    await db.from('compte_fournisseur').update({ plan }).eq('id', userId);
+    await _ecrire(db.from('compte_fournisseur').update({ plan }).eq('id', userId), 'Profil non enregistré');
     if (c) c._plan_four = plan;
   }
 
@@ -1200,7 +1203,7 @@ async function saveEditCompte(userId, type) {
 }
 
 async function quickChangePlan(userId, plan) {
-  await db.from('compte_fournisseur').update({ plan }).eq('id', userId);
+  await _ecrire(db.from('compte_fournisseur').update({ plan }).eq('id', userId), 'Profil non enregistré');
   const c = state.comptes.find(x => x.id === userId);
   if (c) { c._plan_four = plan; if (c._structure) c._structure.plan = plan; }
   toast(`Plan → ${plan}`);
@@ -1240,11 +1243,11 @@ async function quickChangeStatut(structureId, statut) {
 async function confirmerEssai(structureId) {
   const date = document.getElementById('essai-date').value;
   if (!date) return toast('Date requise', 'err');
-  await db.from('structures').update({
+  await _ecrire(db.from('structures').update({
     statut_abonnement: 'essai',
     date_echeance: date,
     relance_envoyee: false
-  }).eq('id', structureId);
+  }).eq('id', structureId), 'Structure non enregistrée');
   const s = state.structures.find(x => x.id === structureId);
   if (s) { s.statut_abonnement = 'essai'; s.date_echeance = date; s.relance_envoyee = false; }
   state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = 'essai'; });
@@ -1347,14 +1350,14 @@ async function adminBloquer(notifId, structureId) {
 }
 
 async function dismissAdminNotif(notifId) {
-  await db.from('notifications_admin').update({ read: true }).eq('id', notifId);
+  await _discret(db.from('notifications_admin').update({ read: true }).eq('id', notifId), 'notification admin');
   state.adminNotifs = (state.adminNotifs || []).filter(n => n.id !== notifId);
   _updateAdminNotifBadge();
   renderAdminNotifList();
 }
 
 async function markAllAdminNotifsRead() {
-  await db.from('notifications_admin').update({ read: true }).eq('read', false);
+  await _discret(db.from('notifications_admin').update({ read: true }).eq('read', false), 'notification admin');
   state.adminNotifs = [];
   _updateAdminNotifBadge();
   renderAdminNotifList();
@@ -1485,9 +1488,9 @@ async function createStructureForUser(userId, type) {
 async function validateVirement(structureId) {
   const d = new Date(); d.setMonth(d.getMonth() + 1);
   const echeance = d.toISOString().slice(0,10);
-  await db.from('structures').update({
+  await _ecrire(db.from('structures').update({
     statut_abonnement: 'actif', mode_paiement: 'virement', date_echeance: echeance
-  }).eq('id', structureId);
+  }).eq('id', structureId), 'Structure non enregistrée');
   const s = state.structures.find(x => x.id === structureId);
   if (s) { s.statut_abonnement = 'actif'; s.mode_paiement = 'virement'; s.date_echeance = echeance; }
   updateStats(); renderTable();
@@ -1722,13 +1725,13 @@ async function saveEdit(structureId) {
   // Pour les fournisseurs, propager le plan sur compte_fournisseur
   const s = state.structures.find(x => x.id === structureId);
   if (s?.type === 'fournisseur' && s.referent_id) {
-    await db.from('compte_fournisseur').update({ plan }).eq('id', s.referent_id);
+    await _ecrire(db.from('compte_fournisseur').update({ plan }).eq('id', s.referent_id), 'Profil non enregistré');
     // Propager aussi à tous les membres de la structure
     const { data: membres } = await db.from('structure_membres')
       .select('user_id').eq('structure_id', structureId);
     if (membres?.length > 1) {
       const ids = membres.map(m => m.user_id);
-      await db.from('compte_fournisseur').update({ plan }).in('id', ids);
+      await _ecrire(db.from('compte_fournisseur').update({ plan }).in('id', ids), 'Profil non enregistré');
     }
   }
 
@@ -1805,6 +1808,15 @@ function _messageErreur(err) {
 // Une écriture Supabase ne lève jamais d'exception : un refus RLS revient dans `error`, et un
 // UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
 // indiscernable d'un échec.
+// Écriture accessoire : son échec n'enlève rien à ce que l'utilisateur a saisi — une notification
+// perdue, un réglage d'affichage non mémorisé. On le journalise sans l'interrompre, plutôt que de
+// noyer les vrais problèmes sous des alertes sans conséquence.
+async function _discret(requete, quoi) {
+  const { error } = await requete;
+  if (error) console.error('Écriture ignorée (' + quoi + ') :', error.message || error);
+  return !error;
+}
+
 async function _ecrire(requete, contexte) {
   const { error } = await requete;
   if (error) {

@@ -1162,7 +1162,7 @@ async function doRegister() {
     const { data, error } = await db.auth.signUp({ email, password });
     if (error) throw error;
     if (data.user) {
-      await db.from('compte_fournisseur').upsert({ id: data.user.id, nom, nom_entreprise: nomEntreprise, email }, { onConflict: 'id' });
+      await _ecrire(db.from('compte_fournisseur').upsert({ id: data.user.id, nom, nom_entreprise: nomEntreprise, email }, { onConflict: 'id' }), 'Profil non enregistré');
     }
     toast('Compte créé ! Vérifiez votre email.');
     showAuthTab('login');
@@ -1256,7 +1256,7 @@ function _hideLoading() {
 // onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
 async function _journaliserConnexion(portail) {
   try {
-    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }), 'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
 
@@ -2670,7 +2670,7 @@ function renderNotifList() {
 }
 
 async function deleteNotif(id) {
-  await db.from('notifications').delete().eq('id', id);
+  await _discret(db.from('notifications').delete().eq('id', id), 'notification');
   state.notifications = state.notifications.filter(n => n.id !== id);
   _updateNotifBadge();
   renderNotifList();
@@ -2679,14 +2679,14 @@ async function deleteNotif(id) {
 async function deleteReadNotifs() {
   const readIds = state.notifications.filter(n => n.read).map(n => n.id);
   if (!readIds.length) return;
-  await db.from('notifications').delete().in('id', readIds);
+  await _discret(db.from('notifications').delete().in('id', readIds), 'notification');
   state.notifications = state.notifications.filter(n => !n.read);
   renderNotifList();
 }
 
 async function notifNavigate(notifId, tab, consId, relationId) {
   document.getElementById('notif-panel').classList.add('hidden');
-  await db.from('notifications').update({ read: true }).eq('id', notifId);
+  await _discret(db.from('notifications').update({ read: true }).eq('id', notifId), 'notification');
   state.notifications = state.notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
   _updateNotifBadge();
 
@@ -2708,7 +2708,7 @@ async function notifNavigate(notifId, tab, consId, relationId) {
 
 async function markAllNotifsRead() {
   if (!state.user) return;
-  await db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false);
+  await _discret(db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false), 'notification');
   state.notifications = state.notifications.map(n => ({ ...n, read: true }));
   _updateNotifBadge();
   renderNotifList();
@@ -3284,14 +3284,14 @@ async function ignorerConsultation(id) {
     if (cons?.entrepreneur_id) {
       const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
       const chNom = cons.chantiers?.affaire || '';
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'consultation_ignoree',
         user_id: cons.entrepreneur_id,
         message: `${nomFourn} a décliné la consultation "${cons.titre || ''}"${chNom ? ` — ${chNom}` : ''}`,
         consultation_id: id,
         chantier_id: cons.chantier_id,
         read: false
-      });
+      }), 'notification');
       // Mettre à jour statut invitation
       if (fournisseurIds.length) {
         await db.from('invitations')
@@ -3748,6 +3748,15 @@ function _appliquerAccesRestreint() {
 // UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
 // indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
 // jamais été écrit.
+// Écriture accessoire : son échec n'enlève rien à ce que l'utilisateur a saisi — une notification
+// perdue, un réglage d'affichage non mémorisé. On le journalise sans l'interrompre, plutôt que de
+// noyer les vrais problèmes sous des alertes sans conséquence.
+async function _discret(requete, quoi) {
+  const { error } = await requete;
+  if (error) console.error('Écriture ignorée (' + quoi + ') :', error.message || error);
+  return !error;
+}
+
 async function _ecrire(requete, contexte) {
   const { error } = await requete;
   if (error) {
@@ -4183,26 +4192,26 @@ async function confirmerDemandeModif(consId) {
   const motif = document.getElementById('modif-motif')?.value.trim() || '';
   try {
     // Insérer la demande
-    await db.from('demandes_modification').insert({
+    await _ecrire(db.from('demandes_modification').insert({
       consultation_id: consId,
       fournisseur_id: fId,
       statut: 'pending',
       message: motif
-    });
+    }), 'Demande non enregistrée');
     // Notifier l'entrepreneur
     const { data: cons } = await db.from('consultations')
       .select('entrepreneur_id, titre, chantier_id, chantiers(affaire)').eq('id', consId).maybeSingle();
     if (cons?.entrepreneur_id) {
       const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
       const chNom = cons.chantiers?.affaire || '';
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'demande_modification',
         user_id: cons.entrepreneur_id,
         message: `${nomFourn} demande à modifier sa réponse pour "${cons.titre || ''}"${chNom ? ` — ${chNom}` : ''}`,
         consultation_id: consId,
         chantier_id: cons.chantier_id || null,
         read: false
-      });
+      }), 'notification');
     }
     state.demandeModifPending = true;
     closeModal();
@@ -4637,14 +4646,14 @@ async function saveReponses(send) {
           const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
           const chNom = consInfo.chantiers?.affaire || '';
           const msgRep = `${nomFourn} a répondu à la consultation "${consInfo.titre || ''}"${chNom ? ` — ${chNom}` : ''}`;
-          await db.from('notifications').insert({
+          await _discret(db.from('notifications').insert({
             type: 'reponse_fournisseur',
             user_id: consInfo.entrepreneur_id,
             message: msgRep,
             consultation_id: consId,
             chantier_id: consInfo.chantier_id || null,
             read: false
-          });
+          }), 'notification');
           fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: consInfo.entrepreneur_id, portail: 'entrepreneur', title: 'Fournisseur a répondu', message: msgRep })
@@ -4844,7 +4853,7 @@ function editCatalogue(id) {
 async function deleteCatalogue(id) {
   if (!await showConfirm('Supprimer cet article ?')) return;
   try {
-    await db.from('catalogue_fournisseur').delete().eq('id', id);
+    await _ecrire(db.from('catalogue_fournisseur').delete().eq('id', id), 'Catalogue non enregistré');
     state.catalogue = state.catalogue.filter(c => c.id !== id);
     renderCatalogue();
   } catch (err) {
@@ -4873,7 +4882,7 @@ function importCatalogue(event) {
         const caract = champsCles.map(cle => ({ cle, valeur: obj[cle] || '' })).filter(c => c.valeur);
         const certifsRaw = obj.certifications || obj.certification || '';
         const certifs = certifsRaw ? certifsRaw.split(/[,;|]/).map(s => s.trim()).filter(Boolean) : [];
-        await db.from('catalogue_fournisseur').upsert({
+        await _ecrire(db.from('catalogue_fournisseur').upsert({
           fournisseur_id: state.fournisseurId || state.user?.id,
           designation,
           reference: obj.reference || obj.ref || null,
@@ -4883,7 +4892,7 @@ function importCatalogue(event) {
           caracteristiques: caract.length ? caract : null,
           certifications: certifs.length ? certifs : null,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'fournisseur_id,designation,reference' });
+        }, { onConflict: 'fournisseur_id,designation,reference' }), 'Catalogue non enregistré');
         count++;
       } catch (err) {
         console.error('import catalogue row', err);
@@ -5610,7 +5619,7 @@ async function _incrementerCompteurPhotos(collabId) {
   if (!c) return;
   const lastAt = c.photos_validees_last_at ? new Date(c.photos_validees_last_at) : null;
   const newCount = (!lastAt || lastAt < _cycleStartSolstice()) ? 1 : (c.photos_validees_count || 0) + 1;
-  await db.from('collaborateurs').update({ photos_validees_count: newCount, photos_validees_last_at: new Date().toISOString() }).eq('id', collabId);
+  await _ecrire(db.from('collaborateurs').update({ photos_validees_count: newCount, photos_validees_last_at: new Date().toISOString() }).eq('id', collabId), 'Collaborateur non enregistré');
 }
 
 async function validerPhoto(photoId, demandeId) {
@@ -5637,7 +5646,7 @@ async function validerPhoto(photoId, demandeId) {
       if (cons?.entrepreneur_id) {
         const nomChantier = cons.chantiers?.affaire || cons.titre || '';
         const msg = `Photo reçue${nomChantier ? ' — ' + nomChantier : ''}`;
-        await db.from('notifications').insert({ type: 'photo_validee', user_id: cons.entrepreneur_id, message: msg, consultation_id: d.consultation_id, read: false });
+        await _discret(db.from('notifications').insert({ type: 'photo_validee', user_id: cons.entrepreneur_id, message: msg, consultation_id: d.consultation_id, read: false }), 'notification');
         fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: cons.entrepreneur_id, portail: 'entrepreneur', title: 'Photo reçue', message: msg })
@@ -5908,7 +5917,7 @@ async function utiliserPhotoExistante(fournitureId, url) {
   if (!_assignDemandeId) return;
   // Copier la photo dans cette demande et la marquer comme validée
   const d = await db.from('demandes_photos').select('consultation_id, fournisseur_id').eq('id', _assignDemandeId).maybeSingle();
-  await db.from('photos_fournitures').insert({
+  await _ecrire(db.from('photos_fournitures').insert({
     demande_id: _assignDemandeId,
     fourniture_id: fournitureId,
     consultation_id: d.data?.consultation_id,
@@ -5916,7 +5925,7 @@ async function utiliserPhotoExistante(fournitureId, url) {
     url,
     uploaded_by: 'Réutilisée',
     valide: true,
-  });
+  }), 'Photo non enregistrée');
   toast('Photo existante utilisée pour cette demande ✓');
   // Retirer visuellement le bloc suggestion
   const btn = event.target;
@@ -6237,7 +6246,7 @@ async function envoyerInvitation() { return envoyerInvitationUnifiee(); }
 async function supprimerCollaborateur(id) {
   if (!state.isReferent) return toast('Seul le référent peut supprimer un collaborateur', 'err');
   if (!await showConfirm('Supprimer ce collaborateur ?')) return;
-  await db.from('collaborateurs').delete().eq('id', id);
+  await _ecrire(db.from('collaborateurs').delete().eq('id', id), 'Collaborateur non enregistré');
   await loadCollaborateurs();
 }
 
@@ -6766,12 +6775,12 @@ async function _ncCreerConsultation() {
     if (fErr) throw fErr;
 
     // Créer l'entrée consultation_fournisseurs
-    await db.from('consultation_fournisseurs').insert({
+    await _ecrire(db.from('consultation_fournisseurs').insert({
       consultation_id: cons.id,
       fournisseur_id: fId,
       compte_fournisseur_id: state.user.id,
       statut: 'en_attente',
-    });
+    }), 'Consultation non mise à jour');
 
     closeModal();
     toast(`Consultation créée pour ${entreprise} ✓`);
@@ -6931,13 +6940,13 @@ function _vegVrChange(varianteId, field, value) {
     const patch = {};
     const vr = _vegState.items.flatMap(x => x.variantes).find(v => v.id === varianteId);
     if (vr) Object.assign(patch, { type_port: vr.type_port, taille: vr.taille, conditionnement: vr.conditionnement, prix_unit_ht: vr.prix_unit_ht, stock_qty: vr.stock_qty, disponible: vr.disponible });
-    await db.from('fournisseur_vegetal_variante').update(patch).eq('id', varianteId);
+    await _ecrire(db.from('fournisseur_vegetal_variante').update(patch).eq('id', varianteId), 'Variante non enregistrée');
     _renderVegetaux(); // refresh badge compteur
   }, 700);
 }
 
 async function _vegVrDelete(vegetalId, varianteId) {
-  await db.from('fournisseur_vegetal_variante').delete().eq('id', varianteId);
+  await _ecrire(db.from('fournisseur_vegetal_variante').delete().eq('id', varianteId), 'Variante non enregistrée');
   const item = _vegState.items.find(x => x.vegetal.id === vegetalId);
   if (item) item.variantes = item.variantes.filter(v => v.id !== varianteId);
   document.getElementById(`veg-vr-${varianteId}`)?.remove();
@@ -6960,7 +6969,7 @@ async function _vegDelete(vegetalId) {
   });
   closeModal();
   if (!ok) return;
-  await db.from('fournisseur_vegetal').delete().eq('id', vegetalId);
+  await _ecrire(db.from('fournisseur_vegetal').delete().eq('id', vegetalId), 'Végétal non enregistré');
   _vegState.items = _vegState.items.filter(x => x.vegetal.id !== vegetalId);
   _renderVegetaux();
 }

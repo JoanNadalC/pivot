@@ -422,6 +422,15 @@ function _appliquerAccesRestreint() {
 // UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
 // indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
 // jamais été écrit.
+// Écriture accessoire : son échec n'enlève rien à ce que l'utilisateur a saisi — une notification
+// perdue, un réglage d'affichage non mémorisé. On le journalise sans l'interrompre, plutôt que de
+// noyer les vrais problèmes sous des alertes sans conséquence.
+async function _discret(requete, quoi) {
+  const { error } = await requete;
+  if (error) console.error('Écriture ignorée (' + quoi + ') :', error.message || error);
+  return !error;
+}
+
 async function _ecrire(requete, contexte) {
   const { error } = await requete;
   if (error) {
@@ -820,7 +829,7 @@ async function doRegister() {
     const { data, error } = await db.auth.signUp({ email, password });
     if (error) throw error;
     if (data.user) {
-      await db.from('compte_moe').upsert({ id: data.user.id, nom, societe, siret, tel, adresse, email }, { onConflict: 'id' });
+      await _ecrire(db.from('compte_moe').upsert({ id: data.user.id, nom, societe, siret, tel, adresse, email }, { onConflict: 'id' }), 'Profil non enregistré');
     }
     toast('Compte créé ! Vérifiez votre email.');
     showAuthTab('login');
@@ -921,7 +930,7 @@ function _hideLoading() {
 // onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
 async function _journaliserConnexion(portail) {
   try {
-    await db.from('connexions_journal').insert({ user_id: state.user.id, portail });
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }), 'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
 
@@ -1487,7 +1496,7 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    await db.from('compte_moe').update({ nom: nom || undefined, prenom, tel: telephone, ville, fonction, visibilite_champs, visibilite_relations, notif_preference }).eq('id', state.user.id);
+    await _ecrire(db.from('compte_moe').update({ nom: nom || undefined, prenom, tel: telephone, ville, fonction, visibilite_champs, visibilite_relations, notif_preference }).eq('id', state.user.id), 'Profil non enregistré');
     state.profile = { ...state.profile, nom, prenom, telephone, adresse, ville, siret, fonction, visibilite_champs, visibilite_relations, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
@@ -1591,7 +1600,7 @@ async function accepterInvitationMoe(invId, chantierId, nom) {
     if (error) throw error;
     if (!maj?.length) throw new Error("Le rattachement au chantier a été refusé : l'invitation reste en attente.");
 
-    await db.from('chantier_invitations').update({ statut: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invId);
+    await _ecrire(db.from('chantier_invitations').update({ statut: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invId), 'Invitation non enregistrée');
     state.pendingMoeInvitations = state.pendingMoeInvitations.filter(i => i.id !== invId);
     toast(`✅ Vous êtes maintenant MOE sur "${nom}" !`);
     await loadChantiers();
@@ -5087,14 +5096,14 @@ async function donnerVisa(dafId, type) {
         : type === 'avec_remarques'
           ? `VISA avec observations pour la DAF ${d.numero || ''}${chVisaNom}`
           : `Refus de la DAF ${d.numero || ''}${chVisaNom} — ${remarques}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'visa_moe',
         user_id: d.entrepreneur_id,
         message: msg,
         chantier_id: d.chantier_id,
         daf_id: dafId,
         read: false
-      });
+      }), 'notification');
       fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: d.entrepreneur_id, portail: 'entrepreneur', title: 'DAF visée', message: msg })
@@ -5447,9 +5456,9 @@ async function donnerVisaDoc(docId, type) {
         : type === 'avec_remarques'
           ? `VISA avec observations pour le document « ${d.nom} »${chDocNom}`
           : `Refus du document « ${d.nom} »${chDocNom} — ${remarques}`;
-      await db.from('notifications').insert({
+      await _discret(db.from('notifications').insert({
         type: 'visa_document', user_id: d.entrepreneur_id, message: msg, chantier_id: d.chantier_id, read: false
-      });
+      }), 'notification');
       fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: d.entrepreneur_id, portail: 'entrepreneur', title: 'Document visé', message: msg })
@@ -5530,7 +5539,7 @@ function renderNotifList() {
 }
 
 async function deleteNotif(id) {
-  await db.from('notifications').delete().eq('id', id);
+  await _discret(db.from('notifications').delete().eq('id', id), 'notification');
   state.notifications = state.notifications.filter(n => n.id !== id);
   _updateNotifBadge();
   renderNotifList();
@@ -5539,7 +5548,7 @@ async function deleteNotif(id) {
 async function deleteReadNotifs() {
   const readIds = state.notifications.filter(n => n.read).map(n => n.id);
   if (!readIds.length) return;
-  await db.from('notifications').delete().in('id', readIds);
+  await _discret(db.from('notifications').delete().in('id', readIds), 'notification');
   state.notifications = state.notifications.filter(n => !n.read);
   renderNotifList();
 }
@@ -5555,7 +5564,7 @@ async function notifNavigate(notifId, chantierId, tab) {
 }
 
 async function _markNotifRead(notifId) {
-  await db.from('notifications').update({ read: true }).eq('id', notifId);
+  await _discret(db.from('notifications').update({ read: true }).eq('id', notifId), 'notification');
   state.notifications = state.notifications.map(n => n.id === notifId ? { ...n, read: true } : n);
   _updateNotifBadge();
   renderNotifList();
@@ -5565,14 +5574,14 @@ async function _markChantierNotifsRead(chantierId, type) {
   if (!state.user || state.isGuest) return;
   const ids = state.notifications.filter(n => n.chantier_id === chantierId && (!type || n.type === type)).map(n => n.id);
   if (!ids.length) return;
-  await db.from('notifications').update({ read: true }).in('id', ids);
+  await _discret(db.from('notifications').update({ read: true }).in('id', ids), 'notification');
   state.notifications = state.notifications.map(n => ids.includes(n.id) ? { ...n, read: true } : n);
   _updateNotifBadge();
 }
 
 async function markAllNotifsRead() {
   if (!state.user) return;
-  await db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false);
+  await _discret(db.from('notifications').update({ read: true }).eq('user_id', state.user.id).eq('read', false), 'notification');
   state.notifications = state.notifications.map(n => ({ ...n, read: true }));
   _updateNotifBadge();
   renderNotifList();
