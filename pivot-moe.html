@@ -1657,7 +1657,10 @@ async function loadPendingMoeInvitations() {
       .select('id, chantier_id, nom_chantier, created_at')
       .eq('moe_invited_id', state.user.id)
       .eq('statut', 'pending');
-    state.pendingMoeInvitations = data || [];
+    // Une invitation dont le chantier est déjà le nôtre n'a plus d'objet : l'afficher revenait à
+    // proposer d'accepter ce qu'on a déjà accepté, à côté du chantier lui-même.
+    const miens = new Set((state.chantiers || []).map(c => c.id));
+    state.pendingMoeInvitations = (data || []).filter(i => !miens.has(i.chantier_id));
     renderChantiersList();
   } catch (err) { console.error('loadPendingMoeInvitations', err); }
 }

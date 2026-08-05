@@ -4542,6 +4542,12 @@ async function inviterMoeSansCompte(carnetId) {
 async function linkMoeFromCarnet(compteMoeId, nom) {
   try {
     const ch = state.currentChantier;
+    // Déjà rattaché : l'inviter à nouveau lui enverrait une proposition pour un chantier qu'il a
+    // accepté, sans que rien ne le lui signale. La contrainte d'unicité ne couvre pas ce cas,
+    // l'ancienne invitation étant passée à « accepted » et sortie de son champ.
+    if (ch?.moe_id === compteMoeId) {
+      return toast(`${nom} est déjà le maître d'œuvre de ce chantier.`, 'err');
+    }
     // Une invitation déjà en attente ne doit pas être doublée : le maître d'œuvre verrait deux
     // fois la même proposition sans pouvoir les distinguer, et en accepterait une au hasard.
     const { data: dejaLa } = await db.from('chantier_invitations')
