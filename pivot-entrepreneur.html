@@ -3263,17 +3263,32 @@ async function loadFournisseursCarnet() {
 async function loadCarnetMoe() {
   try {
     const { data, error } = await db.from('maitres_oeuvre')
-      .select('*, compte_moe:compte_moe_id(nom, societe, siret, tel, adresse, email)')
-      .eq('entrepreneur_id', state.user.id).order('nom');
+      .select('*').eq('entrepreneur_id', state.user.id).order('nom');
     if (error) throw error;
-    // Pour les MOEs liés à un compte portail, les infos live écrasent les copies locales
+
+    // La lecture directe de compte_moe contournait les réglages de visibilité : le carnet
+    // affichait SIRET, adresse, téléphone et email d'un maître d'œuvre qui n'en avait rien
+    // publié. La fonction les applique — et distingue les deux niveaux : la simple présence au
+    // carnet n'ouvre que le public, le rattachement à un chantier vaut relation établie.
+    const { data: comptes, error: cErr } = await db.rpc('contacts_moe_lies');
+    if (cErr) console.error('contacts_moe_lies', cErr);
+    const parCompte = Object.fromEntries((comptes || []).map(c => [c.compte_id, c]));
+
+    // Le compte lié fait autorité sur ce qu'il publie ; la copie locale ne sert que de recours,
+    // pour les fiches saisies à la main ou les champs qu'il ne partage pas.
     state.maitresOeuvre = (data || []).map(m => {
-      if (m.compte_moe) {
-        return { ...m, nom: m.compte_moe.nom, societe: m.compte_moe.societe,
-          siret: m.compte_moe.siret, telephone: m.compte_moe.tel,
-          adresse: m.compte_moe.adresse, email: m.compte_moe.email };
-      }
-      return m;
+      const c = m.compte_moe_id ? parCompte[m.compte_moe_id] : null;
+      if (!c) return m;
+      return { ...m,
+        nom: [c.prenom, c.nom].filter(Boolean).join(' ') || m.nom,
+        societe: c.societe || m.societe,
+        fonction: c.fonction || null,
+        siret: c.siret || null,
+        telephone: c.telephone || null,
+        email: c.email || null,
+        ville: c.ville || null,
+        _relationEtablie: c.accepte,
+      };
     });
     renderCarnetMoe();
   } catch (err) { console.error('loadCarnetMoe:', err); }
@@ -3291,7 +3306,8 @@ function renderCarnetMoe(liste) {
     const soc = m.societe || '';
     const titre = soc || m.nom || '—';
     const contact = soc && m.nom ? m.nom : '';
-    const sousTitre = [contact, m.email || '', m.telephone || ''].filter(Boolean).join(' · ');
+    const sousTitre = [contact, m.fonction || '', m.ville || '', m.email || '', m.telephone || '']
+      .filter(Boolean).join(' · ');
     return `
     <div class="bg-white rounded-xl shadow-sm px-3 py-2 flex items-center justify-between border-b last:border-0 hover:bg-gray-50">
       <div>
