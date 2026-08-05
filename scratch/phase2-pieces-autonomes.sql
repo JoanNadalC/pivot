@@ -109,11 +109,13 @@ update reponses_fournisseurs r set
   ctx_chantier     = coalesce(r.ctx_chantier, ch.affaire),
   ctx_consultation = coalesce(r.ctx_consultation, c.titre),
   ctx_client       = coalesce(r.ctx_client, nullif(e.raison_sociale,''), nullif(e.societe,''), e.nom),
-  ctx_fourniture   = coalesce(r.ctx_fourniture, f.designation)
+  -- Sous-requête et non jointure : dans un UPDATE ... FROM, la table cible n'est pas
+  -- référençable depuis la liste FROM.
+  ctx_fourniture   = coalesce(r.ctx_fourniture,
+                       (select f.designation from fournitures f where f.id = r.fourniture_id))
 from consultations c
 left join chantiers ch on ch.id = c.chantier_id
 left join compte_entrepreneur e on e.id = c.entrepreneur_id
-left join fournitures f on f.id = r.fourniture_id
 where c.id = r.consultation_id;
 
 update daf d set
@@ -133,11 +135,11 @@ where ch.id = dv.chantier_id;
 update photos_fournitures p set
   ctx_chantier   = coalesce(p.ctx_chantier, ch.affaire),
   ctx_client     = coalesce(p.ctx_client, nullif(e.raison_sociale,''), nullif(e.societe,''), e.nom),
-  ctx_fourniture = coalesce(p.ctx_fourniture, f.designation)
+  ctx_fourniture = coalesce(p.ctx_fourniture,
+                     (select f.designation from fournitures f where f.id = p.fourniture_id))
 from consultations c
 left join chantiers ch on ch.id = c.chantier_id
 left join compte_entrepreneur e on e.id = c.entrepreneur_id
-left join fournitures f on f.id = p.fourniture_id
 where c.id = p.consultation_id;
 
 -- ── 4. Contrôle ─────────────────────────────────────────────────────────────
