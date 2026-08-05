@@ -2163,9 +2163,24 @@ function renderDemandesRelation(demandes) {
 
 async function accepterDemandeRelation(id) {
   try {
-    const { error } = await db.from('fournisseurs').update({ statut: 'accepted' }).eq('id', id);
+    // `.select()` pour connaître le demandeur : c'est lui qu'il faut prévenir, et une mise à jour
+    // qui ne touche aucune ligne renverrait un succès vide.
+    const { data: maj, error } = await db.from('fournisseurs')
+      .update({ statut: 'accepted' }).eq('id', id).select('entrepreneur_id').single();
     if (error) throw error;
     toast('Mise en relation acceptée');
+
+    // Sans cette notification, l'entreprise ne l'apprenait qu'en rechargeant son carnet, sans
+    // savoir qu'il y avait quelque chose de nouveau à y voir.
+    if (maj?.entrepreneur_id) {
+      const nom = state.profile?.nom_entreprise || state.profile?.nom || 'Un fournisseur';
+      await _discret(db.from('notifications').insert({
+        user_id: maj.entrepreneur_id,
+        type: 'relation_acceptee',
+        message: `${nom} a accepté votre demande de mise en relation`,
+        read: false,
+      }), 'notification');
+    }
     loadDemandesRelation();
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }

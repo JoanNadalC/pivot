@@ -3091,6 +3091,15 @@ async function loadDashboard() {
   showDashboard(true);
   await Promise.all([loadChantiers(), loadFournisseursCarnet(), loadCarnetMoe(), loadNotifications(), loadPendingInvitations(), loadCatalogue()]);
   renderFamillesDashboard();
+  // Le carnet suit les changements de statut de ses fiches. La notification prévient l'utilisateur,
+  // cet abonnement tient l'affichage à jour — y compris si l'acceptation vient d'un autre chemin.
+  if (!window._carnetChannel) {
+    window._carnetChannel = db.channel('carnet-' + state.user.id)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'fournisseurs',
+          filter: `entrepreneur_id=eq.${state.user.id}` }, () => loadFournisseursCarnet())
+      .subscribe();
+  }
+
   // Realtime notifications — actif dès le login, indépendamment du chantier ouvert
   if (!window._notifChannel) {
     window._notifChannel = db.channel('notif-entrepreneur-' + state.user.id)
@@ -3107,8 +3116,12 @@ async function loadDashboard() {
             visa_moe: '📋 Nouveau VISA MOE',
             invitation_recue: '🏗 Nouvelle invitation chantier',
             consultation_ignoree: '🚫 Consultation déclinée',
-            reassignation_chantier: '⚠️ Chantier réaffecté'
+            reassignation_chantier: '⚠️ Chantier réaffecté',
+            relation_acceptee: '🤝 Mise en relation acceptée'
           };
+          // Le carnet vient de changer : le rafraîchir plutôt que d'attendre que l'utilisateur
+          // devine qu'il doit recharger la page.
+          if (n.type === 'relation_acceptee') loadFournisseursCarnet();
           const label = labels[n.type];
           if (label) {
             toast(label);
