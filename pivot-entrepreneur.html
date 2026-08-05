@@ -12246,37 +12246,68 @@ async function _genererDOEConfirmed() {
 }
 
 // ── Export fiches sélectionnées ──
+// Les fiches déjà enregistrées n'existent que par leur URL : la version précédente proposait de
+// les ouvrir dans des onglets, ce que le navigateur bloque presque toujours. Elle ne fusionnait
+// que les fichiers téléversés dans la session en cours, encore présents en mémoire — c'est-à-dire
+// presque jamais. On les télécharge donc pour les joindre au même document.
 async function dafExportFiches() {
-  const selected = state.fournitures.filter(f=>!f.is_variante&&window._dafRows[f.id]?._selected);
-  if (!selected.length) return toast('Sélectionnez au moins une fourniture','err');
-  const pdfBufs=[], urlFiches=[];
-  for(const f of selected){
-    for(const ft of window._dafRows[f.id]?.fiches||[]){
-      if(ft.type==='file'&&ft._arrayBuffer) pdfBufs.push({nom:ft.nom,buf:ft._arrayBuffer});
-      else if(ft.url) urlFiches.push(ft.url);
+  const selected = state.fournitures.filter(f => !f.is_variante && window._dafRows[f.id]?._selected);
+  if (!selected.length) return toast('Sélectionnez au moins une fourniture', 'err');
+
+  const sources = [];
+  for (const f of selected) {
+    for (const ft of window._dafRows[f.id]?.fiches || []) {
+      if (ft.type === 'file' && ft._arrayBuffer) sources.push({ nom: ft.nom, buf: ft._arrayBuffer });
+      else if (ft.url) sources.push({ nom: ft.nom || 'Fiche', url: ft.url });
     }
   }
-  if(!pdfBufs.length&&!urlFiches.length) return toast('Aucune fiche dans la sélection','err');
-  if(urlFiches.length && await showConfirm(`${urlFiches.length} lien(s) — ouvrir dans des onglets ?`))
-    urlFiches.forEach(u=>window.open(u,'_blank'));
-  if(pdfBufs.length&&window.PDFLib){
-    try{
-      const {PDFDocument}=window.PDFLib;
-      const merged=await PDFDocument.create();
-      for(const {buf} of pdfBufs){
-        try{ const d=await PDFDocument.load(buf,{ignoreEncryption:true});
-          const p=await merged.copyPages(d,d.getPageIndices());
-          p.forEach(pg=>merged.addPage(pg));
-        }catch(e){console.warn(e);}
+  if (!sources.length) return toast('Aucune fiche dans la sélection', 'err');
+  if (!window.PDFLib) return toast('Module PDF indisponible — rechargez la page', 'err');
+
+  toast(`Assemblage de ${sources.length} fiche(s)…`);
+  const echecs = [];
+  try {
+    const { PDFDocument } = window.PDFLib;
+    const merged = await PDFDocument.create();
+
+    for (const src of sources) {
+      try {
+        let buf = src.buf;
+        if (!buf) {
+          // Le bucket peut être privé : `_urlSignee` renvoie l'URL d'origine s'il est public.
+          const url = await _urlSignee(src.url);
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          buf = await resp.arrayBuffer();
+        }
+        const doc = await PDFDocument.load(buf, { ignoreEncryption: true });
+        const pages = await merged.copyPages(doc, doc.getPageIndices());
+        pages.forEach(pg => merged.addPage(pg));
+      } catch (e) {
+        // Une fiche illisible — image, PDF protégé, lien mort — ne doit pas emporter les autres.
+        console.warn('fiche ignorée', src.nom, e);
+        echecs.push(src.nom || 'sans nom');
       }
-      const bytes=await merged.save();
-      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
-      a.download=`Fiches_${new Date().toLocaleDateString('fr-FR').replace(/\//g,'-')}.pdf`; a.click();
-      toast(`${pdfBufs.length} fiche(s) mergée(s) téléchargée`);
-    }catch(e){toast('Erreur merge : '+e.message,'err');}
+    }
+
+    if (!merged.getPageCount()) {
+      return toast("Aucune fiche n'a pu être lue : " + echecs.join(', '), 'err');
+    }
+    const bytes = await merged.save();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = `Fiches_${new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+
+    toast(echecs.length
+      ? `${sources.length - echecs.length} fiche(s) assemblée(s) — ${echecs.length} illisible(s) : ${echecs.join(', ')}`
+      : `${sources.length} fiche(s) assemblée(s)`,
+      echecs.length ? 'err' : undefined);
+  } catch (e) {
+    toast(_messageErreur(e), 'err');
   }
 }
-
 
 async function soumettreDaf(id) {
   if (!await showConfirm('Soumettre cette DAF au MOE ?')) return;
