@@ -140,6 +140,8 @@
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🔔 Notifications</button>
       <button id="admin-tab-connexions" onclick="switchAdminTab('connexions')"
         class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">📊 Connexions</button>
+      <button id="admin-tab-purges" onclick="switchAdminTab('purges')"
+        class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">🧹 Purges</button>
     </div>
   </div>
 
@@ -315,6 +317,33 @@
   </div><!-- /admin-view-helpchat -->
 
   <!-- VUE NOTIFICATIONS -->
+  <div id="admin-view-purges" class="hidden space-y-5">
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b">
+        <h2 class="font-semibold text-gray-800">Purges à terminer</h2>
+        <p class="text-xs text-gray-400">
+          La suppression des fichiers et des comptes se fait hors transaction : si elle échoue, la
+          ligne reste ouverte ici. La tâche quotidienne la reprend, mais un échec persistant demande
+          une intervention — sans quoi des fichiers subsisteraient sans que personne le sache.
+        </p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500">
+            <tr>
+              <th class="px-3 py-2 text-left">Structure</th>
+              <th class="px-3 py-2 text-left">Purgée le</th>
+              <th class="px-3 py-2 text-right">Fichiers</th>
+              <th class="px-3 py-2 text-right">Comptes</th>
+              <th class="px-3 py-2 text-left">État</th>
+            </tr>
+          </thead>
+          <tbody id="purges-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /admin-view-purges -->
+
   <div id="admin-view-connexions" class="hidden space-y-5">
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       <div class="px-4 py-3 border-b flex items-center justify-between flex-wrap gap-2">
@@ -1840,7 +1869,7 @@ init();
 
 // ─── NAVIGATION ONGLETS ADMIN ─────────────────────────────────
 function switchAdminTab(tab) {
-  ['users','tela','waitlist','helpchat','notif','connexions'].forEach(t => {
+  ['users','tela','waitlist','helpchat','notif','connexions','purges'].forEach(t => {
     document.getElementById(`admin-view-${t}`)?.classList.toggle('hidden', t !== tab);
     const btn = document.getElementById(`admin-tab-${t}`);
     if (btn) {
@@ -1855,11 +1884,46 @@ function switchAdminTab(tab) {
   if (tab === 'helpchat') loadHelpConversations();
   if (tab === 'notif') loadAdminNotifSettings();
   if (tab === 'connexions') loadConnexions();
+  if (tab === 'purges') loadPurges();
 }
 
 // Activité des comptes. Les données viennent du schéma `auth`, inaccessible depuis le portail :
 // c'est la fonction `admin_stats_connexions` qui les expose, après avoir vérifié elle-même que
 // l'appelant est administrateur.
+// Registre des purges dont la seconde étape — fichiers et comptes — n'a pas abouti. Une ligne
+// close disparaît de la liste des incidents mais reste consultable : c'est la trace de ce qui a
+// été détruit, et à quelle date.
+async function loadPurges() {
+  const tbody = document.getElementById('purges-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Chargement…</td></tr>';
+  const { data, error } = await db.from('purge_restes')
+    .select('*').order('cree_le', { ascending: false }).limit(50);
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="px-3 py-4 text-center text-red-400 text-sm">${escHtml(_messageErreur(error))}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400 text-sm">Aucune purge enregistrée</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => {
+    const attendus = (r.fichiers || []).length;
+    const comptes = (r.comptes || []).length;
+    const [etat, classes] = r.traite_le
+      ? ['Terminée', 'bg-green-100 text-green-700']
+      : [r.erreur ? `Échec : ${r.erreur}` : 'En attente', 'bg-red-100 text-red-700'];
+    return `<tr class="border-t hover:bg-gray-50">
+      <td class="px-3 py-2">${escHtml(r.structure_nom || '—')}</td>
+      <td class="px-3 py-2 text-gray-500 text-xs">${new Date(r.cree_le).toLocaleDateString('fr-FR')}</td>
+      <td class="px-3 py-2 text-right text-xs ${r.fichiers_supprimes === attendus ? 'text-gray-500' : 'text-red-600 font-medium'}">
+        ${r.fichiers_supprimes ?? 0} / ${attendus}</td>
+      <td class="px-3 py-2 text-right text-xs ${r.comptes_supprimes === comptes ? 'text-gray-500' : 'text-red-600 font-medium'}">
+        ${r.comptes_supprimes ?? 0} / ${comptes}</td>
+      <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded-full ${classes}">${escHtml(etat)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
 async function loadConnexions() {
   const tbody = document.getElementById('cnx-tbody');
   tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-400 text-sm">Chargement…</td></tr>';
