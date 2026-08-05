@@ -1603,8 +1603,9 @@ async function loadChantiersStats() {
   // d'un chantier dont l'entreprise a quitté Pivot : dans les deux cas la colonne est vide. La
   // table des participants garde la trace du passage, et donc la différence.
   if (ids.length) {
-    const { data: parts } = await db.from('chantier_participants')
+    const { data: parts, error: pErr } = await db.from('chantier_participants')
       .select('chantier_id, role, parti_le').in('chantier_id', ids);
+    if (pErr) console.error('chantier_participants', pErr);
     const parEntreprise = {};
     for (const pt of parts || []) {
       if (pt.role !== 'entreprise') continue;
@@ -1807,6 +1808,8 @@ function renderChantiersList() {
             ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${entComplet ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}" title="Entreprises ayant accepté / invitées">
                  🏗 ${entAccepted}/${entTotal} entreprise${entTotal > 1 ? 's' : ''}
                </span>`
+            : c._entreprisePartie
+            ? ''
             : `<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">Aucune entreprise invitée</span>`}
         </div>
         <p class="text-xs text-gray-400 mt-2">${c.date_debut ? new Date(c.date_debut).toLocaleDateString('fr-FR') : ''}</p>
