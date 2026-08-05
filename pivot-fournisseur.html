@@ -3744,6 +3744,20 @@ function _appliquerAccesRestreint() {
   document.body.prepend(banner);
 }
 
+// Une écriture Supabase ne lève jamais d'exception : un refus RLS revient dans `error`, et un
+// UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
+// indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
+// jamais été écrit.
+async function _ecrire(requete, contexte) {
+  const { error } = await requete;
+  if (error) {
+    console.error(contexte, error);
+    toast(`${contexte} : ${_messageErreur(error)}`, 'err');
+    return false;
+  }
+  return true;
+}
+
 function _messageErreur(err) {
   const txt = err?.message || String(err || '');
   const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
@@ -4118,9 +4132,13 @@ async function supprimerVarianteFournisseur(fournitureId, ordre) {
   const consId = state.currentConsultation?.id;
   const fId = await _ficheCarnetPourConsultation(consId);
   if (consId && fId) {
-    await db.from('reponses_fournisseurs').delete()
+    const ok = await _ecrire(db.from('reponses_fournisseurs').delete()
       .eq('consultation_id', consId).eq('fourniture_id', fournitureId)
-      .eq('fournisseur_id', fId).eq('variante_ordre', ordre);
+      .eq('fournisseur_id', fId).eq('variante_ordre', ordre),
+      'Variante non supprimée');
+    // Sans ce retour, la ligne disparaissait de l'écran tout en restant dans le devis reçu par
+    // l'entreprise — l'écran et la base divergeaient sans que personne le sache.
+    if (!ok) return;
   }
 
   delete state.reponses[key];
@@ -4629,7 +4647,8 @@ async function saveReponses(send) {
             body: JSON.stringify({ user_id: consInfo.entrepreneur_id, portail: 'entrepreneur', title: 'Fournisseur a répondu', message: msgRep })
           }).catch(() => {});
         }
-        await db.from('consultations').update({ statut: 'repondue' }).eq('id', consId);
+        await _ecrire(db.from('consultations').update({ statut: 'repondue' }).eq('id', consId),
+      "Le statut de la consultation n'a pas pu être mis à jour");
         state.devisPdfUrl = null;
       }
     }
@@ -5857,7 +5876,8 @@ async function confirmerRenvoyer() {
   // Supprimer toutes les photos déjà envoyées pour cette ligne (fourniture_id null = item catalogue)
   let delQuery = db.from('photos_fournitures').delete().eq('demande_id', _renvoyerDemandeId);
   delQuery = _renvoyerFournitureId ? delQuery.eq('fourniture_id', _renvoyerFournitureId) : delQuery.is('fourniture_id', null);
-  await delQuery;
+  const { error: delErr } = await delQuery;
+  if (delErr) { errEl.textContent = _messageErreur(delErr); errEl.classList.remove('hidden'); return; }
 
   // Mettre à jour le commentaire sur la fourniture
   const { data: demande } = await db.from('demandes_photos')

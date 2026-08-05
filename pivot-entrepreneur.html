@@ -1457,6 +1457,20 @@ function _appliquerAccesRestreint() {
 // Traduit une erreur technique en message compréhensible. PostgreSQL renvoie le code 42501 et un
 // texte du genre « new row violates row-level security policy … » quand une écriture est refusée :
 // exact, mais inutilisable pour un paysagiste devant son écran.
+// Une écriture Supabase ne lève jamais d'exception : un refus RLS revient dans `error`, et un
+// UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
+// indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
+// jamais été écrit.
+async function _ecrire(requete, contexte) {
+  const { error } = await requete;
+  if (error) {
+    console.error(contexte, error);
+    toast(`${contexte} : ${_messageErreur(error)}`, 'err');
+    return false;
+  }
+  return true;
+}
+
 function _messageErreur(err) {
   const txt = err?.message || String(err || '');
   const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
@@ -5151,7 +5165,8 @@ async function undoLast() {
       const { keepers, deleted } = entry.data;
       // Restaurer les quantités originales des keepers
       for (const { id, qteOrigine } of keepers) {
-        await db.from('fournitures').update({ qte: qteOrigine }).eq('id', id);
+        await _ecrire(db.from('fournitures').update({ qte: qteOrigine }).eq('id', id),
+          'Quantité non restaurée');
         const f = state.fournitures.find(x => x.id === id);
         if (f) f.qte = qteOrigine;
       }
@@ -5167,7 +5182,8 @@ async function undoLast() {
     } else if (entry.action === 'affecter') {
       // Remettre les anciennes familles
       for (const { id, famille_id } of entry.data) {
-        await db.from('fournitures').update({ famille_id }).eq('id', id);
+        await _ecrire(db.from('fournitures').update({ famille_id }).eq('id', id),
+          'Famille non restaurée');
         const f = state.fournitures.find(x => x.id === id);
         if (f) f.famille_id = famille_id;
       }
@@ -5382,7 +5398,8 @@ async function saveFournitureField(id, key, value) {
     if (val) { if (idx >= 0) caract[idx].valeur = val; else caract.unshift({ cle: 'Type', valeur: val }); }
     else if (idx >= 0) { caract.splice(idx, 1); }
     try {
-      await db.from('fournitures').update({ caracteristiques: caract }).eq('id', id);
+      await _ecrire(db.from('fournitures').update({ caracteristiques: caract }).eq('id', id),
+      'Caractéristique non enregistrée');
       f.caracteristiques = caract;
     } catch(err) { toast(_messageErreur(err), 'err'); }
     return;
@@ -5391,7 +5408,8 @@ async function saveFournitureField(id, key, value) {
   const parsed = numKeys.includes(key) ? (parseFloat(value) || null) : (value.trim() || null);
   if (String(f[key] ?? '') === String(parsed ?? '')) return;
   try {
-    await db.from('fournitures').update({ [key]: parsed }).eq('id', id);
+    await _ecrire(db.from('fournitures').update({ [key]: parsed }).eq('id', id),
+      'Modification non enregistrée');
     f[key] = parsed;
   } catch(err) { toast(_messageErreur(err), 'err'); }
 }
@@ -8576,14 +8594,17 @@ async function saveCurrentJeu() {
   try {
     if (!jeuId) {
       for (const [fId, sel] of Object.entries(state.compSelections)) {
-        await db.from('comparatif_selections').delete().eq('fourniture_id', fId);
-        await db.from('comparatif_selections').insert({
+        const { error: dErr } = await db.from('comparatif_selections').delete().eq('fourniture_id', fId);
+        if (dErr) throw dErr;
+        const { error: iErr } = await db.from('comparatif_selections').insert({
           jeu_id: null, consultation_id: sel.consultation_id, fourniture_id: fId,
           fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte
         });
+        if (iErr) throw iErr;
       }
     } else {
-      await db.from('comparatif_selections').delete().eq('jeu_id', jeuId);
+      const { error: jErr } = await db.from('comparatif_selections').delete().eq('jeu_id', jeuId);
+      if (jErr) throw jErr;
       const rows = Object.entries(state.compSelections).map(([fId, sel]) => ({
         jeu_id: jeuId, consultation_id: sel.consultation_id, fourniture_id: fId,
         fournisseur_id: sel.fournisseur_id, prix_unit_ht: sel.prix_unit_ht, qte: sel.qte
@@ -9107,7 +9128,8 @@ function _setupCompStickyHeaders() {
 async function saveCompFraisPortEtude(consId, value) {
   const val = parseFloat(value) || 0;
   if (state.compCaches[consId]) state.compCaches[consId].fraisPortEtude = val;
-  await db.from('consultations').update({ frais_port_etude: val }).eq('id', consId);
+  await _ecrire(db.from('consultations').update({ frais_port_etude: val }).eq('id', consId),
+    'Frais de port non enregistrés');
   _renderComparatif();
 }
 
@@ -10180,17 +10202,17 @@ function dafSetDesignation(fId,v){ _dafEnsure(fId); window._dafRows[fId]._design
 async function dafSetReference(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].reference = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ reference: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
+  if (dafId) await _ecrire(db.from('daf').update({ reference: v || null }).eq('id', dafId), 'Référence non enregistrée');
 }
 async function dafSetFabricant(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].fabricant = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ fabricant: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
+  if (dafId) await _ecrire(db.from('daf').update({ fabricant: v || null }).eq('id', dafId), 'Fabricant non enregistré');
 }
 async function dafSetDelai(fId,v) {
   _dafEnsure(fId); window._dafRows[fId].date_livraison_prevue = v;
   const dafId = window._dafRows[fId].daf_id;
-  if (dafId) { try { await db.from('daf').update({ date_livraison_prevue: v || null }).eq('id', dafId); } catch (err) { toast(_messageErreur(err), 'err'); } }
+  if (dafId) await _ecrire(db.from('daf').update({ date_livraison_prevue: v || null }).eq('id', dafId), 'Délai non enregistré');
 }
 function dafAddCaract(fId)       { _dafEnsure(fId); if(!window._dafRows[fId]._caract) window._dafRows[fId]._caract=[]; window._dafRows[fId]._caract.push({cle:'',valeur:''}); dafRefreshRow(fId); }
 function dafRemoveCaract(fId,idx){ _dafEnsure(fId); window._dafRows[fId]._caract?.splice(idx,1); dafRefreshRow(fId); }
@@ -12629,7 +12651,8 @@ async function saveSuiviCell(fournitureId, field, value) {
       state.daf.push(data);
       d = data;
     }
-    await db.from('daf').update({ [field]: value || null }).eq('id', d.id);
+    await _ecrire(db.from('daf').update({ [field]: value || null }).eq('id', d.id),
+      'Modification de la DAF non enregistrée');
     d[field] = value || null;
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
@@ -12656,10 +12679,11 @@ function editSuivi(dafId) {
 
 async function saveSuivi(dafId) {
   try {
-    await db.from('daf').update({
+    const { error } = await db.from('daf').update({
       date_livraison_prevue: document.getElementById('sv-livp').value || null,
       en_stock: document.getElementById('sv-stock').checked
     }).eq('id', dafId);
+    if (error) throw error;
     const d = state.daf.find(x => x.id === dafId);
     if (d) {
       d.date_livraison_prevue = document.getElementById('sv-livp').value || null;
@@ -12675,7 +12699,8 @@ async function saveSuivi(dafId) {
 
 async function saveSuiviField(dafId, field, value) {
   try {
-    await db.from('daf').update({ [field]: value || null }).eq('id', dafId);
+    await _ecrire(db.from('daf').update({ [field]: value || null }).eq('id', dafId),
+      'Modification de la DAF non enregistrée');
     const d = state.daf.find(x => x.id === dafId);
     if (d) d[field] = value || null;
   } catch(err) { toast(_messageErreur(err), 'err'); }
@@ -12821,7 +12846,8 @@ async function saveDoeDafField(fournitureId, key, value) {
   const d = (state.daf || []).find(x => x.fourniture_id === fournitureId);
   if (!d) return;
   try {
-    await db.from('daf').update({ [key]: value || null }).eq('id', d.id);
+    await _ecrire(db.from('daf').update({ [key]: value || null }).eq('id', d.id),
+      'Modification de la DAF non enregistrée');
     d[key] = value || null;
   } catch(err) { toast(_messageErreur(err), 'err'); }
 }

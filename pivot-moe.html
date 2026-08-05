@@ -418,6 +418,20 @@ function _appliquerAccesRestreint() {
   document.body.prepend(banner);
 }
 
+// Une écriture Supabase ne lève jamais d'exception : un refus RLS revient dans `error`, et un
+// UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
+// indiscernable d'un échec. Sans ce garde-fou, l'utilisateur croit avoir enregistré ce qui n'a
+// jamais été écrit.
+async function _ecrire(requete, contexte) {
+  const { error } = await requete;
+  if (error) {
+    console.error(contexte, error);
+    toast(`${contexte} : ${_messageErreur(error)}`, 'err');
+    return false;
+  }
+  return true;
+}
+
 function _messageErreur(err) {
   const txt = err?.message || String(err || '');
   const rls = err?.code === '42501' || /row-level security|row level security/i.test(txt);
@@ -3716,7 +3730,8 @@ async function undoLast() {
       const { keepers, deleted } = entry.data;
       // Restaurer les quantités d'origine des lignes conservées
       for (const { id, qteOrigine } of keepers) {
-        await db.from('fournitures').update({ qte: qteOrigine }).eq('id', id);
+        await _ecrire(db.from('fournitures').update({ qte: qteOrigine }).eq('id', id),
+          'Quantité non restaurée');
         const f = state.fournitures.find(x => x.id === id);
         if (f) f.qte = qteOrigine;
       }
@@ -3730,7 +3745,8 @@ async function undoLast() {
       toast(`Fusion annulée — ${deleted.length} ligne(s) restaurée(s)`);
     } else if (entry.action === 'affecter') {
       for (const { id, famille_id } of entry.data) {
-        await db.from('fournitures').update({ famille_id }).eq('id', id);
+        await _ecrire(db.from('fournitures').update({ famille_id }).eq('id', id),
+          'Famille non restaurée');
         const f = state.fournitures.find(x => x.id === id);
         if (f) f.famille_id = famille_id;
       }
@@ -3792,7 +3808,8 @@ async function supprimerSelectionnes() {
 async function deleteFourniture(id) {
   if (!await showConfirm('Supprimer cette fourniture ?')) return;
   try {
-    await db.from('fournitures').delete().in('id', [id]);
+    await _ecrire(db.from('fournitures').delete().in('id', [id]),
+      'Suppression de la fourniture refusée');
     _unregisterFournitures([id]);
     renderFournitures();
   } catch (err) { toast(_messageErreur(err), 'err'); }
@@ -4046,7 +4063,8 @@ async function saveFournitureField(id, key, value) {
     if (val) { if (idx >= 0) caract[idx].valeur = val; else caract.unshift({ cle: 'Type', valeur: val }); }
     else if (idx >= 0) { caract.splice(idx, 1); }
     try {
-      await db.from('fournitures').update({ caracteristiques: caract }).eq('id', id);
+      await _ecrire(db.from('fournitures').update({ caracteristiques: caract }).eq('id', id),
+      'Caractéristique non enregistrée');
       f.caracteristiques = caract;
     } catch(err) { toast(_messageErreur(err), 'err'); }
     return;
@@ -4055,7 +4073,8 @@ async function saveFournitureField(id, key, value) {
   const parsed = numKeys.includes(key) ? (parseFloat(value) || null) : (value.trim() || null);
   if (String(f[key] ?? '') === String(parsed ?? '')) return;
   try {
-    await db.from('fournitures').update({ [key]: parsed }).eq('id', id);
+    await _ecrire(db.from('fournitures').update({ [key]: parsed }).eq('id', id),
+      'Modification non enregistrée');
     f[key] = parsed;
   } catch(err) { toast(_messageErreur(err), 'err'); }
 }
