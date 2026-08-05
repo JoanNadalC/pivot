@@ -1014,7 +1014,11 @@ function _hideLoading() {
 // onglet. Un échec ne doit jamais empêcher l'ouverture du portail : on l'ignore silencieusement.
 async function _journaliserConnexion(portail) {
   try {
-    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }), 'journal de connexion');
+    // Une seule ligne par compte, portail et jour : les connexions suivantes heurtent la clé
+    // primaire, ce qui est le comportement voulu. `ignoreDuplicates` évite d'en faire une erreur.
+    await _discret(db.from('connexions_journal')
+      .upsert({ user_id: state.user.id, portail }, { onConflict: 'user_id,portail,jour', ignoreDuplicates: true }),
+      'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
 
