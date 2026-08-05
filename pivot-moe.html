@@ -913,6 +913,7 @@ function _initNotifRealtime() {
         reponse_daf: '📋 Réponse DAF reçue',
         daf_soumise: '📄 Nouvelle DAF soumise',
         invitation_chantier_moe: '📬 Invitation chantier',
+        document_soumis: '📐 Nouveau document à viser',
       };
       const label = labels[n.type] || '🔔 Notification';
       toast(label + (n.message ? ' — ' + n.message : ''));

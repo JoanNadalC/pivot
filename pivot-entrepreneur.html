@@ -12363,22 +12363,43 @@ async function dafExportFiches() {
   }
 }
 
+// Une soumission suppose un destinataire. Sans maître d'œuvre rattaché, la pièce change d'état et
+// personne ne la reçoit — ce que les messages annonçaient pourtant. On ne l'interdit pas, un
+// maître d'œuvre hors Pivot restant légitime, mais on dit ce qui va se passer.
+async function _confirmerSansMoe(quoi) {
+  if (state.currentChantier?.moe_id) return true;
+  await chargerMoeEnAttente();
+  const message = state._moeEnAttente?.length
+    ? `Le maître d'œuvre invité n'a pas encore accepté : il ne recevra ${quoi} tant qu'il n'aura pas répondu. Continuer ?`
+    : `Aucun maître d'œuvre n'est rattaché à ce chantier : personne ne recevra ${quoi}. Continuer ?`;
+  return showConfirm(message, { title: 'Envoyer sans destinataire ?' });
+}
+
+// Prévient le maître d'œuvre qu'une pièce l'attend. L'échec ne doit pas faire échouer l'envoi,
+// mais ne doit pas non plus être tu : sans notification, la pièce dort jusqu'à ce qu'il pense à
+// regarder.
+async function _notifierMoe(type, message, extra = {}) {
+  const moeId = state.currentChantier?.moe_id;
+  if (!moeId) return;
+  const ok = await _discret(db.from('notifications').insert({
+    type, user_id: moeId, message, read: false,
+    chantier_id: state.currentChantier.id, ...extra,
+  }), 'notification');
+  if (!ok) toast("Envoi enregistré, mais le maître d'œuvre n'a pas pu être notifié.", 'err');
+  fetch(`${WORKER_URL}/notify-event`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: moeId, portail: 'moe', title: 'Pivot', message })
+  }).catch(() => {});
+}
+
 async function soumettreDaf(id) {
   // Sans maître d'œuvre rattaché, la soumission ne parvient à personne : la DAF change d'état et
   // le message annonçait pourtant « soumise au MOE ». On ne l'interdit pas — un maître d'œuvre
   // hors Pivot reste possible, l'entreprise renseignant alors les visas dans le Suivi — mais on
   // dit ce qui va réellement se passer.
   const moeId = state.currentChantier?.moe_id;
-  if (!moeId) {
-    await chargerMoeEnAttente();
-    const enAttente = state._moeEnAttente?.length;
-    const message = enAttente
-      ? "Le maître d'œuvre invité n'a pas encore accepté : il ne recevra pas cette DAF tant qu'il n'aura pas répondu. La soumettre quand même ?"
-      : "Aucun maître d'œuvre n'est rattaché à ce chantier : personne ne recevra cette DAF. Vous pourrez renseigner son visa vous-même dans l'onglet Suivi. Continuer ?";
-    if (!await showConfirm(message, { title: 'Soumettre sans destinataire ?' })) return;
-  } else if (!await showConfirm('Soumettre cette DAF au MOE ?')) {
-    return;
-  }
+  if (!await _confirmerSansMoe('cette DAF')) return;
+  if (moeId && !await showConfirm('Soumettre cette DAF au MOE ?')) return;
   try {
     // `.select()` et contrôle du nombre de lignes : un refus RLS ne lève AUCUNE erreur et renvoie
     // simplement zéro ligne. Sans ce test, l'affichage passait en « soumise » alors que la base
@@ -12574,6 +12595,7 @@ async function uploadDocumentViser() {
   const nom = nomInput.value.trim();
   if (!file) return;
   if (!nom) { toast('Indiquez un nom pour le document', 'err'); fileInput.value = ''; return; }
+  if (!await _confirmerSansMoe('ce document')) { fileInput.value = ''; return; }
   try {
     toast('Envoi en cours…');
     const path = `${ch.id}/${Date.now()}_${file.name}`;
@@ -12587,7 +12609,9 @@ async function uploadDocumentViser() {
     });
     if (error) throw error;
     fileInput.value = ''; nomInput.value = '';
-    toast('Document envoyé au MOE !');
+    await _notifierMoe('document_soumis',
+      `Nouveau document à viser : ${nom} — ${ch.affaire || ''}`);
+    toast(ch.moe_id ? 'Document envoyé au MOE !' : 'Document enregistré — aucun destinataire à prévenir');
     loadDocumentsViser();
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
@@ -12608,6 +12632,7 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
   const file = document.getElementById('doc-nv-file').files[0];
   if (!file) return toast('Choisissez un fichier', 'err');
   const ch = state.currentChantier;
+  if (!await _confirmerSansMoe('cette version')) return;
   try {
     toast('Envoi en cours…');
     const path = `${ch.id}/${Date.now()}_${file.name}`;
@@ -12621,7 +12646,9 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
     });
     if (error) throw error;
     closeModal();
-    toast('Nouvelle version envoyée !');
+    await _notifierMoe('document_soumis',
+      `Nouvelle version à viser : ${nom} (v${prevVersion + 1}) — ${ch.affaire || ''}`);
+    toast(ch.moe_id ? 'Nouvelle version envoyée !' : 'Version enregistrée — aucun destinataire à prévenir');
     loadDocumentsViser();
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
