@@ -2068,7 +2068,14 @@ async function loadDemandesRelation() {
       .or(`compte_fournisseur_id.eq.${state.user.id},fournisseur_portail_id.eq.${state.user.id}`)
       .eq('statut', 'pending');
     if (error) throw error;
-    renderDemandesRelation(data || []);
+
+    // La fiche porte le nom du fournisseur tel que l'entreprise l'a enregistré : l'afficher
+    // revenait à montrer au fournisseur son propre nom au lieu de celui de son interlocuteur.
+    // L'identité du demandeur vient de la fonction, qui applique ses réglages de visibilité —
+    // une demande en attente n'ouvre que le niveau public, ce qui est bien l'intention.
+    const { data: entreprises } = await db.rpc('contacts_entreprises_liees');
+    const parCompte = Object.fromEntries((entreprises || []).map(e => [e.compte_id, e]));
+    renderDemandesRelation((data || []).map(d => ({ ...d, _ent: parCompte[d.entrepreneur_id] || null })));
     loadRelationsAcceptees();
   } catch (err) { console.error('loadDemandesRelation', err); }
 }
@@ -2081,8 +2088,12 @@ function renderDemandesRelation(demandes) {
   el.innerHTML = demandes.map(d => `
     <div data-relation="${d.id}" class="flex items-center justify-between py-2 px-2 -mx-2 rounded-lg border-t first:border-t-0 transition-colors">
       <div class="min-w-0">
-        <p class="text-sm">${escHtml(d.nom || 'Une entreprise')}</p>
-        ${d.created_at ? `<p class="text-xs text-gray-400">Demande du ${new Date(d.created_at).toLocaleDateString('fr-FR')}</p>` : ''}
+        <p class="text-sm font-medium">${escHtml(d._ent?.societe || 'Une entreprise')}</p>
+        <p class="text-xs text-gray-400">
+          ${[[d._ent?.prenom, d._ent?.nom].filter(Boolean).join(' '), d._ent?.fonction, d._ent?.ville]
+            .filter(Boolean).map(escHtml).join(' · ')}
+          ${d.created_at ? `${d._ent?.prenom || d._ent?.ville ? ' · ' : ''}Demande du ${new Date(d.created_at).toLocaleDateString('fr-FR')}` : ''}
+        </p>
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <button onclick="accepterDemandeRelation('${d.id}')" class="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700">Accepter</button>
