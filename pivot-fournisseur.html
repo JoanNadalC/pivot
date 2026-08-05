@@ -3942,7 +3942,8 @@ async function retirerMembre(userId) {
     const { error } = await db.from('structure_membres').delete()
       .eq('user_id', userId).eq('structure_id', state.structureId);
     if (error) throw error;
-    await db.from('profiles').update({ structure_id: null }).eq('id', userId);
+    await _ecrire(db.from('profiles').update({ structure_id: null }).eq('id', userId),
+      'Le membre a été retiré, mais son rattachement subsiste');
     toast('Membre retiré');
     await openEquipeModal();
   } catch (err) { toast(_messageErreur(err), 'err'); }
@@ -4005,9 +4006,11 @@ async function processTeamInvite() {
         user_id: state.user.id, structure_id: inv.structure_id, role: 'membre'
       });
       if (e2) throw e2;
-      await db.from('profiles').update({ structure_id: inv.structure_id }).eq('id', state.user.id);
+      const { error: ratErr } = await db.from('profiles').update({ structure_id: inv.structure_id }).eq('id', state.user.id);
+    if (ratErr) throw ratErr;
     }
-    await db.from('team_invitations').update({ statut: 'accepted' }).eq('id', inv.id);
+    await _ecrire(db.from('team_invitations').update({ statut: 'accepted' }).eq('id', inv.id),
+      "Vous avez rejoint l'équipe, mais l'invitation reste marquée en attente");
     state.pendingTeamToken = null;
     state.structureId = inv.structure_id;
     toast('Vous avez rejoint l\'équipe avec succès !');

@@ -1105,7 +1105,8 @@ async function saveNote(structureId, value) {
   if (!s || s.notes_admin === value) return;
   s.notes_admin = value;
   state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.notes_admin = value; });
-  await db.from('structures').update({ notes_admin: value }).eq('id', structureId);
+  await _ecrire(db.from('structures').update({ notes_admin: value }).eq('id', structureId),
+    'Note non enregistrée');
 }
 
 // ── ACTIONS RAPIDES ───────────────────────────────────────────
@@ -1227,7 +1228,8 @@ async function quickChangeStatut(structureId, statut) {
       </div>`);
     return;
   }
-  await db.from('structures').update({ statut_abonnement: statut }).eq('id', structureId);
+  await _ecrire(db.from('structures').update({ statut_abonnement: statut }).eq('id', structureId),
+    "Statut d'abonnement non enregistré");
   const s = state.structures.find(x => x.id === structureId);
   if (s) s.statut_abonnement = statut;
   state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = statut; });
@@ -1324,7 +1326,8 @@ async function adminProlonger(notifId, structureId) {
   const base = struct?.date_echeance ? new Date(struct.date_echeance) : new Date();
   base.setMonth(base.getMonth() + 1);
   const echeance = base.toISOString().slice(0, 10);
-  await db.from('structures').update({ date_echeance: echeance, relance_envoyee: false }).eq('id', structureId);
+  await _ecrire(db.from('structures').update({ date_echeance: echeance, relance_envoyee: false }).eq('id', structureId),
+    'Échéance non enregistrée');
   await dismissAdminNotif(notifId);
   const s = state.structures.find(x => x.id === structureId);
   if (s) { s.date_echeance = echeance; s.relance_envoyee = false; }
@@ -1333,7 +1336,8 @@ async function adminProlonger(notifId, structureId) {
 }
 
 async function adminBloquer(notifId, structureId) {
-  await db.from('structures').update({ statut_abonnement: 'suspendu' }).eq('id', structureId);
+  await _ecrire(db.from('structures').update({ statut_abonnement: 'suspendu' }).eq('id', structureId),
+    'Suspension non enregistrée');
   await dismissAdminNotif(notifId);
   const s = state.structures.find(x => x.id === structureId);
   if (s) s.statut_abonnement = 'suspendu';
@@ -1358,7 +1362,8 @@ async function markAllAdminNotifsRead() {
 
 async function toggleStatut(structureId, current) {
   const newStatut = current === 'actif' ? 'suspendu' : 'actif';
-  await db.from('structures').update({ statut_abonnement: newStatut }).eq('id', structureId);
+  await _ecrire(db.from('structures').update({ statut_abonnement: newStatut }).eq('id', structureId),
+    'Statut non enregistré');
   const s = state.structures.find(x => x.id === structureId);
   if (s) s.statut_abonnement = newStatut;
   state.comptes.forEach(c => { if (c._structure?.id === structureId) c._structure.statut_abonnement = newStatut; });
@@ -1467,8 +1472,10 @@ async function createStructureForUser(userId, type) {
       mode_paiement: paiement, statut_abonnement: statut, referent_id: userId
     }).select().single();
     if (error) throw error;
-    await db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' });
-    await db.from('profiles').update({ structure_id: struct.id }).eq('id', userId);
+    await _ecrire(db.from('structure_membres').insert({ structure_id: struct.id, user_id: userId, role: 'referent' }),
+      "Le référent n'a pas été rattaché à la structure");
+    await _ecrire(db.from('profiles').update({ structure_id: struct.id }).eq('id', userId),
+      'Rattachement du profil non enregistré');
     closeModal();
     toast('Structure créée');
     await loadAll();
@@ -1606,8 +1613,10 @@ async function createStructure() {
 
   // Ajouter le référent comme membre
   if (referent_id) {
-    await db.from('structure_membres').insert({ structure_id: data.id, user_id: referent_id, role: 'referent' });
-    await db.from('profiles').upsert({ id: referent_id, structure_id: data.id }, { onConflict: 'id' });
+    await _ecrire(db.from('structure_membres').insert({ structure_id: data.id, user_id: referent_id, role: 'referent' }),
+      "Le référent n'a pas été rattaché à la structure");
+    await _ecrire(db.from('profiles').upsert({ id: referent_id, structure_id: data.id }, { onConflict: 'id' }),
+      'Rattachement du profil non enregistré');
   }
 
   closeModal();
@@ -1782,6 +1791,30 @@ function showModal(html) {
 function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
 
 let _toastTimer;
+// Traduit les codes techniques en langage compréhensible. Le portail admin affichait jusqu'ici
+// les messages bruts de PostgreSQL.
+function _messageErreur(err) {
+  const txt = err?.message || String(err || '');
+  if (err?.code === '42501' || /row-level security/i.test(txt)) return "Vous n'avez pas les droits pour effectuer cette action.";
+  if (err?.code === '23505') return "Cet élément existe déjà.";
+  if (err?.code === '23503') return "Cet élément est utilisé ailleurs et ne peut pas être supprimé.";
+  if (/Failed to fetch/i.test(txt)) return "Connexion au serveur impossible. Vérifiez votre accès internet.";
+  return txt;
+}
+
+// Une écriture Supabase ne lève jamais d'exception : un refus RLS revient dans `error`, et un
+// UPDATE qui ne touche aucune ligne renvoie {data: [], error: null, status: 200} — un succès
+// indiscernable d'un échec.
+async function _ecrire(requete, contexte) {
+  const { error } = await requete;
+  if (error) {
+    console.error(contexte, error);
+    toast(`${contexte} : ${_messageErreur(error)}`, 'err');
+    return false;
+  }
+  return true;
+}
+
 function toast(msg, type) {
   const el = document.getElementById('toast');
   el.textContent = msg;
