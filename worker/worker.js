@@ -1326,6 +1326,14 @@ async function getCallerRole(env, userId) {
 // Irréversible, donc jamais automatique : déclenchée à la main depuis le portail admin.
 // La ligne `structures` est conservée — elle porte la trace comptable (nom, dates, identifiants
 // Stripe) que la facturation impose de garder, alors que le RGPD demande d'effacer le reste.
+// Purge d'une structure. La suppression des lignes est confiée à `purger_structure`, exécutée en
+// une seule transaction : l'ancienne version enchaînait des appels REST, et son échec en cours de
+// route laissait la structure à demi effacée, sans moyen de savoir où l'opération s'était arrêtée.
+//
+// Restent ici les deux traitements qui ne peuvent pas entrer dans une transaction, parce qu'ils
+// vivent hors de la base : les fichiers du Storage et les comptes d'authentification. La fonction
+// consigne le travail à faire dans `purge_restes` avant de rendre la main — ainsi un échec de
+// cette seconde étape laisse une trace exploitable au lieu de fichiers introuvables.
 async function handlePurgerStructure(request, env) {
   const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*' };
   const json = (body, status = 200) =>
@@ -1344,194 +1352,88 @@ async function handlePurgerStructure(request, env) {
     'Content-Type': 'application/json',
   };
 
-  // Garde-fou serveur : on ne purge que ce qui est réellement résilié et hors délai. Un identifiant
-  // envoyé par erreur depuis l'interface ne doit pas pouvoir effacer une structure active.
-  const sRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}&select=id,nom,statut_abonnement,resilie_le,donnees_supprimees_le`,
-    { headers }
-  );
-  const [struct] = await sRes.json();
-  if (!struct) return json({ error: 'Structure introuvable.' }, 404);
-  if (struct.donnees_supprimees_le) return json({ error: 'Les données de cette structure ont déjà été supprimées.' }, 409);
-  if (struct.statut_abonnement !== 'resilie') return json({ error: 'Cette structure n\'est pas résiliée.' }, 409);
-
-  const joursEcoules = struct.resilie_le
-    ? Math.floor((Date.now() - new Date(struct.resilie_le).getTime()) / 86400000)
-    : null;
-  if (joursEcoules === null || joursEcoules < JOURS_AVANT_SUPPRESSION) {
-    return json({ error: `Délai non écoulé : ${joursEcoules ?? '?'} jour(s) depuis la résiliation, ${JOURS_AVANT_SUPPRESSION} requis.` }, 409);
+  // ── Étape transactionnelle ────────────────────────────────────────────────
+  // Les trois conditions — résiliée, délai écoulé, pas déjà purgée — sont revérifiées par la
+  // fonction elle-même : une purge lancée par un autre chemin subit les mêmes contrôles.
+  const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/purger_structure`, {
+    method: 'POST', headers, body: JSON.stringify({ p_structure_id: structureId }),
+  });
+  if (!rpc.ok) {
+    const txt = await rpc.text();
+    console.error('purger_structure:', txt);
+    let msg = txt;
+    try { msg = JSON.parse(txt).message || txt; } catch (_) {}
+    return json({ error: msg }, 409);
   }
+  const res = await rpc.json();
+  const supprimees = { ...(res.supprimees || {}) };
+  if (res.pieces_conservees) supprimees['pièces conservées (tiers)'] = res.pieces_conservees;
 
-  // Membres de la structure : c'est par eux qu'on retrouve les données métier.
-  const mRes = await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?structure_id=eq.${structureId}&select=user_id`, { headers });
-  const userIds = ((await mRes.json()) || []).map(m => m.user_id).filter(Boolean);
+  // ── Étape hors transaction ────────────────────────────────────────────────
+  const bilan = await terminerPurge(env, headers, res);
+  Object.assign(supprimees, bilan.compte);
 
-  const supprimees = {};
-  const del = async (table, filtre) => {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filtre}`, {
-      method: 'DELETE', headers: { ...headers, 'Prefer': 'return=representation' },
-    });
-    if (!r.ok) throw new Error(`${table} : ${await r.text()}`);
-    supprimees[table] = (supprimees[table] || 0) + ((await r.json()) || []).length;
-  };
-  const lire = async (chemin) => {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${chemin}`, { headers });
-    return r.ok ? (await r.json()) || [] : [];
-  };
+  await notifyAdmin(env, {
+    categorie: 'resiliation',
+    message: `Données supprimées — ${res.structure} (${Object.entries(supprimees).map(([t, n]) => `${t}: ${n}`).join(', ') || 'aucune donnée'})`
+      + (bilan.erreur ? ` — ⚠️ reste à traiter : ${bilan.erreur}` : ''),
+    structureId,
+  });
 
-  // Les adresses des fichiers vivent DANS les lignes que l'on s'apprête à supprimer : il faut les
-  // relever avant, sinon les PDF et photos resteraient indéfiniment dans le Storage sans que rien
-  // ne permette plus de les retrouver.
-  const fichiers = new Set();
-  const releverUrl = (u) => {
-    if (!u || typeof u !== 'string') return;
-    const m = u.match(/\/object\/(?:public|sign)\/([^/]+)\/([^?]+)/);
-    if (m) fichiers.add(`${m[1]}::${decodeURIComponent(m[2])}`);
-  };
+  return json({ ok: true, supprimees, reste: bilan.erreur || null });
+}
 
-  try {
-    if (userIds.length) {
-      const liste = `in.(${userIds.join(',')})`;
-      // Ordre imposé par les clés étrangères : on part des feuilles vers les racines.
-      const { data: chantiers } = await fetch(
-        `${SUPABASE_URL}/rest/v1/chantiers?entrepreneur_id=${liste}&select=id`, { headers }
-      ).then(async r => ({ data: await r.json() }));
-      const chantierIds = (chantiers || []).map(c => c.id);
+// Efface les fichiers relevés puis les comptes, et clôt la ligne de `purge_restes`. Un échec n'est
+// pas fatal : la ligne reste ouverte, la tâche quotidienne la reprendra et signalera l'incident.
+async function terminerPurge(env, headers, res) {
+  const compte = {};
+  let erreur = null;
 
-      if (chantierIds.length) {
-        const chListe = `in.(${chantierIds.join(',')})`;
-
-        // Relevé des pièces jointes, avant toute suppression.
-        //
-        // Certaines n'appartiennent pas qu'à l'entreprise purgée : un devis engage son émetteur et
-        // relève de sa conservation comptable ; un visa est un acte du maître d'œuvre, qu'il doit
-        // pouvoir produire des années plus tard ; une photo a été prise par le fournisseur sur ses
-        // propres végétaux. Leurs fichiers sont épargnés.
-        //
-        // Les lignes qui les portent, elles, partent encore : leurs clés étrangères pointent vers
-        // le chantier et la consultation que la purge supprime. Les rendre autonomes est le
-        // chantier suivant. En attendant, un fichier détruit l'est définitivement, tandis qu'un
-        // rattachement se reconstruit — le chemin de stockage conserve les identifiants.
-        const conserves = [];
-        const conserver = (u) => { if (u) conserves.push(u); };
-
-        for (const d of await lire(`daf?chantier_id=${chListe}&select=pdf_url,pdf_visa_url`)) {
-          // Une DAF visée est indissociable de son visa : on garde le document soumis avec lui.
-          if (d.pdf_visa_url) { conserver(d.pdf_url); conserver(d.pdf_visa_url); }
-          else releverUrl(d.pdf_url);
-        }
-        for (const d of await lire(`documents_viser?chantier_id=${chListe}&select=url,pdf_url,pdf_visa_url`)) {
-          if (d.pdf_visa_url) { conserver(d.url); conserver(d.pdf_url); conserver(d.pdf_visa_url); }
-          else { releverUrl(d.url); releverUrl(d.pdf_url); }
-        }
-        // Seul un devis validé est une pièce : une saisie de prix sans devis émis n'engage rien.
-        for (const r of await lire(`reponses_fournisseurs?entrepreneur_id=${liste}&select=devis_pdf_url,devis_valide_at`)) {
-          if (r.devis_valide_at) conserver(r.devis_pdf_url);
-          else releverUrl(r.devis_pdf_url);
-        }
-        // Les fiches techniques jointes à une DAF sont déjà annexées au PDF visé, et ce sont des
-        // documents publics de fabricant : elles partent avec le reste.
-        for (const f of await lire(`fournitures?chantier_id=${chListe}&select=fiches_techniques`)) {
-          (f.fiches_techniques || []).forEach(ft => releverUrl(ft?.url));
-        }
-        const consIds = (await lire(`consultations?chantier_id=${chListe}&select=id`)).map(c => c.id);
-        if (consIds.length) {
-          for (const p of await lire(`photos_fournitures?consultation_id=in.(${consIds.join(',')})&select=url`)) {
-            conserver(p.url);
-          }
-        }
-        // Une pièce conservée ne doit pas être effacée parce qu'une autre ligne la référence aussi.
-        for (const u of conserves) {
-          const m = u.match(/\/object\/(?:public|sign)\/([^/]+)\/([^?]+)/);
-          if (m) fichiers.delete(`${m[1]}::${decodeURIComponent(m[2])}`);
-        }
-        supprimees['fichiers conservés (tiers)'] = conserves.length;
-
-        // `comparatif_selections` se rattache à la consultation et à la fourniture, jamais au
-        // chantier : il faut relever ces identifiants avant de supprimer les tables porteuses.
-        const fournIds = (await lire(`fournitures?chantier_id=${chListe}&select=id`)).map(f => f.id);
-
-        await del('reponses_fournisseurs', `entrepreneur_id=${liste}`);
-        if (consIds.length) await del('comparatif_selections', `consultation_id=in.(${consIds.join(',')})`);
-        if (fournIds.length) await del('comparatif_selections', `fourniture_id=in.(${fournIds.join(',')})`);
-        await del('comparatif_masques', `chantier_id=${chListe}`);
-        // Les lignes de commande se rattachent à leur commande, pas au chantier.
-        const cmdIds = (await lire(`commandes?chantier_id=${chListe}&select=id`)).map(c => c.id);
-        if (cmdIds.length) await del('commande_lignes', `commande_id=in.(${cmdIds.join(',')})`);
-        await del('commandes', `chantier_id=${chListe}`);
-        // Les photos étaient relevées pour leurs fichiers, mais leurs lignes restaient en base.
-        if (consIds.length) await del('photos_fournitures', `consultation_id=in.(${consIds.join(',')})`);
-        await del('daf', `chantier_id=${chListe}`);
-        await del('documents_viser', `chantier_id=${chListe}`);
-        await del('fournitures', `chantier_id=${chListe}`);
-        await del('consultations', `chantier_id=${chListe}`);
-        await del('chantiers', `id=${chListe}`);
-      }
-      await del('fournisseurs', `entrepreneur_id=${liste}`);
-      await del('notifications', `user_id=${liste}`);
-    }
-
-    // Suppression des fichiers relevés, regroupés par bucket. La clé de service contourne le RLS,
-    // y compris la politique qui rend les visas inaltérables pour les comptes utilisateurs.
-    const parBucket = {};
-    for (const entree of fichiers) {
-      const [bucket, chemin] = entree.split('::');
-      (parBucket[bucket] ||= []).push(chemin);
-    }
-    let fichiersSupprimes = 0;
-    for (const [bucket, chemins] of Object.entries(parBucket)) {
-      // L'API accepte une liste ; on la découpe pour éviter des requêtes démesurées.
-      for (let i = 0; i < chemins.length; i += 100) {
-        const lot = chemins.slice(i, i + 100);
-        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
-          method: 'DELETE', headers, body: JSON.stringify({ prefixes: lot }),
-        });
-        if (r.ok) fichiersSupprimes += lot.length;
-        else console.error(`purge storage ${bucket}:`, await r.text());
-      }
-    }
-    if (fichiersSupprimes) supprimees.fichiers = fichiersSupprimes;
-
-    // Suppression des comptes. Elle vient en dernier : les données métier y font référence, et
-    // passé le délai de conservation ces données personnelles n'ont plus de finalité (RGPD).
-    // Le référent est détaché au préalable, la fiche de structure étant conservée pour la
-    // comptabilité : elle ne doit pas pointer vers un compte qui n'existe plus.
-    if (userIds.length) {
-      await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
-        method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ referent_id: null }),
+  const fichiers = Array.isArray(res.fichiers) ? res.fichiers : [];
+  const parBucket = {};
+  for (const url of fichiers) {
+    const m = String(url).match(/\/object\/(?:public|sign)\/([^/]+)\/([^?]+)/);
+    if (m) (parBucket[m[1]] ||= []).push(decodeURIComponent(m[2]));
+  }
+  let fichiersSupprimes = 0;
+  for (const [bucket, chemins] of Object.entries(parBucket)) {
+    for (let i = 0; i < chemins.length; i += 100) {
+      const lot = chemins.slice(i, i + 100);
+      const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
+        method: 'DELETE', headers, body: JSON.stringify({ prefixes: lot }),
       });
-
-      const tableCompte = struct.type === 'fournisseur' ? 'compte_fournisseur'
-                        : struct.type === 'moe' ? 'compte_moe' : 'compte_entrepreneur';
-      let comptesSupprimes = 0;
-      for (const uid of userIds) {
-        await fetch(`${SUPABASE_URL}/rest/v1/${tableCompte}?id=eq.${uid}`, { method: 'DELETE', headers });
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${uid}`, { method: 'DELETE', headers });
-        await fetch(`${SUPABASE_URL}/rest/v1/structure_membres?user_id=eq.${uid}`, { method: 'DELETE', headers });
-        const rAuth = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers });
-        if (rAuth.ok) comptesSupprimes++;
-        else console.error('purge compte auth', uid, await rAuth.text());
-      }
-      if (comptesSupprimes) supprimees.comptes = comptesSupprimes;
+      if (r.ok) fichiersSupprimes += lot.length;
+      else { erreur = `fichiers ${bucket}`; console.error(`purge storage ${bucket}:`, await r.text()); }
     }
-
-    await fetch(`${SUPABASE_URL}/rest/v1/structures?id=eq.${structureId}`, {
-      method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ donnees_supprimees_le: new Date().toISOString() }),
-    });
-
-    await notifyAdmin(env, {
-      categorie: 'resiliation',
-      message: `Données supprimées — ${struct.nom} (${Object.entries(supprimees).map(([t, n]) => `${t}: ${n}`).join(', ') || 'aucune donnée'})`,
-      structureId,
-    });
-
-    return json({ ok: true, supprimees });
-  } catch (e) {
-    console.error('purge structure:', e.message);
-    return json({ error: 'Suppression interrompue : ' + e.message }, 500);
   }
+  if (fichiersSupprimes) compte.fichiers = fichiersSupprimes;
+
+  // Les comptes en dernier : les données métier y faisaient référence, et passé le délai de
+  // conservation ces données personnelles n'ont plus de finalité.
+  const comptes = Array.isArray(res.comptes) ? res.comptes : [];
+  let comptesSupprimes = 0;
+  for (const uid of comptes) {
+    for (const t of ['compte_entrepreneur', 'compte_fournisseur', 'compte_moe', 'profiles']) {
+      await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${uid}`, { method: 'DELETE', headers });
+    }
+    const rAuth = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers });
+    if (rAuth.ok) comptesSupprimes++;
+    else { erreur = 'comptes'; console.error('purge compte auth', uid, await rAuth.text()); }
+  }
+  if (comptesSupprimes) compte.comptes = comptesSupprimes;
+
+  if (res.reste_id) {
+    await fetch(`${SUPABASE_URL}/rest/v1/purge_restes?id=eq.${res.reste_id}`, {
+      method: 'PATCH', headers: { ...headers, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        traite_le: erreur ? null : new Date().toISOString(),
+        fichiers_supprimes: fichiersSupprimes,
+        comptes_supprimes: comptesSupprimes,
+        erreur,
+      }),
+    });
+  }
+  return { compte, erreur };
 }
 
 async function handleDeleteUser(request, env) {
@@ -2408,6 +2310,28 @@ async function handleScheduled(env) {
   // l'échéance de suppression, puis signalement à l'admin à 90 jours. La suppression elle-même
   // n'est jamais automatique : elle est irréversible et reste déclenchée à la main.
   await traiterCycleVieResiliations(env, supabaseUrl, headers);
+
+  // ── 0 ter. Restes de purge non traités ────────────────────────────────────
+  // La suppression des fichiers et des comptes se fait hors transaction : si elle a échoué, la
+  // ligne est restée ouverte. On réessaie, et on signale à l'administrateur si l'échec persiste —
+  // sans quoi des fichiers subsisteraient sans que personne sache qu'ils existent.
+  try {
+    const r = await fetch(`${supabaseUrl}/rest/v1/purge_restes?traite_le=is.null&select=*`, { headers });
+    for (const reste of (await r.json()) || []) {
+      const bilan = await terminerPurge(env, headers, {
+        reste_id: reste.id, fichiers: reste.fichiers, comptes: reste.comptes,
+      });
+      if (bilan.erreur) {
+        await notifyAdmin(env, {
+          categorie: 'resiliation',
+          message: `Purge incomplète — ${reste.structure_nom || reste.structure_id} : ${bilan.erreur} (depuis le ${new Date(reste.cree_le).toLocaleDateString('fr-FR')})`,
+          structureId: reste.structure_id,
+        });
+      }
+    }
+  } catch (e) {
+    console.error('reprise purge_restes:', e.message);
+  }
 
   // ── 0 bis. Purge des journaux d'authentification ──────────
   // La politique de confidentialité annonce six mois de conservation ; Supabase ne purge rien de
