@@ -12254,12 +12254,21 @@ async function dafExportFiches() {
   const selected = state.fournitures.filter(f => !f.is_variante && window._dafRows[f.id]?._selected);
   if (!selected.length) return toast('Sélectionnez au moins une fourniture', 'err');
 
+  // Une fiche technique peut être jointe à la fourniture (onglet Fournitures) ou à la ligne de
+  // DAF. L'export ne regardait que la seconde et annonçait « aucune fiche » alors que la
+  // fourniture en portait — une distinction sans objet pour qui veut le dossier complet.
   const sources = [];
+  const vues = new Set();
+  const ajouter = (ft) => {
+    if (!ft) return;
+    if (ft.type === 'file' && ft._arrayBuffer) { sources.push({ nom: ft.nom, buf: ft._arrayBuffer }); return; }
+    if (!ft.url || vues.has(ft.url)) return;
+    vues.add(ft.url);
+    sources.push({ nom: ft.nom || 'Fiche', url: ft.url });
+  };
   for (const f of selected) {
-    for (const ft of window._dafRows[f.id]?.fiches || []) {
-      if (ft.type === 'file' && ft._arrayBuffer) sources.push({ nom: ft.nom, buf: ft._arrayBuffer });
-      else if (ft.url) sources.push({ nom: ft.nom || 'Fiche', url: ft.url });
-    }
+    (window._dafRows[f.id]?.fiches || []).forEach(ajouter);
+    (f.fiches_techniques || []).forEach(ajouter);
   }
   if (!sources.length) return toast('Aucune fiche dans la sélection', 'err');
   if (!window.PDFLib) return toast('Module PDF indisponible — rechargez la page', 'err');
