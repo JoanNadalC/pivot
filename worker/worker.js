@@ -1402,25 +1402,50 @@ async function handlePurgerStructure(request, env) {
         const chListe = `in.(${chantierIds.join(',')})`;
 
         // Relevé des pièces jointes, avant toute suppression.
+        //
+        // Certaines n'appartiennent pas qu'à l'entreprise purgée : un devis engage son émetteur et
+        // relève de sa conservation comptable ; un visa est un acte du maître d'œuvre, qu'il doit
+        // pouvoir produire des années plus tard ; une photo a été prise par le fournisseur sur ses
+        // propres végétaux. Leurs fichiers sont épargnés.
+        //
+        // Les lignes qui les portent, elles, partent encore : leurs clés étrangères pointent vers
+        // le chantier et la consultation que la purge supprime. Les rendre autonomes est le
+        // chantier suivant. En attendant, un fichier détruit l'est définitivement, tandis qu'un
+        // rattachement se reconstruit — le chemin de stockage conserve les identifiants.
+        const conserves = [];
+        const conserver = (u) => { if (u) conserves.push(u); };
+
         for (const d of await lire(`daf?chantier_id=${chListe}&select=pdf_url,pdf_visa_url`)) {
-          releverUrl(d.pdf_url); releverUrl(d.pdf_visa_url);
+          // Une DAF visée est indissociable de son visa : on garde le document soumis avec lui.
+          if (d.pdf_visa_url) { conserver(d.pdf_url); conserver(d.pdf_visa_url); }
+          else releverUrl(d.pdf_url);
         }
         for (const d of await lire(`documents_viser?chantier_id=${chListe}&select=url,pdf_url,pdf_visa_url`)) {
-          releverUrl(d.url); releverUrl(d.pdf_url); releverUrl(d.pdf_visa_url);
+          if (d.pdf_visa_url) { conserver(d.url); conserver(d.pdf_url); conserver(d.pdf_visa_url); }
+          else { releverUrl(d.url); releverUrl(d.pdf_url); }
         }
-        for (const r of await lire(`reponses_fournisseurs?entrepreneur_id=${liste}&select=devis_pdf_url`)) {
-          releverUrl(r.devis_pdf_url);
+        // Seul un devis validé est une pièce : une saisie de prix sans devis émis n'engage rien.
+        for (const r of await lire(`reponses_fournisseurs?entrepreneur_id=${liste}&select=devis_pdf_url,devis_valide_at`)) {
+          if (r.devis_valide_at) conserver(r.devis_pdf_url);
+          else releverUrl(r.devis_pdf_url);
         }
-        // fiches_techniques est un tableau JSON d'objets { nom, url }.
+        // Les fiches techniques jointes à une DAF sont déjà annexées au PDF visé, et ce sont des
+        // documents publics de fabricant : elles partent avec le reste.
         for (const f of await lire(`fournitures?chantier_id=${chListe}&select=fiches_techniques`)) {
           (f.fiches_techniques || []).forEach(ft => releverUrl(ft?.url));
         }
         const consIds = (await lire(`consultations?chantier_id=${chListe}&select=id`)).map(c => c.id);
         if (consIds.length) {
           for (const p of await lire(`photos_fournitures?consultation_id=in.(${consIds.join(',')})&select=url`)) {
-            releverUrl(p.url);
+            conserver(p.url);
           }
         }
+        // Une pièce conservée ne doit pas être effacée parce qu'une autre ligne la référence aussi.
+        for (const u of conserves) {
+          const m = u.match(/\/object\/(?:public|sign)\/([^/]+)\/([^?]+)/);
+          if (m) fichiers.delete(`${m[1]}::${decodeURIComponent(m[2])}`);
+        }
+        supprimees['fichiers conservés (tiers)'] = conserves.length;
 
         // `comparatif_selections` se rattache à la consultation et à la fourniture, jamais au
         // chantier : il faut relever ces identifiants avant de supprimer les tables porteuses.
