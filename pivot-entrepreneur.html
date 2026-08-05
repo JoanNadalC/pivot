@@ -4303,7 +4303,7 @@ function fillParametrage() {
   document.getElementById('ch-fin').value = c.date_fin_prevue || '';
   document.getElementById('ch-remarques').value = c.remarques || '';
   document.getElementById('ch-statut').value = c.statut || 'appel_offre';
-  _fillParametrageMoe();
+  _rafraichirParametrageMoe();
   _fillParametrageCouleur();
 }
 
@@ -4357,6 +4357,11 @@ async function saveParamCouleur() {
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
+async function _rafraichirParametrageMoe() {
+  await chargerMoeEnAttente();
+  _fillParametrageMoe();
+}
+
 function _fillParametrageMoe() {
   const c = state.currentChantier;
   const section = document.getElementById('moe-section');
@@ -4382,16 +4387,47 @@ function _fillParametrageMoe() {
           ${isOwnedByThisEntrepreneur ? `<button onclick="unlinkMoe()" class="text-red-400 hover:text-red-600 text-xs">✕</button>` : ''}
         </div>
       </div>`;
+  } else if (state._moeEnAttente?.length) {
+    // Tant qu'il n'a pas accepté, le maître d'œuvre invité n'est pas « associé » : la colonne
+    // moe_id reste vide. Ne rien afficher donnait l'impression que la sélection avait échoué.
+    section.innerHTML = state._moeEnAttente.map(inv => {
+      const moe = (state.maitresOeuvre || []).find(m => m.compte_moe_id === inv.moe_invited_id);
+      const nom = moe ? (moe.societe ? `${moe.societe} · ${moe.nom}` : moe.nom)
+                      : (inv.email_invite || "Maître d'œuvre invité");
+      return `
+      <div class="flex items-center justify-between p-2 bg-amber-50 border border-amber-200 rounded">
+        <div>
+          <p class="text-sm font-medium">${escHtml(nom)}</p>
+          <p class="text-xs text-amber-700">Invitation envoyée le ${new Date(inv.created_at).toLocaleDateString('fr-FR')}</p>
+        </div>
+        <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">⏳ En attente de sa validation</span>
+      </div>`;
+    }).join('');
   } else {
     section.innerHTML = '<p id="moe-none" class="text-sm text-gray-400 italic">Aucun MOE associé</p>';
   }
+}
+
+// Les invitations que ce chantier a émises et qui attendent une réponse. Sans elles, l'entreprise
+// n'a aucun moyen de savoir si sa demande est partie — ni de comprendre le refus d'une seconde.
+async function chargerMoeEnAttente() {
+  state._moeEnAttente = [];
+  const c = state.currentChantier;
+  if (!c?.id) return;
+  const { data, error } = await db.from('chantier_invitations')
+    .select('id, moe_invited_id, email_invite, created_at')
+    .eq('chantier_id', c.id).eq('statut', 'pending')
+    .not('moe_invited_id', 'is', null)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('chargerMoeEnAttente', error); return; }
+  state._moeEnAttente = data || [];
 }
 
 async function unlinkMoe() {
   await _ecrire(db.from('chantiers').update({ moe_id: null }).eq('id', state.currentChantier.id),
     "Le maître d'œuvre n'a pas pu être détaché du chantier");
   state.currentChantier.moe_id = null;
-  _fillParametrageMoe();
+  _rafraichirParametrageMoe();
 }
 
 async function saveChantier() {
@@ -4536,6 +4572,9 @@ async function linkMoeFromCarnet(compteMoeId, nom) {
     if (notifErr) console.warn('notification insert:', notifErr.message);
     toast(`Invitation envoyée à ${nom} ✉️`);
     closeModal();
+    // Montrer immédiatement l'attente : c'est l'absence de retour qui donnait l'impression
+    // que la sélection n'avait pas fonctionné.
+    _rafraichirParametrageMoe();
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
