@@ -4467,6 +4467,13 @@ async function inviterMoeSansCompte(carnetId) {
 async function linkMoeFromCarnet(compteMoeId, nom) {
   try {
     const ch = state.currentChantier;
+    // Une invitation déjà en attente ne doit pas être doublée : le maître d'œuvre verrait deux
+    // fois la même proposition sans pouvoir les distinguer, et en accepterait une au hasard.
+    const { data: dejaLa } = await db.from('chantier_invitations')
+      .select('id').eq('chantier_id', ch.id).eq('moe_invited_id', compteMoeId)
+      .eq('statut', 'pending').maybeSingle();
+    if (dejaLa) return toast(`Une invitation est déjà en attente pour ${nom}`, 'err');
+
     const { error } = await db.from('chantier_invitations').insert({
       chantier_id: ch.id,
       moe_invited_id: compteMoeId,
