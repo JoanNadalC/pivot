@@ -4848,9 +4848,14 @@ async function _genererPdfVise(d, statutDaf, remarques) {
 
   page.drawText("Maître d'œuvre :", { x: M, y, size: 10, font: fontBold, color: rgb(0.2,0.2,0.2) });
   y -= 16;
-  const nomMoe = compteInfo.societe || compteInfo.nom || state.user?.email || '';
-  page.drawText(nomMoe, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
-  y -= 16;
+  // Un visa engage la responsabilité d'une personne au nom d'une société : les deux doivent y
+  // figurer. La page se contentait de la première valeur disponible, et pouvait n'imprimer qu'une
+  // adresse email — un document sans valeur probante.
+  for (const ligne of _identiteSignataire(compteInfo)) {
+    page.drawText(ligne, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
+    y -= 14;
+  }
+  y -= 2;
   page.drawText(`Date du VISA : ${dateVisa}`, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
   y -= 24;
 
@@ -4882,9 +4887,23 @@ async function _genererPdfVise(d, statutDaf, remarques) {
   return urlData?.publicUrl || null;
 }
 
+// Identité du signataire, telle qu'elle doit apparaître sur un visa : la société, puis la personne
+// et sa fonction. L'email ne sert que de dernier recours, et signale alors un profil incomplet.
+function _identiteSignataire(c) {
+  const lignes = [];
+  const societe = (c?.societe || '').trim();
+  const personne = [c?.prenom, c?.nom].filter(Boolean).join(' ').trim();
+  const fonction = (c?.fonction || '').trim();
+  if (societe) lignes.push(societe);
+  if (personne) lignes.push(fonction ? `${personne} — ${fonction}` : personne);
+  if (!lignes.length) lignes.push(state.user?.email || '');
+  return lignes;
+}
+
 async function _loadCompteInfo() {
   if (!state.user) return;
-  const { data } = await db.from('compte_moe').select('nom, societe').eq('id', state.user.id).maybeSingle();
+  const { data } = await db.from('compte_moe')
+    .select('nom, prenom, societe, fonction').eq('id', state.user.id).maybeSingle();
   state._compteInfo = data || {};
 }
 
@@ -5500,9 +5519,14 @@ async function _genererPdfViseDocument(d, statutDoc, remarques) {
 
   page.drawText("Maître d'œuvre :", { x: M, y, size: 10, font: fontBold, color: rgb(0.2,0.2,0.2) });
   y -= 16;
-  const nomMoe = compteInfo.societe || compteInfo.nom || state.user?.email || '';
-  page.drawText(nomMoe, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
-  y -= 16;
+  // Un visa engage la responsabilité d'une personne au nom d'une société : les deux doivent y
+  // figurer. La page se contentait de la première valeur disponible, et pouvait n'imprimer qu'une
+  // adresse email — un document sans valeur probante.
+  for (const ligne of _identiteSignataire(compteInfo)) {
+    page.drawText(ligne, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
+    y -= 14;
+  }
+  y -= 2;
   page.drawText(`Date du VISA : ${dateVisa}`, { x: M, y, size: 10, font: fontReg, color: rgb(0.2,0.2,0.2) });
   y -= 24;
 
