@@ -1358,13 +1358,17 @@ function openCompteModal() {
       <button onclick="exporterMesDonnees(this)" class="text-xs text-green-700 border border-green-200 rounded-lg px-3 py-1.5 hover:bg-green-50 whitespace-nowrap flex-shrink-0">⬇ Télécharger</button>
     </div>
     <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Raison sociale</label>
+        <input id="cpt-societe" type="text" value="${escHtml(p.societe || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ex : Axe Aménagement" />
+      </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs text-gray-500 mb-1">Prénom</label>
           <input id="cpt-prenom" type="text" value="${escHtml(p.prenom || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
-          <label class="block text-xs text-gray-500 mb-1">Nom / Entreprise</label>
+          <label class="block text-xs text-gray-500 mb-1">Nom</label>
           <input id="cpt-nom" type="text" value="${escHtml(p.nom || '')}" class="w-full border rounded-lg px-3 py-2 text-sm" />
         </div>
       </div>
@@ -1517,6 +1521,7 @@ async function saveCompte() {
   const ville = document.getElementById('cpt-ville')?.value.trim() || '';
   const siret = document.getElementById('cpt-siret')?.value.trim() || '';
   const fonction = document.getElementById('cpt-fonction')?.value.trim() || '';
+  const societe = document.getElementById('cpt-societe')?.value.trim() || '';
   const visibilite_champs = state._visibiliteChamps || [];
   const visibilite_relations = state._visibiliteRelations || [];
   const notif_preference = document.getElementById('cpt-notif')?.value || 'each';
@@ -1534,8 +1539,8 @@ async function saveCompte() {
     const payload = { id: state.user.id, nom, telephone, adresse, siret, logo_url, email: state.user.email };
     const { error } = await db.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
-    await _ecrire(db.from('compte_moe').update({ nom: nom || undefined, prenom, tel: telephone, ville, fonction, visibilite_champs, visibilite_relations, notif_preference }).eq('id', state.user.id), 'Profil non enregistré');
-    state.profile = { ...state.profile, nom, prenom, telephone, adresse, ville, siret, fonction, visibilite_champs, visibilite_relations, notif_preference, logo_url };
+    await _ecrire(db.from('compte_moe').update({ nom: nom || undefined, prenom, societe, tel: telephone, adresse, siret, ville, fonction, visibilite_champs, visibilite_relations, notif_preference }).eq('id', state.user.id), 'Profil non enregistré');
+    state.profile = { ...state.profile, nom, prenom, societe, telephone, tel: telephone, adresse, ville, siret, fonction, visibilite_champs, visibilite_relations, notif_preference, logo_url };
     state.logoBase64 = null;
     document.getElementById('user-name').textContent = nom || state.user.email || '';
     closeModal();
