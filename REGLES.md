@@ -4,6 +4,8 @@ Registre des décisions énoncées par Joan, à relire **avant toute modificatio
 qu'une règle nouvelle est posée. Il ne décrit pas le code : il dit ce que le code ne doit pas
 trahir. `SPECS_PIVOT_COMPLET.md` est le cahier des charges d'origine — historique, non tenu à jour.
 
+`FAIBLESSES.md` tient le registre de ce qui est connu comme défaillant et non réparé.
+
 Les tests de `tests/` vérifient mécaniquement celles de ces règles qui s'y prêtent :
 
 ```bash
@@ -35,9 +37,35 @@ visé restent accessibles à leur auteur même après le départ du client et la
 Chacun porte une copie du contexte (`ctx_chantier`, `ctx_client`…) recopiée à l'émission — l'état
 des choses ce jour-là, non celui d'aujourd'hui.
 
+**Une DAF en brouillon n'existe pas pour le maître d'œuvre.** C'est un travail en cours côté
+entreprise, sur lequel il n'a aucune action possible. Il ne la voit ni dans sa liste, ni en direct.
+
+**Les fiches techniques annexées font partie de la pièce.** Elles sont incorporées au PDF, une photo
+par page — pas de mise en page multi-photos, par robustesse.
+
 ---
 
-## 2. Codification des fichiers créés
+## 2. Conservation et suppression
+
+**L'unité de suppression est le chantier, pas la structure.** Un chantier réunit plusieurs
+participants ; le départ de l'un n'efface pas le dossier des autres. Il n'est supprimé que lorsque
+le dernier participant est parti, ou à l'échéance de dix ans.
+
+**Deux couches.** La couche *partagée* — chantier, fournitures, DAF soumises et visées, documents
+visés, commandes — survit tant qu'un participant reste. La couche *privée* — carnet fournisseurs,
+prix reçus, comparatifs, notes, tarifs non transmis — part avec son propriétaire. Un maître d'œuvre
+ne doit jamais hériter des prix consentis à une entreprise disparue.
+
+**Pièces à double propriétaire** : devis validé, DAF visée, document visé, photos de fournitures.
+Pas concernés : DAF non visée, DOE, fiches techniques, logo, devis non validé.
+
+**Une purge est transactionnelle.** Tout passe ou rien ne passe. Ce qui ne peut pas entrer dans la
+transaction — fichiers du Storage, comptes d'authentification — est consigné dans `purge_restes`
+avant de rendre la main.
+
+---
+
+## 3. Codification des fichiers créés
 
 Réglable par chantier (`chantier_config.code_format`, `code_separateur`), avec une **règle unique**
 pour les DAF et les documents à viser — pas deux listes à tenir accordées.
@@ -53,7 +81,7 @@ Le fichier déposé porte la référence, pas son nom d'origine.
 
 ---
 
-## 3. Écritures et RLS
+## 4. Écritures et RLS
 
 **Toute écriture est vérifiée.** supabase-js *renvoie* les erreurs au lieu de les lever, et un
 `UPDATE` qui ne touche aucune ligne renvoie `{data: [], error: null}`. Un refus RLS ne se signale
@@ -67,9 +95,28 @@ leur absence doit rester sans conséquence.
 **Le temps réel exige la publication.** Une table absente de `supabase_realtime` rend l'abonnement
 muet, sans erreur. Configuration de base, absente du dépôt.
 
+**Une identité se lit du compte, pas de la fiche.** Un fournisseur a autant de fiches de carnet que
+de clients : filtrer par fiche ne montre qu'une part de ses données, et plus rien du tout quand le
+client s'en va. Filtrer par `compte_fournisseur_id`.
+
 ---
 
-## 4. Consultations
+## 5. Droits et confidentialité
+
+**Les recherches d'acteurs passent par une RPC masquée.** Un compte ne publie que ce qu'il a choisi
+de rendre visible, et la visibilité distingue deux niveaux : la simple présence au carnet n'ouvre
+que le public, le rattachement à un chantier vaut relation établie.
+
+**Celui qui a créé le chantier maîtrise ses intervenants.** Si le maître d'œuvre a créé le chantier
+et invité l'entreprise, celle-ci ne peut ni changer ni retirer le MOE — boutons masqués *et* garde
+défensive dans le code, jamais l'un sans l'autre.
+
+**Le portail MOE gratuit (Consultant) ne crée pas de chantier** : c'est une fonction du forfait
+Pilote.
+
+---
+
+## 6. Consultations
 
 **Le périmètre est figé à l'envoi** (`fournitures_ids`). Une fourniture ajoutée au DQE après coup
 ne s'invite pas dans une consultation déjà partie.
@@ -83,9 +130,23 @@ fournisseur déclare, ligne par ligne, ce qu'il détient. L'écart figure au com
 PDF — « Certifié : … » / « Sans certification : … ». Rien sur les variantes : le fournisseur n'y a
 pas de case à cocher.
 
+**Les fournitures et les DAF sont cadrées par lot** (`fournitures.lot_id`). Les invitations se font
+par identifiant de compte, jamais par email.
+
 ---
 
-## 5. Interface
+## 7. Import d'un DQE
+
+Un **chapitre** est une ligne sans quantité *et* sans prix — critère unique, la numérotation de poste
+produisant trop de faux positifs. La ligne prime sur le contexte du chapitre : substrat, puis
+végétaux, puis contexte hérité. La comparaison de titres se fait sans accents et en minuscules.
+
+Le conditionnement se cherche dans cet ordre : désignation de la ligne, colonne Unité, titre du
+chapitre.
+
+---
+
+## 8. Interface
 
 **Ce qui n'appartient pas au tableau se détache du tableau.** La demande à un collaborateur, interne
 à la société du fournisseur et sans effet sur le devis, est séparée par une gouttière et posée sur
@@ -97,16 +158,21 @@ on soumet — c'est le seul moment où l'on peut encore corriger.
 **Un échec se dit.** Un dépôt manqué, une notification refusée, un devis non produit : l'utilisateur
 doit l'apprendre à l'écran, jamais en console.
 
+**Aucun dialogue natif.** `confirm()` et `prompt()` sont remplacés partout par `showConfirm` /
+`showPrompt`.
+
 ---
 
-## 6. Terminologie
+## 9. Terminologie
 
-Selon le type de compte : société / établissement / agence pour entrepreneur, fournisseur, MOE.
+Selon le type de compte : **société** (entrepreneur), **établissement** (fournisseur), **agence**
+(MOE). La table reste `structures` en base — c'est un mot d'administration, pas un mot d'utilisateur.
+
 Nom et raison sociale sont deux champs distincts, dans tous les portails.
 
 ---
 
-## 7. Exploitation
+## 10. Exploitation
 
 Les portails se déploient par `git push` (Cloudflare Pages). Le worker se déploie séparément :
 
