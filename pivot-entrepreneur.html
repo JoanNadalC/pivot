@@ -11148,6 +11148,7 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
   const ch = state.currentChantier;
   const fam = state.familles.find(fm=>fm.id===f.famille_id);
   const cfg = await _loadChantierConfig(ch.id);
+  const ver = row.version || 1;
   // Les valeurs sont fournies brutes : c'est `_composerCode` qui les abrège, selon la longueur
   // choisie pour chaque brique dans les paramètres.
   const valeurs = {
@@ -11155,7 +11156,7 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
     poste:       row._numero_poste ?? f.numero_poste ?? '',
     type:        fam?.nom || 'GEN',
     objet:       row._designation || f.designation || '',
-    version:     `v${row.version || 1}`,
+    version:     `v${ver}`,
   };
   // La référence d'une DAF déjà émise ne change pas : elle figure sur un document transmis.
   const numero = row.numero
