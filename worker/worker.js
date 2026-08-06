@@ -266,16 +266,36 @@ async function buildPage1DAF(pdfDoc, fonts, config, daf, pageNum, totalPages) {
     y -= 8;
   }
 
-  // Zone signatures
+  // Zone signatures. Les deux cadres restaient vides même une fois la DAF visée : la pièce ne
+  // disait pas qui l'avait établie ni qui l'avait visée, alors que l'information est en base.
+  // Une signature manuscrite garde sa place au-dessus du trait ; ce qui est imprimé en dessous,
+  // c'est l'identité — société, personne, et la date pour le visa.
   if (y > 120) {
     y = Math.min(y, 180);
     page.drawLine({ start:{x:MARGIN,y}, end:{x:MARGIN+CONTENT_W,y}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
     y -= 20;
+    const yTitres = y;
     page.drawText('Établi par l\'entrepreneur', { x: MARGIN, y, font: fonts.bold, size: 7.5, color: GREY });
     page.drawText('Visa maître d\'œuvre', { x: MARGIN + CONTENT_W/2, y, font: fonts.bold, size: 7.5, color: GREY });
-    y -= 50;
+    y = yTitres - 50;
     page.drawLine({ start:{x:MARGIN,y}, end:{x:MARGIN+CONTENT_W/2-20,y}, thickness:0.4, color:rgb(0.8,0.8,0.8) });
     page.drawLine({ start:{x:MARGIN+CONTENT_W/2,y}, end:{x:MARGIN+CONTENT_W,y}, thickness:0.4, color:rgb(0.8,0.8,0.8) });
+
+    // Sous chaque trait, l'identité de celui qui signe.
+    const souscrire = (lignes, x) => {
+      let yl = y - 11;
+      for (const ligne of lignes.filter(Boolean)) {
+        page.drawText(String(ligne), { x, y: yl, font: fonts.regular, size: 7.5, color: GREY });
+        yl -= 10;
+      }
+    };
+    souscrire(daf.emetteur || [], MARGIN);
+    if (daf.visa) {
+      souscrire([
+        ...(daf.visa.signataire || []),
+        daf.visa.date ? `Le ${daf.visa.date}` : '',
+      ], MARGIN + CONTENT_W/2);
+    }
   }
 
   const breadcrumb = ['Pivot · DAF', daf.chantier, daf.numero].filter(Boolean).join(' · ');

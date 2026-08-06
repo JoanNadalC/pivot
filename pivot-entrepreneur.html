@@ -11249,18 +11249,25 @@ async function dafGeneratePdf(fId) {
       } catch (err) { console.warn('photos fournisseur DAF:', err); }
     }
 
-    // Visa MOE
+    const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
+
+    // Visa MOE. L'identité du signataire restait vide : la DAF visée portait « MOE : — » et le
+    // cadre de signature du bas ne disait pas qui avait visé. Un visa engage une personne au nom
+    // d'une société — les deux doivent figurer sur la pièce, avec sa date.
     let visa = null;
     if (dafRecord?.visa_moe) {
+      const signataire = [
+        (moe?.societe || '').trim(),
+        [moe?.nom, moe?.fonction].filter(Boolean).join(' — ').trim(),
+      ].filter(Boolean);
       visa = {
         type: dafRecord.visa_moe,
         remarques: dafRecord.visa_remarques || '',
         date: dafRecord.date_visa ? new Date(dafRecord.date_visa).toLocaleDateString('fr-FR') : '',
-        moe: '',
+        moe: signataire.join(' · '),
+        signataire,
       };
     }
-
-    const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
     const payload = {
       config: { bandeau_bg: config.bandeau_bg || '#1a2e44', bandeau_text: config.bandeau_text || '#ffffff', logo_base64: logoB64 },
       daf: {
@@ -11285,6 +11292,11 @@ async function dafGeneratePdf(fId) {
         ville:          ch.ville || '',
         moa_nom:        ch.maitre_ouvrage || '',
         moe_nom:        moe?.societe || moe?.nom || '',
+        // Qui a établi la pièce, pour le cadre de signature du bas.
+        emetteur: [
+          (state.profile?.raison_sociale || state.profile?.societe || '').trim(),
+          [state.profile?.prenom, state.profile?.nom].filter(Boolean).join(' ').trim(),
+        ].filter(Boolean),
         caracteristiques: caract,
         visa,
         logo_base64: logoB64,
