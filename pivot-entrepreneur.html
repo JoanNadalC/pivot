@@ -13101,10 +13101,12 @@ function _dafCreateV2Confirmed(fId) {
   const row = window._dafRows[fId];
   if (!row) return;
   const ver = (row.version || 1) + 1;
-  // Incrémenter le numéro de version dans le numéro DAF
-  const newNumero = row.numero
-    ? row.numero.replace(/-v(\d+)$/, (_, n) => `-v${parseInt(n) + 1}`)
-    : (row.numero || '') + `-v${ver}`;
+  // Le suffixe de version n'est plus forcément « -v1 » : le séparateur se règle, et une référence
+  // composée avec « _ » ne se laissait pas incrémenter — la v2 reprenait le numéro de la v1 mot
+  // pour mot. On accepte donc n'importe quel séparateur devant le v, et l'on suffixe à défaut.
+  const newNumero = /[-_.]v\d+$/i.test(row.numero || '')
+    ? row.numero.replace(/([-_.])v(\d+)$/i, (_, sep, n) => `${sep}v${parseInt(n) + 1}`)
+    : `${row.numero || ''}${row.numero ? '_' : ''}v${ver}`;
   // Conserver toutes les données, réinitialiser le statut
   window._dafRows[fId] = {
     ...row,
