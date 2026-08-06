@@ -5467,13 +5467,18 @@ function ouvrirCaractGroupee() {
     .flatMap(f => Array.isArray(f.caracteristiques) ? f.caracteristiques : [])
     .map(c => c?.cle).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
 
-  // Les certifications proposées sont celles des familles réellement présentes dans la sélection :
-  // offrir « NF Mobilier urbain » sur des végétaux n'aurait aucun sens.
+  // Les certifications appartiennent à une famille. Une sélection qui en mêle plusieurs ne permet
+  // pas de dire à qui s'adresse une case cochée : plutôt que de filtrer en silence, on refuse la
+  // modification groupée et on l'explique.
   const selection = ids.map(id => state.fournitures.find(f => f.id === id)).filter(Boolean);
-  const options = [...new Set(selection.flatMap(f => {
-    const fam = state.familles.find(x => x.id === f.famille_id);
-    return getFamilleConfig(fam?.nom)?.certifications || [];
-  }))];
+  const famillesSel = [...new Set(selection.map(f => f.famille_id || '_sans'))];
+  const familleUnique = famillesSel.length === 1 && famillesSel[0] !== '_sans';
+  const famNom = familleUnique
+    ? state.familles.find(x => x.id === famillesSel[0])?.nom : null;
+  const options = familleUnique ? (getFamilleConfig(famNom)?.certifications || []) : [];
+  const empeche = famillesSel.length > 1
+    ? `Sélection de ${famillesSel.length} familles : les certifications se règlent famille par famille.`
+    : (famillesSel[0] === '_sans' ? 'Ces lignes n\'ont pas de famille : aucune certification à proposer.' : null);
   // Cochée si toutes les lignes concernées la portent déjà — sinon on ne peut pas savoir ce que
   // l'utilisateur veut, et la case part décochée.
   const toutesOnt = cert => selection.every(f =>
@@ -5490,19 +5495,24 @@ function ouvrirCaractGroupee() {
     <input id="cg-valeur" type="text" class="w-full border rounded px-3 py-2 text-sm mb-1" placeholder="ex : C3L">
     <p class="text-xs text-gray-400 mb-4">Nom sans valeur : la caractéristique est retirée des lignes sélectionnées.</p>
 
-    ${options.length ? `
+    ${empeche ? `
     <div class="border-t pt-3 mb-4">
-      <label class="flex items-center gap-2 text-xs text-gray-500 mb-2 cursor-pointer">
+      <p class="text-xs text-gray-500 mb-1 font-medium">Certifications exigées</p>
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${escHtml(empeche)}</p>
+    </div>` : options.length ? `
+    <div class="border-t pt-3 mb-4">
+      <label class="flex items-center gap-2 text-xs text-gray-600 mb-1 cursor-pointer font-medium">
         <input type="checkbox" id="cg-certifs-actif" class="accent-blue-600">
-        <span>Remplacer les certifications exigées</span>
+        <span>Définir les certifications exigées — ${escHtml(famNom)}</span>
       </label>
+      <p class="text-xs text-gray-400 mb-2">Sans cette case, les certifications de ces lignes ne sont pas modifiées.</p>
       <div class="flex flex-wrap gap-2 opacity-40 pointer-events-none" id="cg-certifs-liste">
         ${options.map(cert => `<label class="flex items-center gap-1.5 text-xs cursor-pointer">
           <input type="checkbox" class="cg-certif accent-green-700" data-certif="${escHtml(cert)}" ${toutesOnt(cert) ? 'checked' : ''}>
           <span>${escHtml(cert)}</span>
         </label>`).join('')}
       </div>
-      <p class="text-xs text-gray-400 mt-2">Les cases reflètent ce que <em>toutes</em> les lignes portent déjà. Tout décocher retire les certifications.</p>
+      <p class="text-xs text-gray-400 mt-2">Les cases cochées deviennent la liste complète : ce qui reste décoché est retiré.</p>
     </div>` : ''}
 
     <div class="flex gap-3">
@@ -5559,13 +5569,9 @@ async function appliquerCaractGroupee() {
         patch.caracteristiques = nouvelles;
       }
 
-      if (certifsVoulues) {
-        // Ne retenir que ce que la famille de cette ligne autorise : une sélection mêlant
-        // plusieurs familles ne doit pas leur imposer les labels des autres.
-        const fam = state.familles.find(x => x.id === f.famille_id);
-        const permises = getFamilleConfig(fam?.nom)?.certifications || [];
-        patch.certifications = certifsVoulues.filter(c => permises.includes(c));
-      }
+      // La fenêtre n'a proposé de certifications que si la sélection tient à une seule famille :
+      // toutes les lignes partagent donc le même référentiel.
+      if (certifsVoulues) patch.certifications = certifsVoulues;
 
       return db.from('fournitures').update(patch)
         .eq('id', f.id).select('id, caracteristiques, certifications').single()
