@@ -3623,7 +3623,10 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
   // que l'entreprise avait pris soin de rattacher.
   let specCell = '';
   if (!isVar) {
-    const caract = inclureCaract && Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
+    // Sans condition : une spécification technique renseignée par l'entreprise concerne le
+    // fournisseur, que l'option « inclure les caractéristiques du BPU » ait été cochée ou non.
+    // Ce réglage décidait de l'affichage de données déjà transmises — il ne protégeait rien.
+    const caract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
     const docs = _documentsJoints(f);
     specCell = (caract.length || docs)
       ? `<td class="px-3 py-2 align-top">

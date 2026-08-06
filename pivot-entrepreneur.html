@@ -6035,14 +6035,20 @@ function renderDetailRow(f) {
     </div>
   `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucune caractéristique.</p>';
 
-  const fichesRows = fiches.map((url, i) => `
+  // Deux formats coexistent : chaîne d'URL à l'origine, objet {nom, url} depuis le téléversement.
+  const fichesRows = fiches.map((d, i) => {
+    const url = typeof d === 'string' ? d : (d?.url || '');
+    const nom = typeof d === 'string' ? '' : (d?.nom || '');
+    return `
     <div class="flex gap-2 mb-1 items-center">
+      <input type="text" class="border rounded px-2 py-1 text-xs w-28" value="${escHtml(nom)}"
+        placeholder="Nom" onchange="updateFicheField('${f.id}', ${i}, this.value, 'nom')">
       <input type="url" class="border rounded px-2 py-1 text-xs flex-1" value="${escHtml(url)}"
-        placeholder="https://..." onchange="updateFicheField('${f.id}', ${i}, this.value)">
+        placeholder="https://..." onchange="updateFicheField('${f.id}', ${i}, this.value, 'url')">
       ${url ? `<a href="${escHtml(url)}" target="_blank" class="text-blue-400 hover:text-blue-600 text-xs">📄</a>` : ''}
       <button onclick="removeFiche('${f.id}', ${i})" class="text-red-300 hover:text-red-500 text-xs">✕</button>
-    </div>
-  `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucun document joint.</p>';
+    </div>`;
+  }).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucun document joint.</p>';
 
   return `
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -6062,6 +6068,10 @@ function renderDetailRow(f) {
         </div>
         <p class="text-xs text-gray-400 mb-2 leading-snug">Plans, notices, cahier des charges — le fournisseur les verra dans ses spécifications requises.</p>
         <div id="fiches-${f.id}">${fichesRows}</div>
+        <label class="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline cursor-pointer">
+          ⬆ Téléverser un PDF
+          <input type="file" accept="application/pdf" class="hidden" onchange="uploadDocumentJoint('${f.id}', this)">
+        </label>
         <button onclick="saveFiches('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
       </div>
       ${_certifsDetailHtml(f)}
@@ -6271,21 +6281,58 @@ function removeFiche(fournitureId, idx) {
   refreshDetailRow(fournitureId);
 }
 
-function updateFicheField(fournitureId, idx, value) {
+function updateFicheField(fournitureId, idx, value, champ = 'url') {
   const f = state.fournitures.find(x => x.id === fournitureId);
-  if (!f || f.fiches_techniques[idx] === undefined) return;
-  f.fiches_techniques[idx] = value;
+  if (!f || f.fiches_techniques?.[idx] === undefined) return;
+  const actuel = f.fiches_techniques[idx];
+  // Une entrée saisie comme simple URL devient un objet dès qu'on la nomme : les deux formes
+  // restent lisibles, ici comme dans le portail fournisseur.
+  const obj = typeof actuel === 'string' ? { url: actuel, nom: '' } : { ...actuel };
+  obj[champ] = value;
+  f.fiches_techniques[idx] = obj.nom ? obj : obj.url;
+}
+
+// Le panneau ne permettait d'ajouter qu'une URL : un plan ou une notice sur le disque devait être
+// hébergé ailleurs au préalable. Le téléversement les met dans le même bucket que les fiches.
+async function uploadDocumentJoint(fournitureId, input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (_bloqueSiRestreint()) return;
+  toast('Téléversement…');
+  try {
+    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await db.storage.from('fiches-techniques')
+      .upload(path, file, { contentType: file.type || 'application/pdf' });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
+    const f = state.fournitures.find(x => x.id === fournitureId);
+    const existantes = Array.isArray(f?.fiches_techniques) ? f.fiches_techniques : [];
+    const nouvelles = [...existantes, { nom: file.name.replace(/\.pdf$/i, ''), url: urlData.publicUrl }];
+    const { error } = await db.from('fournitures')
+      .update({ fiches_techniques: nouvelles }).eq('id', fournitureId);
+    if (error) throw error;
+    if (f) f.fiches_techniques = nouvelles;
+    refreshDetailRow(fournitureId);
+    toast('Document joint');
+  } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
 async function saveFiches(fournitureId) {
   const f = state.fournitures.find(x => x.id === fournitureId);
   if (!f) return;
   try {
+    // Une ligne sans adresse n'est qu'un champ resté vide : l'enregistrer produirait un document
+    // fantôme dans les spécifications du fournisseur.
+    const propres = (f.fiches_techniques || []).filter(d =>
+      typeof d === 'string' ? d.trim() : d?.url?.trim());
     const { error } = await db.from('fournitures')
-      .update({ fiches_techniques: f.fiches_techniques || [] })
+      .update({ fiches_techniques: propres })
       .eq('id', fournitureId);
     if (error) throw error;
-    toast('Fiches techniques enregistrées !');
+    f.fiches_techniques = propres;
+    refreshDetailRow(fournitureId);
+    toast('Documents joints enregistrés');
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
