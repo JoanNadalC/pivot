@@ -6159,7 +6159,13 @@ const FAMILLE_CHAMPS = [
 ];
 function getFamilleConfig(nomFamille) {
   if (!nomFamille) return null;
-  return FAMILLE_CHAMPS.find(f => f.test.test(nomFamille)) || null;
+  // Les noms de famille sont saisis à la main : « Vegetaux » sans accent ne doit pas priver la
+  // fourniture de ses champs et de ses certifications. On compare sur une forme sans diacritiques,
+  // des deux côtés — le référentiel en contient lui aussi.
+  const sansAccent = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const cible = sansAccent(nomFamille);
+  return FAMILLE_CHAMPS.find(f =>
+    new RegExp(sansAccent(f.test.source), f.test.flags).test(cible)) || null;
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -6492,10 +6498,11 @@ function editFourniture(id) {
     <label class="block text-xs text-gray-500 mb-1">N° Poste</label>
     <input id="ef-poste" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${f.numero_poste || ''}">
     <label class="block text-xs text-gray-500 mb-1">Famille</label>
-    <select id="ef-famille" class="w-full border rounded px-3 py-2 text-sm mb-3">
+    <select id="ef-famille" class="w-full border rounded px-3 py-2 text-sm mb-3" onchange="efUpdateCertifs(this.value)">
       <option value="">— Famille —</option>
       ${state.familles.filter(fam => fam.actif !== false).map(fam => `<option value="${fam.id}" ${fam.id === f.famille_id ? 'selected' : ''}>${fam.icone} ${fam.nom}</option>`).join('')}
     </select>
+    <div id="ef-certifs" class="mb-3"></div>
     <label class="block text-xs text-gray-500 mb-1">Désignation *</label>
     <input id="ef-designation" type="text" class="w-full border rounded px-3 py-2 text-sm mb-3" value="${f.designation}">
     <div class="grid grid-cols-3 gap-3 mb-4">
@@ -6517,6 +6524,31 @@ function editFourniture(id) {
       <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
     </div>
   `);
+  efUpdateCertifs(f.famille_id, f.certifications);
+}
+
+// Les certifications n'étaient proposées qu'à la création : un label oublié ne pouvait plus être
+// ajouté, et il fallait supprimer la fourniture pour la refaire. Elles suivent la famille, comme
+// dans la fenêtre de création — changer de famille change les labels disponibles.
+function efUpdateCertifs(famId, dejaCochees) {
+  const el = document.getElementById('ef-certifs');
+  if (!el) return;
+  const fam = state.familles.find(f => f.id === famId);
+  const cfg = getFamilleConfig(fam?.nom);
+  // Au changement de famille, on repart des certifications déjà enregistrées : celles qui
+  // existent dans la nouvelle famille restent cochées, les autres tombent d'elles-mêmes.
+  const actuelles = dejaCochees !== undefined
+    ? (Array.isArray(dejaCochees) ? dejaCochees : [])
+    : [...document.querySelectorAll('.ef-certif-check:checked')].map(cb => cb.dataset.certif);
+  if (!cfg?.certifications?.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <label class="block text-xs text-gray-500 mb-2">Certification(s) requise(s)</label>
+    <div class="flex flex-wrap gap-2">
+      ${cfg.certifications.map(cert => `<label class="flex items-center gap-1.5 text-xs cursor-pointer">
+        <input type="checkbox" class="ef-certif-check accent-green-700" data-certif="${escHtml(cert)}" ${actuelles.includes(cert) ? 'checked' : ''}>
+        <span>${escHtml(cert)}</span>
+      </label>`).join('')}
+    </div>`;
 }
 
 async function updateFourniture(id) {
@@ -6527,7 +6559,8 @@ async function updateFourniture(id) {
       designation: document.getElementById('ef-designation').value.trim(),
       qte: document.getElementById('ef-qte').value || null,
       unite: document.getElementById('ef-unite').value || 'U',
-      prix_etude_ht: document.getElementById('ef-prix').value || null
+      prix_etude_ht: document.getElementById('ef-prix').value || null,
+      certifications: [...document.querySelectorAll('.ef-certif-check:checked')].map(cb => cb.dataset.certif)
     }).eq('id', id).select('*, famille:familles_fournitures(nom, icone, couleur)').single();
     if (error) throw error;
     const idx = state.fournitures.findIndex(f => f.id === id);

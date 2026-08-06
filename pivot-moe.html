@@ -4679,7 +4679,13 @@ const FAMILLE_CHAMPS = [
 
 function getFamilleConfig(nomFamille) {
   if (!nomFamille) return null;
-  return FAMILLE_CHAMPS.find(f => f.test.test(nomFamille)) || null;
+  // Les noms de famille sont saisis à la main : « Vegetaux » sans accent ne doit pas priver la
+  // fourniture de ses champs et de ses certifications. On compare sur une forme sans diacritiques,
+  // des deux côtés — le référentiel en contient lui aussi.
+  const sansAccent = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const cible = sansAccent(nomFamille);
+  return FAMILLE_CHAMPS.find(f =>
+    new RegExp(sansAccent(f.test.source), f.test.flags).test(cible)) || null;
 }
 
 // ── Modal ajouter fourniture ──
