@@ -3443,7 +3443,9 @@ async function loadSaisie() {
         }
         // Consultations antérieures au gel du périmètre : on retombe sur le filtre de familles.
         else if (cons.familles?.length) {
-          fournitures = fournitures.filter(f => !f.famille_id || cons.familles.includes(f.famille_id));
+          const famDe = f => f.famille_id
+            || fournitures.find(p => p.id === f.parent_id)?.famille_id || null;
+          fournitures = fournitures.filter(f => cons.familles.includes(famDe(f)));
         }
       }
     }
@@ -4605,20 +4607,33 @@ async function validateAndGenerateDevis(consId) {
   const lignes = collectReponses();
   if (!lignes.length) return toast('Aucune donnée à enregistrer', 'err');
   toast('Génération du devis en cours…');
+  let devis = null;
   try {
-    const { pdfUrl, devisNum, pdfBlob } = await generateDevis(consId, lignes);
-    state.devisPdfUrl = pdfUrl;
+    devis = await generateDevis(consId, lignes);
+  } catch (err) {
+    // Le devis est une pièce, les prix en sont une autre : perdre la première ne doit pas retenir
+    // les seconds sans que le fournisseur le sache. On lui laisse le choix, en le disant.
+    const suite = await showConfirm(
+      `Le devis n'a pas pu être généré (${_messageErreur(err)}). Envoyer quand même vos prix à l'entrepreneur, sans devis joint ?`
+    );
+    if (!suite) return;
+  }
+  try {
+    state.devisPdfUrl = devis?.pdfUrl || null;
     await saveReponses(true);
+    if (devis?.erreurStockage) {
+      toast(`Prix envoyés, mais le devis ${devis.devisNum} n'a pas pu être déposé (${devis.erreurStockage}) : l'entrepreneur ne le verra pas.`, 'err');
+    }
     // Téléchargement automatique
-    if (pdfBlob) {
+    if (devis?.pdfBlob) {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(pdfBlob);
-      a.download = `${devisNum}.pdf`;
+      a.href = URL.createObjectURL(devis.pdfBlob);
+      a.download = `${devis.devisNum}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     }
   } catch (err) {
-    toast('Erreur : ' + err.message, 'err');
+    toast('Erreur : ' + _messageErreur(err), 'err');
   }
 }
 
@@ -4757,6 +4772,9 @@ Sans certification : ${sans.join(', ')}`;
   const pdfBlob = doc.output('blob');
   const path = `${state.user.id}/${consId}/${devisNum}.pdf`;
   let pdfUrl = null;
+  // Un dépôt manqué se signalait en console seulement : le fournisseur croyait avoir transmis son
+  // devis, et l'entreprise ne voyait aucune pièce en face de ses prix. On remonte donc l'échec.
+  let erreurStockage = null;
   try {
     const { error: upErr } = await db.storage.from('devis-fournisseurs').upload(path, pdfBlob, {
       contentType: 'application/pdf', upsert: true
@@ -4764,14 +4782,15 @@ Sans certification : ${sans.join(', ')}`;
     if (!upErr) {
       const { data: urlData } = db.storage.from('devis-fournisseurs').getPublicUrl(path);
       pdfUrl = urlData?.publicUrl || null;
+      if (!pdfUrl) erreurStockage = "l'adresse du fichier déposé n'a pas pu être obtenue";
     } else {
-      console.warn('Storage upload failed (bucket manquant ?):', upErr.message);
+      erreurStockage = _messageErreur(upErr);
     }
   } catch (e) {
-    console.warn('Storage upload skipped:', e.message);
+    erreurStockage = _messageErreur(e);
   }
 
-  return { pdfUrl, devisNum, pdfBlob };
+  return { pdfUrl, devisNum, pdfBlob, erreurStockage };
 }
 
 async function saveReponses(send) {
@@ -4848,14 +4867,20 @@ async function saveReponses(send) {
           const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
           const chNom = consInfo.chantiers?.affaire || '';
           const msgRep = `${nomFourn} a répondu à la consultation "${consInfo.titre || ''}"${chNom ? ` — ${chNom}` : ''}`;
-          await _discret(db.from('notifications').insert({
+          // Visible et non discret : si l'entrepreneur n'est pas prévenu, il ne saura pas que ses
+          // prix l'attendent, et le fournisseur croira sa réponse annoncée.
+          const { error: notifErr } = await db.from('notifications').insert({
             type: 'reponse_fournisseur',
             user_id: consInfo.entrepreneur_id,
             message: msgRep,
             consultation_id: consId,
             chantier_id: consInfo.chantier_id || null,
             read: false
-          }), 'notification');
+          });
+          if (notifErr) {
+            console.error('notification réponse:', notifErr);
+            toast("Réponse enregistrée, mais l'entrepreneur n'a pas pu être notifié.", 'err');
+          }
           fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: consInfo.entrepreneur_id, portail: 'entrepreneur', title: 'Fournisseur a répondu', message: msgRep })

@@ -694,12 +694,24 @@
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">Nom du document</label>
-            <input id="doc-viser-nom" type="text" list="doc-viser-nom-suggestions" placeholder="ex : Plan de masse" class="border rounded px-3 py-2 text-sm w-64">
+            <input id="doc-viser-nom" type="text" list="doc-viser-nom-suggestions" placeholder="ex : Plan de masse" class="border rounded px-3 py-2 text-sm w-64" oninput="_majApercuDocViser()">
             <datalist id="doc-viser-nom-suggestions"></datalist>
           </div>
-          <label class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 cursor-pointer">
-            ⬆ Choisir un PDF<input id="doc-viser-file" type="file" accept=".pdf" class="hidden" onchange="uploadDocumentViser()">
+          <label class="bg-white border border-green-600 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-50 cursor-pointer">
+            ⬆ Choisir un PDF<input id="doc-viser-file" type="file" accept=".pdf" class="hidden" onchange="_majApercuDocViser()">
           </label>
+        </div>
+        <!-- Le choix du fichier ne vaut pas envoi : on montre d'abord la référence qui sera donnée
+             au document, puis on soumet — comme pour une DAF. -->
+        <div id="doc-viser-apercu" class="hidden mt-3 border border-gray-200 rounded-xl p-3 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+          <div class="min-w-0">
+            <p class="text-xs text-gray-500">Fichier choisi <span id="doc-viser-fichier" class="text-gray-700"></span></p>
+            <p class="text-xs text-gray-500 mt-0.5">Référence <span id="doc-viser-ref" class="font-mono text-gray-800"></span></p>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button onclick="_annulerDocViser()" class="text-xs border px-3 py-1.5 rounded-lg text-gray-600 hover:bg-white">Annuler</button>
+            <button id="doc-viser-submit" onclick="uploadDocumentViser()" class="text-sm bg-green-600 text-white px-4 py-1.5 rounded-lg font-medium hover:bg-green-700">Soumettre</button>
+          </div>
         </div>
       </div>
       <div id="documents-viser-list" class="space-y-3"></div>
@@ -8727,9 +8739,17 @@ function openNewConsultationModal() {
 
 // Les fournitures effectivement soumises : celles du chantier — et du lot le cas échéant — que
 // le filtre de familles retient. C'est exactement ce que le fournisseur verra.
+// Une variante n'a pas toujours de famille propre : elle suit celle de sa ligne mère. Une ligne
+// sans famille du tout est en revanche exclue dès qu'un filtre est posé — la retenir revenait à
+// soumettre le chantier entier alors qu'on avait coché « Végétaux ».
 function _perimetreConsultation(familles) {
-  const dansFamilles = f => !familles?.length || !f.famille_id || familles.includes(f.famille_id);
-  return (state.fournitures || []).filter(dansFamilles).map(f => f.id);
+  const parFamille = f => {
+    if (f.famille_id) return f.famille_id;
+    const parent = (state.fournitures || []).find(p => p.id === f.parent_id);
+    return parent?.famille_id || null;
+  };
+  if (!familles?.length) return (state.fournitures || []).map(f => f.id);
+  return (state.fournitures || []).filter(f => familles.includes(parFamille(f))).map(f => f.id);
 }
 
 async function createConsultation() {
@@ -13137,6 +13157,8 @@ function onDocViserCategorieChange() {
   const envoyes = new Set((state.documentsViser || []).map(d => `${d.categorie}||${d.nom}`));
   const suggestions = (state.docsRequis || []).filter(r => r.categorie === cat && !envoyes.has(`${r.categorie}||${r.nom}`));
   dl.innerHTML = suggestions.map(r => `<option value="${escHtml(r.nom)}">`).join('');
+  // La catégorie entre dans la référence : l'aperçu doit suivre.
+  _majApercuDocViser();
 }
 
 async function loadDocumentsViser() {
@@ -13199,6 +13221,54 @@ function _renderDocumentsViser() {
   }).join('');
 }
 
+// Dépose le PDF sous sa référence. Deux documents peuvent porter la même — même nom, même
+// catégorie, même version — sans être le même fichier : plutôt qu'écraser silencieusement, on
+// suffixe. La clé du Storage n'accepte ni accents ni caractères spéciaux, d'où l'assainissement.
+async function _deposerDocumentViser(ch, numero, file) {
+  const base = _nomFichierSur(numero) || 'document';
+  for (let essai = 0; essai < 4; essai++) {
+    const path = `${ch.id}/${base}${essai ? '-' + (essai + 1) : ''}.pdf`;
+    const { error } = await db.storage.from('daf-pdfs')
+      .upload(path, file, { contentType: 'application/pdf' });
+    if (!error) return path;
+    // 409 : la clé existe déjà. Toute autre erreur est réelle et doit remonter.
+    const occupe = error.statusCode === '409' || /exists/i.test(error.message || '');
+    if (!occupe) throw error;
+  }
+  throw new Error(`Quatre fichiers portent déjà la référence ${numero} : changez le nom du document.`);
+}
+
+// Montre, avant tout envoi, le nom que le document portera. La référence se recalcule à chaque
+// frappe : c'est le seul moment où l'on peut encore corriger le nom ou la catégorie.
+async function _majApercuDocViser() {
+  const bloc = document.getElementById('doc-viser-apercu');
+  const file = document.getElementById('doc-viser-file')?.files[0];
+  const ch = state.currentChantier;
+  if (!bloc) return;
+  if (!file || !ch) { bloc.classList.add('hidden'); return; }
+  bloc.classList.remove('hidden');
+  document.getElementById('doc-viser-fichier').textContent = file.name;
+  const nom = document.getElementById('doc-viser-nom')?.value.trim();
+  const categorie = document.getElementById('doc-viser-categorie')?.value || null;
+  const ref = document.getElementById('doc-viser-ref');
+  const btn = document.getElementById('doc-viser-submit');
+  if (!nom) {
+    ref.textContent = '— indiquez d’abord le nom du document';
+    ref.classList.add('text-amber-600');
+    if (btn) btn.disabled = true;
+    return;
+  }
+  ref.classList.remove('text-amber-600');
+  ref.textContent = await _codeDocument(ch, { nom, categorie, version: 1 });
+  if (btn) btn.disabled = false;
+}
+
+function _annulerDocViser() {
+  const f = document.getElementById('doc-viser-file');
+  if (f) f.value = '';
+  document.getElementById('doc-viser-apercu')?.classList.add('hidden');
+}
+
 async function uploadDocumentViser() {
   const ch = state.currentChantier;
   const fileInput = document.getElementById('doc-viser-file');
@@ -13206,22 +13276,23 @@ async function uploadDocumentViser() {
   const file = fileInput.files[0];
   const nom = nomInput.value.trim();
   if (!file) return;
-  if (!nom) { toast('Indiquez un nom pour le document', 'err'); fileInput.value = ''; return; }
-  if (!await _confirmerSansMoe('ce document')) { fileInput.value = ''; return; }
+  if (!nom) { toast('Indiquez un nom pour le document', 'err'); return; }
+  const categorie = document.getElementById('doc-viser-categorie')?.value || null;
+  const numero = await _codeDocument(ch, { nom, categorie, version: 1 });
+  if (!await _confirmerSansMoe('ce document')) return;
   try {
     toast('Envoi en cours…');
-    const path = `${ch.id}/${Date.now()}_${_nomFichierSur(file.name)}`;
-    const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
-    if (upErr) throw upErr;
+    // Le fichier déposé porte la référence, non son nom d'origine : c'est sous ce nom que le MOE
+    // le téléchargera et l'archivera, et l'horodatage qui le précédait ne disait rien à personne.
+    const path = await _deposerDocumentViser(ch, numero, file);
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
-    const categorie = document.getElementById('doc-viser-categorie')?.value || null;
-    const numero = await _codeDocument(ch, { nom, categorie, version: 1 });
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
       nom, categorie, numero, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
     });
     if (error) throw error;
     fileInput.value = ''; nomInput.value = '';
+    document.getElementById('doc-viser-apercu')?.classList.add('hidden');
     await _notifierMoe('document_soumis',
       `Nouveau document à viser : ${nom} — ${ch.affaire || ''}`);
     toast(ch.moe_id ? 'Document envoyé au MOE !' : 'Document enregistré — aucun destinataire à prévenir');
@@ -13233,12 +13304,22 @@ async function ouvrirNouvelleVersionDoc(parentId, nom, prevVersion) {
   showModal(`
     <h2 class="text-lg font-bold mb-4">Nouvelle version — ${escHtml(nom)}</h2>
     <p class="text-sm text-gray-500 mb-3">Cette version remplacera la v${prevVersion}.</p>
-    <input id="doc-nv-file" type="file" accept=".pdf" class="w-full border rounded px-3 py-2 text-sm mb-4">
+    <input id="doc-nv-file" type="file" accept=".pdf" class="w-full border rounded px-3 py-2 text-sm mb-2"
+      onchange="_majApercuNouvelleVersion('${parentId}','${nom.replace(/'/g,"\\'")}',${prevVersion})">
+    <p class="text-xs text-gray-500 mb-4">Référence <span id="doc-nv-ref" class="font-mono text-gray-800">—</span></p>
     <div class="flex gap-3">
       <button onclick="envoyerNouvelleVersionDoc('${parentId}','${nom.replace(/'/g,"\\'")}',${prevVersion})" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Envoyer</button>
       <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
     </div>
   `);
+}
+
+async function _majApercuNouvelleVersion(parentId, nom, prevVersion) {
+  const el = document.getElementById('doc-nv-ref');
+  const ch = state.currentChantier;
+  if (!el || !ch) return;
+  const categorie = state.documentsViser?.find(d => d.id === parentId)?.categorie || null;
+  el.textContent = await _codeDocument(ch, { nom, categorie, version: prevVersion + 1 });
 }
 
 async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
@@ -13248,13 +13329,11 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
   if (!await _confirmerSansMoe('cette version')) return;
   try {
     toast('Envoi en cours…');
-    const path = `${ch.id}/${Date.now()}_${_nomFichierSur(file.name)}`;
-    const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
-    if (upErr) throw upErr;
-    const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
     const parentDoc = state.documentsViser?.find(d => d.id === parentId);
     const categorie = parentDoc?.categorie || null;
     const numero = await _codeDocument(ch, { nom, categorie, version: prevVersion + 1 });
+    const path = await _deposerDocumentViser(ch, numero, file);
+    const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
       nom, categorie, numero, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
