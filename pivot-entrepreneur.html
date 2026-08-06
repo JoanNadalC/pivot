@@ -10277,7 +10277,8 @@ function dafRenderRow(f) {
         <button onclick="dafSaveAndGeneratePdf('${f.id}')" class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 whitespace-nowrap">📄 Générer</button>
       </div>`
     : `<div class="flex flex-col gap-1 items-start">
-        <button onclick="dafGeneratePdf('${f.id}')" class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-200 whitespace-nowrap">📄 PDF</button>
+        <button onclick="dafTelechargerPdf('${f.id}')" class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-200 whitespace-nowrap"
+          title="${pdfVisaUrl ? 'Télécharger la DAF visée par le MOE' : 'Télécharger la DAF émise'}">📄 ${pdfVisaUrl ? 'DAF visée' : 'PDF'}</button>
         ${row.statut === 'brouillon' ? `<button onclick="soumettreDaf('${row.daf_id}')" class="bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 whitespace-nowrap">✉ Soumettre</button>` : ''}
       </div>`;
 
@@ -11190,6 +11191,23 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
   } catch(err) { toast(_messageErreur(err),'err'); }
 }
 
+// Télécharge la pièce telle qu'elle existe, et ne la reconstitue jamais. Une DAF émise circule
+// hors de Pivot : la régénérer produirait un document différent de celui que le MOE a reçu et visé,
+// sous la même référence. Voir REGLES.md § 1.
+//
+// La génération ne subsiste que pour un brouillon qui n'a pas encore de PDF — c'est alors une
+// première émission, pas une reconstitution.
+async function dafTelechargerPdf(fId) {
+  const row = window._dafRows[fId] || {};
+  const d = state.daf.find(x => x.id === row.daf_id);
+  const url = d?.pdf_visa_url || d?.pdf_url;
+  if (url) return ouvrirFichierProtege(url, 'daf-pdfs');
+  if (row.statut && row.statut !== 'brouillon') {
+    return toast("Cette DAF a été émise mais son PDF est introuvable : il ne peut pas être reconstitué à l'identique.", 'err');
+  }
+  dafGeneratePdf(fId);
+}
+
 async function dafGeneratePdf(fId) {
   const f = state.fournitures.find(x => x.id === fId);
   if (!f) return;
@@ -11320,19 +11338,26 @@ async function dafGeneratePdf(fId) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     toast(`DAF_${numero}.pdf téléchargé`);
 
-    // Upload Storage (non-bloquant)
+    // Dépôt du PDF émis. Il n'était ni attendu ni vérifié : en cas d'échec, `pdf_url` restait nul,
+    // la DAF partait sans pièce et le maître d'œuvre ne pouvait pas la viser — sans que personne
+    // sache pourquoi. C'est aussi ce fichier que l'entreprise retéléchargera : il fait foi.
     const dafId = row.daf_id;
     if (dafId) {
-      blob.arrayBuffer().then(async buf => {
+      try {
+        const buf = await blob.arrayBuffer();
         const path = `${dafId}/daf_original.pdf`;
-        const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, buf, { contentType: 'application/pdf', upsert: true });
-        if (!upErr) {
-          const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
-          await db.from('daf').update({ pdf_url: urlData?.publicUrl }).eq('id', dafId);
-          const d = state.daf.find(x => x.id === dafId);
-          if (d) d.pdf_url = urlData?.publicUrl;
-        }
-      }).catch(() => {});
+        const { error: upErr } = await db.storage.from('daf-pdfs')
+          .upload(path, buf, { contentType: 'application/pdf', upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
+        await _ecrire(db.from('daf').update({ pdf_url: urlData?.publicUrl }).eq('id', dafId),
+          "Le PDF a été déposé mais n'a pas pu être rattaché à la DAF");
+        const d = state.daf.find(x => x.id === dafId);
+        if (d) d.pdf_url = urlData?.publicUrl;
+        dafRefreshRow(fId);
+      } catch (err) {
+        toast(`Le PDF n'a pas pu être conservé (${_messageErreur(err)}) : la DAF ne pourra pas être visée.`, 'err');
+      }
     }
   } catch (err) {
     console.error(err);
