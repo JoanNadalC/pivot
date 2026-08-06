@@ -5942,7 +5942,7 @@ async function uploadFichePdf(fournitureId, input) {
   if (!file) return;
   toast('Upload en cours…');
   try {
-    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${file.name}`;
+    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);
@@ -6399,6 +6399,17 @@ function getFamilleConfig(nomFamille) {
 }
 // ───────────────────────────────────────────────────────────────────────────
 
+// Les clés du Storage n'acceptent ni accents ni caractères spéciaux : un fichier nommé
+// « DAF_PARCD-VÉG-ACERMONS-v1.pdf » faisait échouer le téléversement avec « Invalid key ».
+// On translittère plutôt que de remplacer par des tirets bas — le nom reste lisible dans l'URL.
+function _nomFichierSur(nom) {
+  return String(nom || 'fichier')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .slice(-120);
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -6486,7 +6497,7 @@ async function uploadDocumentJoint(fournitureId, input) {
   if (_bloqueSiRestreint()) return;
   toast('Téléversement…');
   try {
-    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${file.name}`;
+    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error: upErr } = await db.storage.from('fiches-techniques')
       .upload(path, file, { contentType: file.type || 'application/pdf' });
     if (upErr) throw upErr;
@@ -11005,8 +11016,8 @@ async function dafHandleFiles(fId, input) {
   const added = [];
   for (const file of files) {
     try {
-      toast(`Upload « ${file.name} »…`);
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      toast(`Upload « ${_nomFichierSur(file.name)} »…`);
+      const safeName = _nomFichierSur(file.name);
       const path = `${state.user.id}/daf/${fId}/${Date.now()}_${safeName}`;
       const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: file.type || 'application/pdf' });
       if (upErr) throw upErr;
@@ -11947,7 +11958,7 @@ async function _doeFournHandlePdf(chapIdx, fId, input) {
   toast('Upload…');
   const ch = state.currentChantier;
   try {
-    const path = `${ch.id}/fiches/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const path = `${ch.id}/fiches/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error } = await db.storage.from('doe-pdfs').upload(path, file, { contentType: 'application/pdf', upsert: true });
     if (error) throw error;
     const { data: { publicUrl } } = db.storage.from('doe-pdfs').getPublicUrl(path);
@@ -12289,7 +12300,7 @@ async function _doeSousPageUploadPdf(chapIdx, spIdx, input) {
   toast('Envoi du PDF…');
   try {
     const code = _doeState.chapitres[chapIdx].code || `fam_${chapIdx}`;
-    const path = `${ch.id}/${code}/sp_${spIdx}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const path = `${ch.id}/${code}/sp_${spIdx}_${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error } = await db.storage.from('doe-pdfs').upload(path, file, { contentType: 'application/pdf', upsert: true });
     if (error) throw error;
     const { data: urlData } = db.storage.from('doe-pdfs').getPublicUrl(path);
@@ -12336,7 +12347,7 @@ async function _doeUploadPdf(chapIdx, input) {
   const ch = state.currentChantier;
   for (const file of files) {
     try {
-      const path = `${ch.id}/${_doeState.chapitres[chapIdx].code}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const path = `${ch.id}/${_doeState.chapitres[chapIdx].code}/${Date.now()}_${_nomFichierSur(file.name)}`;
       const { error } = await db.storage.from('doe-pdfs').upload(path, file, { contentType:'application/pdf', upsert:true });
       if (error) throw error;
       const { data:{ publicUrl } } = db.storage.from('doe-pdfs').getPublicUrl(path);
@@ -12613,7 +12624,7 @@ async function _pageEditorUploadPdf(bi, input) {
   if (!file) return;
   toast('Envoi…');
   try {
-    const path = `${ch.id}/pages/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const path = `${ch.id}/pages/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error } = await db.storage.from('doe-pdfs').upload(path, file, { contentType:'application/pdf', upsert:true });
     if (error) throw error;
     const { data: urlData } = db.storage.from('doe-pdfs').getPublicUrl(path);
@@ -13128,7 +13139,7 @@ async function uploadDocumentViser() {
   if (!await _confirmerSansMoe('ce document')) { fileInput.value = ''; return; }
   try {
     toast('Envoi en cours…');
-    const path = `${ch.id}/${Date.now()}_${file.name}`;
+    const path = `${ch.id}/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
@@ -13166,7 +13177,7 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
   if (!await _confirmerSansMoe('cette version')) return;
   try {
     toast('Envoi en cours…');
-    const path = `${ch.id}/${Date.now()}_${file.name}`;
+    const path = `${ch.id}/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error: upErr } = await db.storage.from('daf-pdfs').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);

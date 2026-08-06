@@ -469,6 +469,17 @@ function _messageErreur(err) {
   return txt;
 }
 
+// Les clés du Storage n'acceptent ni accents ni caractères spéciaux : un fichier nommé
+// « DAF_PARCD-VÉG-ACERMONS-v1.pdf » faisait échouer le téléversement avec « Invalid key ».
+// On translittère plutôt que de remplacer par des tirets bas — le nom reste lisible dans l'URL.
+function _nomFichierSur(nom) {
+  return String(nom || 'fichier')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .slice(-120);
+}
+
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ============================================================
@@ -4477,7 +4488,7 @@ async function uploadFichePdf(fournitureId, input) {
   if (!file) return;
   toast('Upload en cours…');
   try {
-    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${file.name}`;
+    const path = `${state.user.id}/${fournitureId}/${Date.now()}_${_nomFichierSur(file.name)}`;
     const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: 'application/pdf' });
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('fiches-techniques').getPublicUrl(path);

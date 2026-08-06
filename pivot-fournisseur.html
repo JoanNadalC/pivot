@@ -3941,6 +3941,17 @@ function _messageErreur(err) {
   return txt;
 }
 
+// Les clés du Storage n'acceptent ni accents ni caractères spéciaux : un fichier nommé
+// « DAF_PARCD-VÉG-ACERMONS-v1.pdf » faisait échouer le téléversement avec « Invalid key ».
+// On translittère plutôt que de remplacer par des tirets bas — le nom reste lisible dans l'URL.
+function _nomFichierSur(nom) {
+  return String(nom || 'fichier')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .slice(-120);
+}
+
 function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -4439,7 +4450,7 @@ async function uploadFicheFournisseur(key, input) {
   toast('Upload en cours…');
   try {
     const userId = state.user?.id || 'guest';
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = _nomFichierSur(file.name);
     const path = `${userId}/${key}/${Date.now()}_${safeName}`;
     const { error: upErr } = await db.storage.from('fiches-techniques').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
     if (upErr) throw upErr;
