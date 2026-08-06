@@ -8836,6 +8836,20 @@ function openCommandeFromComp() {
   setTab('commande');
 }
 
+// Conformité aux labels exigés, pour l'offre d'un fournisseur sur une ligne. Toutes les pépinières
+// n'ont pas les mêmes certifications : celles qui ne les ont pas peuvent répondre, mais l'écart
+// doit sauter aux yeux au moment de comparer — sinon on compare des choses inégales sans le savoir.
+function _compCertifHtml(f, r) {
+  const exigees = Array.isArray(f.certifications) ? f.certifications.filter(Boolean) : [];
+  if (!exigees.length || !r) return '';
+  const detenues = new Set(Array.isArray(r.certifications_ok) ? r.certifications_ok : []);
+  const manquantes = exigees.filter(c => !detenues.has(c));
+  if (!manquantes.length) {
+    return `<span class="text-emerald-600 text-xs" title="Toutes les certifications exigées : ${escHtml(exigees.join(', '))}">✔</span>`;
+  }
+  return `<span class="text-amber-600 text-xs font-bold" title="Sans : ${escHtml(manquantes.join(', '))}">⚠</span>`;
+}
+
 async function loadComparatif() {
   const el = document.getElementById('comparatif-content');
   state.compSelections = {};
@@ -9050,13 +9064,14 @@ function _renderComparatif() {
           if (prix === null) return `<td class="px-1 py-1 text-center text-gray-300 border-l text-xs">—${photoIcon ? `<div>${photoIcon}</div>` : ''}</td>`;
           const ficheUrl = r?.fiche_technique_url;
           const ficheIcon = ficheUrl ? `<a href="${ficheUrl}" target="_blank" onclick="event.stopPropagation()" class="text-blue-400 text-xs" title="Fiche">📄</a>` : '';
+          const certifIcon = _compCertifHtml(f, r);
           return `<td class="px-0.5 border-l text-center align-middle" style="height:2.5rem" onclick="selectComp('${f.id}','${cf.fournisseur_id}','${consId}')">
             <div class="rounded px-0.5 cursor-pointer h-full flex flex-col items-center justify-center ${isSelected?'bg-green-100 ring-2 ring-green-500':'hover:bg-blue-50'} transition-colors">
               ${isSelected
                 ? `<input type="number" step="0.01" class="w-16 border rounded px-0.5 py-0 h-5 text-xs text-center bg-white" value="${effectivePrix??prix}" onclick="event.stopPropagation()" onchange="updateCompPrix('${f.id}',this.value)">`
                 : `<span class="text-xs font-medium ${r?.devis_valide_at?'text-green-700':'text-gray-400'}">${fmt(prix)}</span>`}
               ${total!=null?`<div class="text-xs text-gray-400 leading-none">${fmt(total)}</div>`:''}
-              ${(ficheIcon||photoIcon)?`<div class="flex items-center gap-1">${ficheIcon}${photoIcon}</div>`:''}
+              ${(ficheIcon||photoIcon||certifIcon)?`<div class="flex items-center gap-1">${ficheIcon}${photoIcon}${certifIcon}</div>`:''}
             </div></td>`;
         }).join('');
 

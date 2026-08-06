@@ -3661,6 +3661,7 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
           ? `<input type="text" class="border rounded px-2 py-1 text-xs w-full var-design-${f.id}-${varOrdre}" value="${escHtml(rep.variante_description || '')}" placeholder="Description variante" ${locked ? 'disabled' : ''}>`
           : escHtml(f.designation)}
         ${isVegetal && !isVar && (f.taille || f.contenant) ? ` <span class="text-gray-400">${[f.taille, f.contenant].filter(Boolean).map(escHtml).join(' · ')}</span>` : ''}
+        ${!isVar ? _certificationsExigees(f, key, locked) : ''}
       </td>
       ${specCell}
       <td class="px-2 py-2 text-right">${f.qte || ''}</td>
@@ -3712,6 +3713,57 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
       </td>
     </tr>
   `;
+}
+
+// Les certifications portées par une fourniture sont une EXIGENCE de l'entreprise — Végétal local,
+// Label Rouge, Plante Bleue — et non un détail descriptif. Elles n'étaient nulle part affichées au
+// fournisseur, qui chiffrait sans savoir ce qu'on lui demandait.
+//
+// Elles figurent donc sous la désignation, indépendamment du choix « inclure les caractéristiques »
+// : ce réglage porte sur le détail technique, pas sur ce que la commande impose.
+// Toutes les pépinières n'ont pas les mêmes labels. Interdire la réponse à celles qui ne les ont
+// pas priverait l'entreprise d'offres qu'elle veut peut-être considérer ; passer le sujet sous
+// silence lui ferait comparer des choses inégales. Le fournisseur déclare donc, ligne par ligne,
+// ce qu'il détient — et l'écart se voit immédiatement.
+//
+// Une variante aurait dupliqué chaque ligne pour dire une seule chose, et le comparatif aurait
+// perdu en lisibilité ce qu'il gagnait en exhaustivité.
+function _certificationsExigees(f, key, locked) {
+  const liste = Array.isArray(f.certifications) ? f.certifications.filter(Boolean) : [];
+  if (!liste.length) return '';
+  const declarees = new Set(state.reponses?.[key]?.certifications_ok || []);
+  return `<div class="flex flex-wrap gap-1 mt-1">${liste.map((c, i) => {
+    const coche = declarees.has(c);
+    const id = `certif-${key}-${i}`;
+    return `<label for="${id}"
+        class="text-[10px] px-1.5 py-0.5 rounded-full border whitespace-nowrap cursor-pointer flex items-center gap-1
+               ${coche ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-gray-50 text-gray-400 border-gray-200'}"
+        title="Exigé par l'entreprise — cochez si vous le détenez">
+        <input type="checkbox" id="${id}" class="certif-input w-3 h-3 accent-emerald-600"
+          data-key="${key}" data-certif="${escHtml(c)}" ${coche ? 'checked' : ''} ${locked ? 'disabled' : ''}
+          onchange="_majCertification(this)">
+        ${escHtml(c)}
+      </label>`;
+  }).join('')}</div>`;
+}
+
+// La pastille suit la case : sans ce retour, on ne saurait pas ce qu'on vient de déclarer.
+function _majCertification(input) {
+  const key = input.dataset.key;
+  const certif = input.dataset.certif;
+  state.reponses[key] = state.reponses[key] || {};
+  const set = new Set(state.reponses[key].certifications_ok || []);
+  if (input.checked) set.add(certif); else set.delete(certif);
+  state.reponses[key].certifications_ok = [...set];
+  const etiquette = input.closest('label');
+  if (etiquette) {
+    etiquette.classList.toggle('bg-emerald-50', input.checked);
+    etiquette.classList.toggle('text-emerald-700', input.checked);
+    etiquette.classList.toggle('border-emerald-300', input.checked);
+    etiquette.classList.toggle('bg-gray-50', !input.checked);
+    etiquette.classList.toggle('text-gray-400', !input.checked);
+    etiquette.classList.toggle('border-gray-200', !input.checked);
+  }
 }
 
 // ─── Champs & certifications par famille (référentiel commun) ──────────────
@@ -4346,6 +4398,8 @@ function collectReponses() {
       fiche_technique_url:     ficheInput?.value.trim() || null,
       variante_description:    designInput?.value.trim() || null,
       variante_caracteristiques: varCaract.length ? varCaract : null,
+      certifications_ok:       (state.reponses[`${fournitureId}_${ordre}`]?.certifications_ok || []).length
+                                 ? state.reponses[`${fournitureId}_${ordre}`].certifications_ok : null,
       _taille:                 tailleInput?.value.trim() || null,
       _contenant:              contenantInput?.value.trim() || null
     });
@@ -4713,6 +4767,7 @@ async function saveReponses(send) {
           variante_ordre: ligne.variante_ordre,
           variante_description: ligne.variante_description,
           variante_caracteristiques: ligne.variante_caracteristiques || null,
+          certifications_ok: ligne.certifications_ok || null,
           siret: state.profile?.siret || null,
           devis_pdf_url: send ? (state.devisPdfUrl || null) : null,
           devis_valide_at: send ? new Date().toISOString() : null,
