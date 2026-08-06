@@ -20,3 +20,14 @@ verifie('une DAF émise sans PDF n’est pas reconstituée',
 
 verifie('le dépôt du PDF émis est attendu et vérifié',
   /if \(upErr\) throw upErr;/.test(html), true);
+
+// La pièce transmise ne doit pas porter la mention « Brouillon » : elle est produite au moment de
+// la soumission, qui est l'émission — pas à l'enregistrement, qui n'est qu'un aperçu.
+const soumettre = html.match(/async function soumettreDaf[\s\S]*?\n}\n/);
+if (!soumettre) throw new Error('extraction impossible : soumettreDaf');
+
+verifie('la soumission regénère la pièce avec son vrai statut',
+  /dafGeneratePdf\([^)]*\{ statut: 'soumise', telecharger: false \}\)/.test(soumettre[0]), true);
+
+verifie('le statut imprimé peut être forcé par l’appelant',
+  /statut:\s+options\.statut \|\| row\.statut \|\| 'brouillon'/.test(html), true);

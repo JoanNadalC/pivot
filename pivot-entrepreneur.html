@@ -11210,7 +11210,10 @@ async function dafTelechargerPdf(fId) {
   dafGeneratePdf(fId);
 }
 
-async function dafGeneratePdf(fId) {
+// `options.statut` force le statut imprimé — la soumission s'en sert pour produire la pièce qui
+// sera transmise, la génération courante n'étant qu'un aperçu de brouillon.
+// `options.telecharger = false` dépose sans rien ouvrir chez l'utilisateur.
+async function dafGeneratePdf(fId, options = {}) {
   const f = state.fournitures.find(x => x.id === fId);
   if (!f) return;
   const row = window._dafRows[fId] || {};
@@ -11298,7 +11301,7 @@ async function dafGeneratePdf(fId) {
         qte:            f.qte || '',
         unite:          f.unite || 'U',
         prix_unit_ht:   row.prix_unit_ht || f.prix_unit_ht || '',
-        statut:         row.statut || 'brouillon',
+        statut:         options.statut || row.statut || 'brouillon',
         version:        row.version || 1,
         date_emission:  new Date().toLocaleDateString('fr-FR'),
         date_livraison: row.date_livraison_prevue || '',
@@ -11334,11 +11337,16 @@ async function dafGeneratePdf(fId) {
     }
 
     const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `DAF_${numero}.pdf`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast(`DAF_${numero}.pdf téléchargé`);
+    if (options.telecharger !== false) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `DAF_${numero}.pdf`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+      toast(`DAF_${numero}.pdf téléchargé`);
+    }
 
     // Dépôt du PDF émis. Il n'était ni attendu ni vérifié : en cas d'échec, `pdf_url` restait nul,
     // la DAF partait sans pièce et le maître d'œuvre ne pouvait pas la viser — sans que personne
@@ -11357,14 +11365,17 @@ async function dafGeneratePdf(fId) {
         const d = state.daf.find(x => x.id === dafId);
         if (d) d.pdf_url = urlData?.publicUrl;
         dafRefreshRow(fId);
+        return urlData?.publicUrl || null;
       } catch (err) {
         toast(`Le PDF n'a pas pu être conservé (${_messageErreur(err)}) : la DAF ne pourra pas être visée.`, 'err');
+        return null;
       }
     }
   } catch (err) {
     console.error(err);
     toast('Erreur PDF : ' + err.message, 'err');
   }
+  return null;
 }
 
 // ── Helpers worker ──
@@ -13080,8 +13091,17 @@ async function soumettreDaf(id) {
 
     const daf = state.daf.find(d => d.id === id);
     if (daf) daf.statut = 'soumise';
-    const row = Object.values(window._dafRows).find(r => r.daf_id === id);
+    const entree = Object.entries(window._dafRows).find(([, r]) => r.daf_id === id);
+    const row = entree?.[1];
     if (row) row.statut = 'soumise';
+
+    // La pièce transmise est produite ici, et non à l'enregistrement : le PDF généré avant la
+    // soumission portait la mention « Brouillon », et c'est ce fichier-là que le MOE recevait et
+    // visait. La soumission est le moment de l'émission — après quoi la pièce ne bouge plus.
+    if (entree) {
+      const url = await dafGeneratePdf(entree[0], { statut: 'soumise', telecharger: false });
+      if (!url) toast("La DAF est soumise, mais sa pièce n'a pas pu être regénérée : elle portera la mention Brouillon.", 'err');
+    }
     if (moeId) {
       const msgDaf = `Nouvelle DAF soumise : ${daf?.numero||id} — ${state.currentChantier.affaire||''}`;
       await _discret(db.from('notifications').insert({
