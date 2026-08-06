@@ -647,7 +647,9 @@
               <tr>
                 <th class="px-3 py-2 text-left"></th>
                 <th class="px-3 py-2 text-left">Désignation</th>
-                <th class="px-3 py-2 text-left">Famille</th>
+                <!-- Colonne laissée vide : un document visé n'appartient à aucune famille de
+                     fournitures, mais sa place tient l'alignement avec le tableau du dessus. -->
+                <th class="px-3 py-2"></th>
                 <th class="px-3 py-2 text-left">Statut DAF</th>
                 <th class="px-3 py-2 text-left">Émission DAF</th>
                 <th class="px-3 py-2 text-left">Date VISA</th>
@@ -13038,8 +13040,9 @@ async function _renderSuiviDocuments() {
         <td class="px-3 py-2">
           <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="${multi ? 'text-xs text-gray-600' : 'font-medium'} hover:text-blue-600 hover:underline">${multi ? '' : escHtml(d.nom) + ' '}</a>
           <span class="text-xs text-gray-400 font-mono">v${d.version}</span>
+          ${d.categorie ? `<span class="text-xs text-gray-400"> · ${escHtml(d.categorie)}</span>` : ''}
         </td>
-        <td class="px-3 py-2 text-xs text-gray-500">${escHtml(d.categorie || '—')}</td>
+        <td class="px-3 py-2"></td>
         <td class="px-3 py-2">${statutBadge(d.statut)}</td>
         <td class="px-3 py-2 text-xs">${new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
         <td class="px-3 py-2 text-xs">${visa?.date_visa ? new Date(visa.date_visa).toLocaleDateString('fr-FR') : '—'}</td>
