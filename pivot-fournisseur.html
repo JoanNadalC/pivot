@@ -4631,7 +4631,22 @@ async function generateDevis(consId, lignes) {
   let totalHT = 0;
   for (const l of lignes) {
     const f = (state.fournitures || []).find(x => x.id === l.fourniture_id);
-    const design = l.est_variante ? (l.variante_description || 'Variante') : (f?.designation || '');
+    let design = l.est_variante ? (l.variante_description || 'Variante') : (f?.designation || '');
+    // Le devis est le document contractuel : ce que le fournisseur s'engage à livrer doit y
+    // figurer, y compris ce qu'il ne peut pas garantir. Sans cette mention, l'entreprise voyait
+    // la conformité au comparatif mais pas dans la pièce qu'elle archive.
+    // Rien sur les variantes : le fournisseur n'y a pas de case à cocher, et écrire « sans
+    // certification » lui ferait dire ce qu'il n'a jamais déclaré.
+    const exigees = (!l.est_variante && Array.isArray(f?.certifications)) ? f.certifications.filter(Boolean) : [];
+    if (exigees.length) {
+      const detenues = new Set(Array.isArray(l.certifications_ok) ? l.certifications_ok : []);
+      const ok = exigees.filter(c => detenues.has(c));
+      const sans = exigees.filter(c => !detenues.has(c));
+      if (ok.length) design += `
+Certifié : ${ok.join(', ')}`;
+      if (sans.length) design += `
+Sans certification : ${sans.join(', ')}`;
+    }
     const qte = f?.qte ?? 1;
     const unite = f?.unite || 'U';
     const pu = l.prix_unit_ht || 0;
