@@ -11518,9 +11518,9 @@ function _renderCodeAtelier(type) {
         return `
         <span draggable="true" data-i="${i}"
           ondragstart="_codeDragStart(event,'${type}',${i})"
-          ondragover="_codeDragOver(event)"
-          ondragleave="this.classList.remove('ring-2','ring-blue-400')"
-          ondrop="_codeDrop(event,'${type}',${i})"
+          ondragover="_codeDragOver(event,${i})"
+          ondragleave="_codeTraitEffacer(this)"
+          ondrop="_codeDrop(event,'${type}')"
           ondragend="_codeDragEnd()"
           class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1.5 pr-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none">
           <span class="text-gray-300 leading-none" title="Glisser pour réordonner">⠿</span>
@@ -11538,7 +11538,7 @@ function _renderCodeAtelier(type) {
       ${dispo.map(b => `<button onclick="_codeAjouter('${type}','${b.id}')"
         class="text-xs border border-dashed border-gray-300 text-gray-500 rounded-lg px-2 py-1 hover:border-gray-500 hover:text-gray-700">+ ${escHtml(b.label)}</button>`).join('')}
     </div>` : ''}
-    <p class="text-xs text-gray-400 mt-2">Glissez les briques pour les réordonner. Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+    <p class="text-xs text-gray-400 mt-2">Glissez une brique : le trait bleu indique où elle s'insérera. Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
 }
 
 // Glisser-déposer. La source est mémorisée plutôt que passée par le presse-papiers de l'événement :
@@ -11546,37 +11546,55 @@ function _renderCodeAtelier(type) {
 let _codeDrag = null;
 
 function _codeDragStart(ev, type, i) {
-  _codeDrag = { type, i };
+  _codeDrag = { type, depart: i, insertion: i };
   ev.dataTransfer.effectAllowed = 'move';
   // Firefox n'amorce pas le glisser sans données transférées.
   ev.dataTransfer.setData('text/plain', String(i));
   ev.currentTarget.classList.add('opacity-40');
 }
 
-function _codeDragOver(ev) {
+// Un trait vertical dans l'interstice, plutôt qu'un cadre autour de la brique survolée : on lit
+// alors où la brique va s'insérer, et non par-dessus laquelle on passe.
+function _codeTrait(el, cote) {
+  el.style.boxShadow = cote === 'gauche'
+    ? '-5px 0 0 -3px #2563eb'
+    : '5px 0 0 -3px #2563eb';
+}
+function _codeTraitEffacer(el) { el.style.boxShadow = ''; }
+
+function _codeDragOver(ev, i) {
   if (!_codeDrag) return;
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
-  ev.currentTarget.classList.add('ring-2', 'ring-blue-400');
+  const r = ev.currentTarget.getBoundingClientRect();
+  const apres = ev.clientX > r.left + r.width / 2;
+  // Les autres briques effacent leur trait : un seul interstice peut être visé à la fois.
+  document.querySelectorAll(`#code-zone-${_codeDrag.type} [data-i]`).forEach(e => {
+    if (e !== ev.currentTarget) _codeTraitEffacer(e);
+  });
+  _codeTrait(ev.currentTarget, apres ? 'droite' : 'gauche');
+  _codeDrag.insertion = apres ? i + 1 : i;
 }
 
-function _codeDrop(ev, type, cible) {
+function _codeDrop(ev, type) {
   ev.preventDefault();
   if (!_codeDrag || _codeDrag.type !== type) return;
-  const depart = _codeDrag.i;
+  const { depart, insertion } = _codeDrag;
   _codeDrag = null;
-  if (depart === cible) { _renderCodeAtelier(type); return; }
   const l = [..._codeEtat[type]];
   const [brique] = l.splice(depart, 1);
-  l.splice(cible, 0, brique);
+  // Retirer la brique décale ce qui la suit : l'index d'insertion doit suivre.
+  l.splice(insertion > depart ? insertion - 1 : insertion, 0, brique);
   _codeEtat[type] = l;
   _renderCodeAtelier(type);
 }
 
 function _codeDragEnd() {
   _codeDrag = null;
-  document.querySelectorAll('[data-i]').forEach(e =>
-    e.classList.remove('opacity-40', 'ring-2', 'ring-blue-400'));
+  document.querySelectorAll('[data-i]').forEach(e => {
+    e.classList.remove('opacity-40');
+    _codeTraitEffacer(e);
+  });
 }
 
 function _codeApercu(type) {
