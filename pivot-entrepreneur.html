@@ -11442,9 +11442,11 @@ const CODE_BRIQUES = [
   { id: 'date',       label: 'Date du jour' },
 ];
 
+// Ordre et longueurs retenus à l'usage : la ville puis le chantier situent la pièce avant qu'on
+// sache de quoi elle parle, ce qui est la façon dont on cherche un document des années après.
 const CODE_DEFAUT = [
-  { id: 'chantier', n: 5 }, { id: 'poste' }, { id: 'type', n: 3 },
-  { id: 'objet', n: 8 }, { id: 'version' },
+  { id: 'ville', n: 11 }, { id: 'chantier', n: 6 }, { id: 'entreprise', n: 11 },
+  { id: 'poste' }, { id: 'objet', n: 10 }, { id: 'version' },
 ];
 const CODE_SEPARATEUR_DEFAUT = '_';
 
