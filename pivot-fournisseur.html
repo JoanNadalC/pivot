@@ -3361,11 +3361,13 @@ async function ignorerConsultation(id) {
   // Notifier l'entrepreneur
   try {
     const fournisseurIds = [state.fournisseurId, ...(state.fournisseurIds || [])].filter(Boolean);
+    // Sans jointure vers `chantiers` : le nom du chantier n'est qu'un ornement du message, il ne
+    // doit pas décider si la notification part ou non. Voir saveReponses.
     const { data: cons } = await db.from('consultations')
-      .select('entrepreneur_id, titre, chantier_id, chantiers(affaire)').eq('id', id).maybeSingle();
+      .select('entrepreneur_id, titre, chantier_id').eq('id', id).maybeSingle();
     if (cons?.entrepreneur_id) {
       const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
-      const chNom = cons.chantiers?.affaire || '';
+      const chNom = state.consultations?.find(c => c.id === id)?.chantiers?.affaire || '';
       await _discret(db.from('notifications').insert({
         type: 'consultation_ignoree',
         user_id: cons.entrepreneur_id,
@@ -4386,10 +4388,10 @@ async function confirmerDemandeModif(consId) {
     }), 'Demande non enregistrée');
     // Notifier l'entrepreneur
     const { data: cons } = await db.from('consultations')
-      .select('entrepreneur_id, titre, chantier_id, chantiers(affaire)').eq('id', consId).maybeSingle();
+      .select('entrepreneur_id, titre, chantier_id').eq('id', consId).maybeSingle();
     if (cons?.entrepreneur_id) {
       const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
-      const chNom = cons.chantiers?.affaire || '';
+      const chNom = state.currentConsultation?.chantiers?.affaire || '';
       await _discret(db.from('notifications').insert({
         type: 'demande_modification',
         user_id: cons.entrepreneur_id,
@@ -4862,30 +4864,34 @@ async function saveReponses(send) {
         .eq('fournisseur_id', fournisseurId);
 
       if (send) {
-        const { data: consInfo } = await db.from('consultations').select('entrepreneur_id, titre, chantier_id, chantiers(affaire)').eq('id', consId).maybeSingle();
-        if (consInfo?.entrepreneur_id) {
-          const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
-          const chNom = consInfo.chantiers?.affaire || '';
-          const msgRep = `${nomFourn} a répondu à la consultation "${consInfo.titre || ''}"${chNom ? ` — ${chNom}` : ''}`;
-          // Visible et non discret : si l'entrepreneur n'est pas prévenu, il ne saura pas que ses
-          // prix l'attendent, et le fournisseur croira sa réponse annoncée.
-          const { error: notifErr } = await db.from('notifications').insert({
-            type: 'reponse_fournisseur',
-            user_id: consInfo.entrepreneur_id,
-            message: msgRep,
-            consultation_id: consId,
-            chantier_id: consInfo.chantier_id || null,
-            read: false
-          });
-          if (notifErr) {
-            console.error('notification réponse:', notifErr);
-            toast("Réponse enregistrée, mais l'entrepreneur n'a pas pu être notifié.", 'err');
-          }
-          fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: consInfo.entrepreneur_id, portail: 'entrepreneur', title: 'Fournisseur a répondu', message: msgRep })
-          }).catch(() => {});
+        // Le destinataire est déjà connu : il a servi à écrire les réponses. Le relire par une
+        // requête jointe à `chantiers` faisait dépendre la notification d'une table que le
+        // fournisseur n'a pas toujours le droit de lire — la requête renvoyait alors rien, et
+        // l'entrepreneur n'était pas prévenu, sans le moindre message.
+        const { data: consInfo } = await db.from('consultations')
+          .select('titre, chantier_id').eq('id', consId).maybeSingle();
+        const nomFourn = state.profile?.nom || state.profile?.societe || 'Un fournisseur';
+        const titreCons = consInfo?.titre || state.currentConsultation?.titre || '';
+        const chNom = state.currentConsultation?.chantiers?.affaire || '';
+        const msgRep = `${nomFourn} a répondu à la consultation "${titreCons}"${chNom ? ` — ${chNom}` : ''}`;
+        // Visible et non discret : si l'entrepreneur n'est pas prévenu, il ne saura pas que ses
+        // prix l'attendent, et le fournisseur croira sa réponse annoncée.
+        const { error: notifErr } = await db.from('notifications').insert({
+          type: 'reponse_fournisseur',
+          user_id: cons.entrepreneur_id,
+          message: msgRep,
+          consultation_id: consId,
+          chantier_id: consInfo?.chantier_id || null,
+          read: false
+        });
+        if (notifErr) {
+          console.error('notification réponse:', notifErr);
+          toast("Réponse enregistrée, mais l'entrepreneur n'a pas pu être notifié.", 'err');
         }
+        fetch('https://pivot-pdf.jncoutier.workers.dev/notify-event', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: cons.entrepreneur_id, portail: 'entrepreneur', title: 'Fournisseur a répondu', message: msgRep })
+        }).catch(() => {});
         await _ecrire(db.from('consultations').update({ statut: 'repondue' }).eq('id', consId),
       "Le statut de la consultation n'a pas pu être mis à jour");
         state.devisPdfUrl = null;
