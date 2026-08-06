@@ -11113,17 +11113,18 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
   const ch = state.currentChantier;
   const fam = state.familles.find(fm=>fm.id===f.famille_id);
   const cfg = await _loadChantierConfig(ch.id);
+  // Les valeurs sont fournies brutes : c'est `_composerCode` qui les abrège, selon la longueur
+  // choisie pour chaque brique dans les paramètres.
   const valeurs = {
+    ..._codeValeursChantier(ch),
     poste:       row._numero_poste ?? f.numero_poste ?? '',
-    chantier:    _codeMot(ch.affaire || 'CH', 5),
-    famille:     fam ? _codeMot(fam.nom, 3) : 'GEN',
-    designation: _codeMot(row._designation || f.designation, 8),
+    famille:     fam?.nom || 'GEN',
+    designation: row._designation || f.designation || '',
     version:     `v${row.version || 1}`,
-    annee:       String(new Date().getFullYear()),
   };
   // La référence d'une DAF déjà émise ne change pas : elle figure sur un document transmis.
   const numero = row.numero
-    || _composerCode(_codeConfig(cfg, 'daf'), valeurs, cfg.code_separateur || '-');
+    || _composerCode(_codeConfig(cfg, 'daf'), valeurs, cfg.code_separateur || CODE_SEPARATEUR_DEFAUT);
   const fichesJson = JSON.stringify((row.fiches||[]).map(ft=>({nom:ft.nom,url:ft.url||'',type:ft.type})));
   try {
     const { data, error } = await db.from('daf').insert({
@@ -11404,56 +11405,85 @@ const DAF_CHAMPS_OPTIONNELS = [
   { key: 'date_commande',  label: 'Date de commande' },
 ];
 
-// ─── Codification des pièces ───────────────────────────────────────────────
-// La référence d'une DAF était figée dans le code : poste, chantier, famille, désignation,
-// version, dans cet ordre et pas un autre. Chaque entreprise a ses habitudes de numérotation, et
-// une pièce contractuelle se retrouve par sa référence — autant qu'elle épouse les usages.
+// ─── Codification des fichiers créés ───────────────────────────────────────
+// La référence était figée dans le code — poste, chantier, famille, désignation, version, dans
+// cet ordre et pas un autre. Chaque entreprise a ses habitudes, et une pièce contractuelle se
+// retrouve par sa référence : autant qu'elle épouse les usages plutôt que l'inverse.
+//
+// `abrege` indique les briques dont on peut choisir la longueur ; les autres sont prises telles
+// quelles, abréger « v2 » ou « 2026 » n'aurait pas de sens.
 const CODE_BRIQUES = [
-  { id: 'poste',       label: 'N° de poste',        pour: ['daf'],        ex: '2.1' },
-  { id: 'chantier',    label: 'Chantier (5 car.)',  pour: ['daf', 'doc'], ex: 'CASIN' },
-  { id: 'famille',     label: 'Famille (3 car.)',   pour: ['daf'],        ex: 'VÉG' },
-  { id: 'categorie',   label: 'Catégorie (3 car.)', pour: ['doc'],        ex: 'PAQ' },
-  { id: 'designation', label: 'Désignation (8 car.)', pour: ['daf'],      ex: 'PHILLYRE' },
-  { id: 'nom',         label: 'Nom du document (8 car.)', pour: ['doc'],  ex: 'PLANASSU' },
-  { id: 'version',     label: 'Version',            pour: ['daf', 'doc'], ex: 'v1' },
-  { id: 'annee',       label: 'Année',              pour: ['daf', 'doc'], ex: '2026' },
+  { id: 'chantier',    label: 'Chantier',      pour: ['daf', 'doc'], abrege: 5, ex: 'Casino grande Motte' },
+  { id: 'ville',       label: 'Ville',         pour: ['daf', 'doc'], abrege: 4, ex: 'Grande Motte' },
+  { id: 'client',      label: 'Client (MOA)',  pour: ['daf', 'doc'], abrege: 5, ex: 'Ville de la Grande Motte' },
+  { id: 'entreprise',  label: 'Mon entreprise', pour: ['daf', 'doc'], abrege: 4, ex: 'Vert Horizon' },
+  { id: 'poste',       label: 'N° de poste',   pour: ['daf'] },
+  { id: 'famille',     label: 'Famille',       pour: ['daf'],        abrege: 3, ex: 'Végétaux' },
+  { id: 'categorie',   label: 'Catégorie',     pour: ['doc'],        abrege: 3, ex: 'PAQ' },
+  { id: 'designation', label: 'Désignation',   pour: ['daf'],        abrege: 8, ex: 'Phillyrea angustifolia' },
+  { id: 'nom',         label: 'Nom du document', pour: ['doc'],      abrege: 8, ex: "Plan d'assurance qualité" },
+  { id: 'version',     label: 'Version',       pour: ['daf', 'doc'] },
+  { id: 'annee',       label: 'Année',         pour: ['daf', 'doc'] },
 ];
 
 const CODE_DEFAUT = {
-  daf: ['poste', 'chantier', 'famille', 'designation', 'version'],
-  doc: ['chantier', 'categorie', 'nom', 'version'],
+  daf: [{ id: 'chantier', n: 5 }, { id: 'poste' }, { id: 'famille', n: 3 }, { id: 'designation', n: 8 }, { id: 'version' }],
+  doc: [{ id: 'chantier', n: 5 }, { id: 'categorie', n: 3 }, { id: 'nom', n: 8 }, { id: 'version' }],
 };
+const CODE_SEPARATEUR_DEFAUT = '_';
+
+const _codeBrique = id => CODE_BRIQUES.find(b => b.id === id);
+
+// Les configurations enregistrées avant l'ajout des longueurs ne contiennent que des identifiants.
+function _codeNormaliser(liste) {
+  return (liste || []).map(b => (typeof b === 'string' ? { id: b } : b))
+    .filter(b => _codeBrique(b.id));
+}
 
 function _codeConfig(config, type) {
-  const f = config?.code_format?.[type];
-  return Array.isArray(f) && f.length ? f : CODE_DEFAUT[type];
+  const f = _codeNormaliser(config?.code_format?.[type]);
+  return f.length ? f : CODE_DEFAUT[type];
 }
 
-// Compose la référence à partir des valeurs déjà normalisées par l'appelant. Une brique sans
-// valeur est omise plutôt que de laisser un séparateur orphelin.
-function _composerCode(ordre, valeurs, separateur = '-') {
-  return ordre.map(id => valeurs[id]).filter(v => v !== null && v !== undefined && v !== '')
-    .join(separateur);
+// Compose la référence. Une brique sans valeur est omise plutôt que de laisser un séparateur
+// orphelin — un poste absent ne doit pas produire « _CASIN_… ».
+function _composerCode(ordre, valeurs, separateur = CODE_SEPARATEUR_DEFAUT) {
+  return ordre.map(b => {
+    const brut = valeurs[b.id];
+    if (brut === null || brut === undefined || brut === '') return '';
+    const def = _codeBrique(b.id);
+    return def?.abrege ? _codeMot(brut, b.n ?? def.abrege) : String(brut);
+  }).filter(Boolean).join(separateur);
 }
 
-// Réduit une chaîne à sa forme codifiée : sans accent perdu, sans ponctuation, en capitales.
+// Réduit une chaîne à sa forme codifiée : sans ponctuation, en capitales.
 function _codeMot(txt, n) {
-  return String(txt || '').replace(/[^a-zA-ZÀ-ÿ0-9]/g, '').slice(0, n).toUpperCase();
+  const net = String(txt || '').replace(/[^a-zA-ZÀ-ÿ0-9]/g, '').toUpperCase();
+  return n ? net.slice(0, n) : net;
 }
 
-// Référence d'un document à viser. Elle n'existait pas : un document se retrouvait par son nom,
-// ce qui suffit tant qu'on est dans Pivot et beaucoup moins dans un échange de courriels ou une
-// pièce d'un dossier d'ouvrage exécuté.
+// Valeurs communes aux deux types de pièces : elles décrivent le contexte, pas le contenu.
+function _codeValeursChantier(ch) {
+  return {
+    chantier:   ch?.affaire || '',
+    ville:      ch?.ville || '',
+    client:     ch?.maitre_ouvrage || '',
+    entreprise: state.profile?.raison_sociale || state.profile?.societe || state.profile?.nom || '',
+    annee:      String(new Date().getFullYear()),
+  };
+}
+
+// Référence d'un document à viser. Elle n'existait pas : un document se retrouvait par son seul
+// nom, ce qui suffit dans Pivot et beaucoup moins dans un échange de courriels ou une pièce de DOE.
 async function _codeDocument(ch, { nom, categorie, version }) {
   try {
     const cfg = await _loadChantierConfig(ch.id);
     return _composerCode(_codeConfig(cfg, 'doc'), {
-      chantier:  _codeMot(ch.affaire || 'CH', 5),
-      categorie: _codeMot(categorie || 'DOC', 3),
-      nom:       _codeMot(nom, 8),
-      version:   `v${version}`,
-      annee:     String(new Date().getFullYear()),
-    }, cfg.code_separateur || '-');
+      ..._codeValeursChantier(ch),
+      categorie: categorie || 'DOC',
+      nom,
+      version: `v${version}`,
+    }, cfg.code_separateur || CODE_SEPARATEUR_DEFAUT);
   } catch (err) {
     // Une référence manquante ne doit pas empêcher d'envoyer le document.
     console.error('_codeDocument', err);
@@ -11462,45 +11492,69 @@ async function _codeDocument(ch, { nom, categorie, version }) {
 }
 
 // ─── Atelier de codification (fenêtre Paramètres DAF) ──────────────────────
-let _codeEtat = { daf: [], doc: [], separateur: '-' };
+let _codeEtat = { daf: [], doc: [], separateur: CODE_SEPARATEUR_DEFAUT };
 
 function _renderCodeAtelier(type) {
   const el = document.getElementById(`code-${type}`);
   if (!el) return;
   const choisies = _codeEtat[type];
-  const dispo = CODE_BRIQUES.filter(b => b.pour.includes(type) && !choisies.includes(b.id));
-  const nom = b => CODE_BRIQUES.find(x => x.id === b);
+  const dispo = CODE_BRIQUES.filter(b => b.pour.includes(type) && !choisies.some(c => c.id === b.id));
 
   el.innerHTML = `
     <div class="flex flex-wrap items-center gap-1.5 mb-2">
-      ${choisies.length ? choisies.map((id, i) => `
-        <span class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs">
-          <button onclick="_codeDeplacer('${type}',${i},-1)" class="text-gray-300 hover:text-gray-600 ${i === 0 ? 'invisible' : ''}" title="Déplacer à gauche">‹</button>
-          <span>${escHtml(nom(id)?.label || id)}</span>
-          <button onclick="_codeDeplacer('${type}',${i},1)" class="text-gray-300 hover:text-gray-600 ${i === choisies.length - 1 ? 'invisible' : ''}" title="Déplacer à droite">›</button>
-          <button onclick="_codeRetirer('${type}',${i})" class="text-red-300 hover:text-red-500 ml-0.5" title="Retirer">✕</button>
-        </span>`).join('')
+      ${choisies.length ? choisies.map((b, i) => {
+        const def = _codeBrique(b.id);
+        return `
+        <span class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1 pr-1.5 py-1 text-xs">
+          <button onclick="_codeDeplacer('${type}',${i},-1)" ${i === 0 ? 'disabled' : ''}
+            class="w-5 h-5 rounded hover:bg-gray-100 text-gray-500 disabled:text-gray-200 disabled:hover:bg-transparent" title="Vers la gauche">◀</button>
+          <span class="font-medium">${escHtml(def.label)}</span>
+          ${def.abrege ? `<input type="number" min="1" max="20" value="${b.n ?? def.abrege}"
+            onchange="_codeLongueur('${type}',${i},this.value)"
+            class="w-10 border rounded px-1 py-0.5 text-xs text-center" title="Nombre de lettres">` : ''}
+          <button onclick="_codeDeplacer('${type}',${i},1)" ${i === choisies.length - 1 ? 'disabled' : ''}
+            class="w-5 h-5 rounded hover:bg-gray-100 text-gray-500 disabled:text-gray-200 disabled:hover:bg-transparent" title="Vers la droite">▶</button>
+          <button onclick="_codeRetirer('${type}',${i})" class="w-5 h-5 rounded text-red-300 hover:text-red-500 hover:bg-red-50" title="Retirer">✕</button>
+        </span>`;
+      }).join('')
         : '<span class="text-xs text-gray-400 italic">Aucune brique — la référence serait vide.</span>'}
     </div>
     ${dispo.length ? `<div class="flex flex-wrap gap-1.5">
       ${dispo.map(b => `<button onclick="_codeAjouter('${type}','${b.id}')"
         class="text-xs border border-dashed border-gray-300 text-gray-500 rounded-lg px-2 py-1 hover:border-gray-500 hover:text-gray-700">+ ${escHtml(b.label)}</button>`).join('')}
     </div>` : ''}
-    <p class="text-xs text-gray-400 mt-2">Aperçu : <span class="font-mono text-gray-600">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+    <p class="text-xs text-gray-400 mt-2">Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
 }
 
 function _codeApercu(type) {
-  const valeurs = Object.fromEntries(CODE_BRIQUES.map(b => [b.id, b.ex]));
+  const valeurs = {
+    poste: '2.1', version: 'v1', annee: String(new Date().getFullYear()),
+    ...Object.fromEntries(CODE_BRIQUES.filter(b => b.ex).map(b => [b.id, b.ex])),
+  };
   return _composerCode(_codeEtat[type], valeurs, _codeEtat.separateur);
 }
 
-function _codeAjouter(type, id) { _codeEtat[type] = [..._codeEtat[type], id]; _renderCodeAtelier(type); }
-function _codeRetirer(type, i)  { _codeEtat[type] = _codeEtat[type].filter((_, k) => k !== i); _renderCodeAtelier(type); }
+function _codeAjouter(type, id) {
+  const def = _codeBrique(id);
+  _codeEtat[type] = [..._codeEtat[type], def?.abrege ? { id, n: def.abrege } : { id }];
+  _renderCodeAtelier(type);
+}
+function _codeRetirer(type, i) {
+  _codeEtat[type] = _codeEtat[type].filter((_, k) => k !== i);
+  _renderCodeAtelier(type);
+}
 function _codeDeplacer(type, i, sens) {
   const l = [..._codeEtat[type]];
   const j = i + sens;
   if (j < 0 || j >= l.length) return;
   [l[i], l[j]] = [l[j], l[i]];
+  _codeEtat[type] = l;
+  _renderCodeAtelier(type);
+}
+function _codeLongueur(type, i, valeur) {
+  const n = Math.max(1, Math.min(20, parseInt(valeur, 10) || 1));
+  const l = [..._codeEtat[type]];
+  l[i] = { ...l[i], n };
   _codeEtat[type] = l;
   _renderCodeAtelier(type);
 }
@@ -11546,7 +11600,7 @@ async function ouvrirParametresDAF() {
 
       <!-- Codification -->
       <div class="border-t pt-4">
-        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Codification des références</p>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Codification des fichiers créés</p>
         <p class="text-xs text-gray-400 mb-3">Ordonnez les briques : la référence d'une pièce en découle, et sert à la retrouver des années plus tard.</p>
         <div class="flex items-center gap-2 mb-3">
           <label class="text-xs text-gray-500">Séparateur</label>
@@ -11635,7 +11689,7 @@ async function ouvrirParametresDAF() {
   _codeEtat = {
     daf: [..._codeConfig(config, 'daf')],
     doc: [..._codeConfig(config, 'doc')],
-    separateur: config.code_separateur || '-',
+    separateur: config.code_separateur || CODE_SEPARATEUR_DEFAUT,
   };
   const selSep = document.getElementById('code-separateur');
   if (selSep) selSep.value = _codeEtat.separateur;
