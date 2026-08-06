@@ -5364,11 +5364,11 @@ async function undoLast() {
     } else if (entry.action === 'caract_groupee') {
       // Rétablir l'état complet plutôt que retirer la caractéristique : elle en remplaçait
       // peut-être une autre, qu'une simple suppression ferait disparaître pour de bon.
-      for (const { id, caracteristiques } of entry.data) {
-        await _ecrire(db.from('fournitures').update({ caracteristiques }).eq('id', id),
+      for (const { id, caracteristiques, certifications } of entry.data) {
+        await _ecrire(db.from('fournitures').update({ caracteristiques, certifications }).eq('id', id),
           'Caractéristique non restaurée');
         const f = state.fournitures.find(x => x.id === id);
-        if (f) f.caracteristiques = caracteristiques;
+        if (f) { f.caracteristiques = caracteristiques; f.certifications = certifications; }
       }
       renderFournitures();
       toast(`Modification annulée — ${entry.data.length} ligne(s) rétablie(s)`);
@@ -5459,27 +5459,70 @@ function ouvrirCaractGroupee() {
     .flatMap(f => Array.isArray(f.caracteristiques) ? f.caracteristiques : [])
     .map(c => c?.cle).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
 
+  // Les certifications proposées sont celles des familles réellement présentes dans la sélection :
+  // offrir « NF Mobilier urbain » sur des végétaux n'aurait aucun sens.
+  const selection = ids.map(id => state.fournitures.find(f => f.id === id)).filter(Boolean);
+  const options = [...new Set(selection.flatMap(f => {
+    const fam = state.familles.find(x => x.id === f.famille_id);
+    return getFamilleConfig(fam?.nom)?.certifications || [];
+  }))];
+  // Cochée si toutes les lignes concernées la portent déjà — sinon on ne peut pas savoir ce que
+  // l'utilisateur veut, et la case part décochée.
+  const toutesOnt = cert => selection.every(f =>
+    (Array.isArray(f.certifications) ? f.certifications : []).includes(cert));
+
   showModal(`
-    <h2 class="text-lg font-bold mb-1">Caractéristique sur ${ids.length} ligne${ids.length > 1 ? 's' : ''}</h2>
-    <p class="text-xs text-gray-500 mb-4">La valeur remplacera celle déjà présente sous ce nom, ou l'ajoutera si elle est absente.</p>
-    <label class="block text-xs text-gray-500 mb-1">Nom</label>
+    <h2 class="text-lg font-bold mb-1">Modifier ${ids.length} ligne${ids.length > 1 ? 's' : ''}</h2>
+    <p class="text-xs text-gray-500 mb-4">Chaque section s'applique séparément : laisser l'une vide ne touche pas à l'autre.</p>
+
+    <label class="block text-xs text-gray-500 mb-1">Caractéristique — nom</label>
     <input id="cg-cle" type="text" list="cg-cles" class="w-full border rounded px-3 py-2 text-sm mb-3" placeholder="ex : Conditionnement">
     <datalist id="cg-cles">${connus.map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
     <label class="block text-xs text-gray-500 mb-1">Valeur</label>
     <input id="cg-valeur" type="text" class="w-full border rounded px-3 py-2 text-sm mb-1" placeholder="ex : C3L">
-    <p class="text-xs text-gray-400 mb-4">Laisser vide pour retirer cette caractéristique des lignes sélectionnées.</p>
+    <p class="text-xs text-gray-400 mb-4">Nom sans valeur : la caractéristique est retirée des lignes sélectionnées.</p>
+
+    ${options.length ? `
+    <div class="border-t pt-3 mb-4">
+      <label class="flex items-center gap-2 text-xs text-gray-500 mb-2 cursor-pointer">
+        <input type="checkbox" id="cg-certifs-actif" class="accent-blue-600">
+        <span>Remplacer les certifications exigées</span>
+      </label>
+      <div class="flex flex-wrap gap-2 opacity-40 pointer-events-none" id="cg-certifs-liste">
+        ${options.map(cert => `<label class="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" class="cg-certif accent-green-700" data-certif="${escHtml(cert)}" ${toutesOnt(cert) ? 'checked' : ''}>
+          <span>${escHtml(cert)}</span>
+        </label>`).join('')}
+      </div>
+      <p class="text-xs text-gray-400 mt-2">Les cases reflètent ce que <em>toutes</em> les lignes portent déjà. Tout décocher retire les certifications.</p>
+    </div>` : ''}
+
     <div class="flex gap-3">
       <button onclick="appliquerCaractGroupee()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Appliquer</button>
       <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
     </div>
   `);
+
+  // La liste reste inerte tant que la case maîtresse n'est pas cochée : sans cela, ouvrir la
+  // fenêtre pour une caractéristique écraserait au passage des certifications qu'on n'a pas
+  // touchées — les cases affichant l'état commun, pas l'état de chaque ligne.
+  const maitre = document.getElementById('cg-certifs-actif');
+  if (maitre) maitre.onchange = () => {
+    const liste = document.getElementById('cg-certifs-liste');
+    liste.classList.toggle('opacity-40', !maitre.checked);
+    liste.classList.toggle('pointer-events-none', !maitre.checked);
+  };
 }
 
 async function appliquerCaractGroupee() {
   if (_bloqueSiRestreint()) return;
   const cle = document.getElementById('cg-cle')?.value.trim();
   const valeur = document.getElementById('cg-valeur')?.value.trim();
-  if (!cle) return toast('Indiquez le nom de la caractéristique', 'err');
+  const certifsActif = document.getElementById('cg-certifs-actif')?.checked || false;
+  const certifsVoulues = certifsActif
+    ? [...document.querySelectorAll('.cg-certif:checked')].map(cb => cb.dataset.certif)
+    : null;
+  if (!cle && !certifsActif) return toast('Indiquez une caractéristique ou cochez les certifications', 'err');
 
   const ids = [...document.querySelectorAll('.fourniture-cb:checked')].map(cb => cb.value);
   if (!ids.length) return toast('Aucune ligne sélectionnée', 'err');
@@ -5489,32 +5532,52 @@ async function appliquerCaractGroupee() {
   pushUndo('caract_groupee', cibles.map(f => ({
     id: f.id,
     caracteristiques: JSON.parse(JSON.stringify(f.caracteristiques || [])),
+    certifications: JSON.parse(JSON.stringify(f.certifications || [])),
   })));
 
   try {
     const resultats = await Promise.all(cibles.map(f => {
-      const actuelles = Array.isArray(f.caracteristiques) ? [...f.caracteristiques] : [];
-      const i = actuelles.findIndex(c => (c?.cle || '').toLowerCase() === cle.toLowerCase());
-      let nouvelles;
-      if (!valeur) nouvelles = actuelles.filter((_, k) => k !== i);
-      // Conserver l'orthographe déjà en place : saisir « conditionnement » en minuscules
-      // renommerait la clé sur ces seules lignes, et le fournisseur y verrait deux colonnes.
-      else if (i >= 0) { nouvelles = [...actuelles]; nouvelles[i] = { cle: actuelles[i].cle, valeur }; }
-      else nouvelles = [...actuelles, { cle, valeur }];
-      return db.from('fournitures').update({ caracteristiques: nouvelles })
-        .eq('id', f.id).select('id, caracteristiques').single()
+      const patch = {};
+
+      if (cle) {
+        const actuelles = Array.isArray(f.caracteristiques) ? [...f.caracteristiques] : [];
+        const i = actuelles.findIndex(c => (c?.cle || '').toLowerCase() === cle.toLowerCase());
+        let nouvelles;
+        if (!valeur) nouvelles = actuelles.filter((_, k) => k !== i);
+        // Conserver l'orthographe déjà en place : saisir « conditionnement » en minuscules
+        // renommerait la clé sur ces seules lignes, et le fournisseur y verrait deux colonnes.
+        else if (i >= 0) { nouvelles = [...actuelles]; nouvelles[i] = { cle: actuelles[i].cle, valeur }; }
+        else nouvelles = [...actuelles, { cle, valeur }];
+        patch.caracteristiques = nouvelles;
+      }
+
+      if (certifsVoulues) {
+        // Ne retenir que ce que la famille de cette ligne autorise : une sélection mêlant
+        // plusieurs familles ne doit pas leur imposer les labels des autres.
+        const fam = state.familles.find(x => x.id === f.famille_id);
+        const permises = getFamilleConfig(fam?.nom)?.certifications || [];
+        patch.certifications = certifsVoulues.filter(c => permises.includes(c));
+      }
+
+      return db.from('fournitures').update(patch)
+        .eq('id', f.id).select('id, caracteristiques, certifications').single()
         .then(r => ({ ...r, _f: f }));
     }));
 
     const echec = resultats.find(r => r.error);
     if (echec) throw echec.error;
-    resultats.forEach(r => { r._f.caracteristiques = r.data?.caracteristiques ?? r._f.caracteristiques; });
+    resultats.forEach(r => {
+      r._f.caracteristiques = r.data?.caracteristiques ?? r._f.caracteristiques;
+      r._f.certifications = r.data?.certifications ?? r._f.certifications;
+    });
 
     closeModal();
     renderFournitures();
-    toast(valeur
-      ? `« ${cle} : ${valeur} » appliqué à ${cibles.length} ligne(s)`
-      : `« ${cle} » retiré de ${cibles.length} ligne(s)`);
+    const faits = [];
+    if (cle) faits.push(valeur ? `« ${cle} : ${valeur} »` : `« ${cle} » retiré`);
+    if (certifsVoulues) faits.push(certifsVoulues.length
+      ? `${certifsVoulues.length} certification(s)` : 'certifications retirées');
+    toast(`${faits.join(' et ')} — ${cibles.length} ligne(s)`);
   } catch (err) { toast(_messageErreur(err), 'err'); }
 }
 
