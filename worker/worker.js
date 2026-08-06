@@ -80,6 +80,9 @@ const A4W = 595.28;
 const A4H = 841.89;
 const MARGIN = 40;
 const CONTENT_W = A4W - MARGIN * 2;
+// Hauteur du trait de séparation du cadre de signature, en bas de la première page d'une DAF.
+// Le portail MOE tamponne son visa sous le trait de droite : la valeur est partagée.
+const SIGNATURE_Y = 180;
 
 function drawBandeauBas(page, fonts, config, label, pageNum, totalPages) {
   const bgColor  = hexToRgb(config.bandeau_bg  || '#1a2e44');
@@ -270,8 +273,11 @@ async function buildPage1DAF(pdfDoc, fonts, config, daf, pageNum, totalPages) {
   // disait pas qui l'avait établie ni qui l'avait visée, alors que l'information est en base.
   // Une signature manuscrite garde sa place au-dessus du trait ; ce qui est imprimé en dessous,
   // c'est l'identité — société, personne, et la date pour le visa.
-  if (y > 120) {
-    y = Math.min(y, 180);
+  // Position FIXE : le portail MOE vient tamponner ce cadre lors du visa, et doit savoir où il se
+  // trouve. Toute modification de SIGNATURE_Y doit être reportée dans pivot-moe.html (_genererPdfVise),
+  // ce que le test tests/signature-daf.test.js vérifie.
+  if (y > SIGNATURE_Y) {
+    y = SIGNATURE_Y;
     page.drawLine({ start:{x:MARGIN,y}, end:{x:MARGIN+CONTENT_W,y}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
     y -= 20;
     const yTitres = y;

@@ -4894,6 +4894,26 @@ async function _genererPdfVise(d, statutDaf, remarques) {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+  // Le cadre « Visa maître d'œuvre » attend en bas de la première page : on l'y remplit, plutôt que
+  // de laisser l'entreprise chercher la signature en dernière page. Coordonnées partagées avec le
+  // générateur — worker.js, SIGNATURE_Y — et vérifiées par tests/signature-daf.test.js.
+  // Le générateur omet le cadre si le contenu descend trop bas ; c'est le seul cas où ce tampon
+  // pourrait chevaucher du texte, et il ne se présente pas sur une DAF d'une page.
+  const SIGNATURE_Y = 180;
+  const M_DAF = 40, CONTENT_W_DAF = 595.28 - 2 * M_DAF;
+  try {
+    const premiere = pdfDoc.getPage(0);
+    let yt = SIGNATURE_Y - 20 - 50 - 11;          // sous le trait de signature
+    const xd = M_DAF + CONTENT_W_DAF / 2;         // colonne de droite
+    for (const ligne of [..._identiteSignataire(compteInfo), `Le ${dateVisa}`]) {
+      premiere.drawText(ligne, { x: xd, y: yt, size: 7.5, font: fontReg, color: rgb(0.45,0.45,0.45) });
+      yt -= 10;
+    }
+  } catch (err) {
+    // Un tampon manqué ne doit pas empêcher le visa : la page de visa qui suit fait foi.
+    console.warn('tampon signature page 1:', err);
+  }
+
   const page = pdfDoc.addPage([595.28, 841.89]); // A4 en points
   const { width: W, height: H } = page.getSize();
   const M = 40;

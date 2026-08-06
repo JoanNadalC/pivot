@@ -11251,21 +11251,17 @@ async function dafGeneratePdf(fId) {
 
     const moe = state.maitresOeuvre?.find(m => m.compte_moe_id === ch.moe_id);
 
-    // Visa MOE. L'identité du signataire restait vide : la DAF visée portait « MOE : — » et le
-    // cadre de signature du bas ne disait pas qui avait visé. Un visa engage une personne au nom
-    // d'une société — les deux doivent figurer sur la pièce, avec sa date.
+    // Visa MOE : on rappelle la décision et sa date, jamais l'identité du signataire. Le cadre de
+    // signature reste vide ici — seul le maître d'œuvre le remplit, depuis son portail, sur le PDF
+    // qu'il a lui-même reçu. Une DAF régénérée par l'entreprise ne doit pas pouvoir se donner
+    // l'apparence d'une pièce signée.
     let visa = null;
     if (dafRecord?.visa_moe) {
-      const signataire = [
-        (moe?.societe || '').trim(),
-        [moe?.nom, moe?.fonction].filter(Boolean).join(' — ').trim(),
-      ].filter(Boolean);
       visa = {
         type: dafRecord.visa_moe,
         remarques: dafRecord.visa_remarques || '',
         date: dafRecord.date_visa ? new Date(dafRecord.date_visa).toLocaleDateString('fr-FR') : '',
-        moe: signataire.join(' · '),
-        signataire,
+        moe: '',
       };
     }
     const payload = {
