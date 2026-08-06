@@ -682,7 +682,11 @@
         <div id="doc-requis-list"></div>
       </div>
       <div class="bg-white rounded-xl p-5 shadow-sm mb-4">
-        <h3 class="font-semibold mb-3">Envoyer un document à viser</h3>
+        <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h3 class="font-semibold">Envoyer un document à viser</h3>
+          <button onclick="ouvrirParametresCodification()"
+            class="text-xs border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 whitespace-nowrap">⚙️ Codification</button>
+        </div>
         <div class="flex items-end gap-3 flex-wrap">
           <div>
             <label class="block text-xs text-gray-500 mb-1">Catégorie</label>
@@ -11129,13 +11133,13 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
   const valeurs = {
     ..._codeValeursChantier(ch),
     poste:       row._numero_poste ?? f.numero_poste ?? '',
-    famille:     fam?.nom || 'GEN',
-    designation: row._designation || f.designation || '',
+    type:        fam?.nom || 'GEN',
+    objet:       row._designation || f.designation || '',
     version:     `v${row.version || 1}`,
   };
   // La référence d'une DAF déjà émise ne change pas : elle figure sur un document transmis.
   const numero = row.numero
-    || _composerCode(_codeConfig(cfg, 'daf'), valeurs, cfg.code_separateur || CODE_SEPARATEUR_DEFAUT);
+    || _composerCode(_codeConfig(cfg), valeurs, cfg.code_separateur || CODE_SEPARATEUR_DEFAUT);
   const fichesJson = JSON.stringify((row.fiches||[]).map(ft=>({nom:ft.nom,url:ft.url||'',type:ft.type})));
   try {
     const { data, error } = await db.from('daf').insert({
@@ -11254,7 +11258,8 @@ async function dafGeneratePdf(fId) {
         version:        row.version || 1,
         date_emission:  new Date().toLocaleDateString('fr-FR'),
         date_livraison: row.date_livraison_prevue || '',
-        date_commande:  row.date_commande ? new Date(row.date_commande).toLocaleDateString('fr-FR') : '',
+        // La date de commande ne figure pas sur la DAF : c'est son visa qui autorise à commander,
+        // et la commande lui est donc postérieure par construction. Elle vit dans le Suivi.
         chantier:       ch.affaire || ch.nom || '',
         ville:          ch.ville || '',
         moa_nom:        ch.maitre_ouvrage || '',
@@ -11413,7 +11418,6 @@ const DAF_CHAMPS_OPTIONNELS = [
   { key: 'prix',           label: 'Prix unitaire / Total HT' },
   { key: 'caracteristiques', label: 'Caractéristiques techniques' },
   { key: 'delai',          label: 'Délai indicatif' },
-  { key: 'date_commande',  label: 'Date de commande' },
 ];
 
 // ─── Codification des fichiers créés ───────────────────────────────────────
@@ -11424,40 +11428,46 @@ const DAF_CHAMPS_OPTIONNELS = [
 // `abrege` indique les briques dont on peut choisir la longueur ; les autres sont prises telles
 // quelles, abréger « v2 » ou « 2026 » n'aurait pas de sens.
 const CODE_BRIQUES = [
-  { id: 'chantier',    label: 'Chantier',      pour: ['daf', 'doc'], abrege: 5, ex: 'Casino grande Motte' },
-  { id: 'ville',       label: 'Ville',         pour: ['daf', 'doc'], abrege: 4, ex: 'Grande Motte' },
-  { id: 'client',      label: 'Client (MOA)',  pour: ['daf', 'doc'], abrege: 5, ex: 'Ville de la Grande Motte' },
-  { id: 'entreprise',  label: 'Mon entreprise', pour: ['daf', 'doc'], abrege: 4, ex: 'Vert Horizon' },
-  { id: 'poste',       label: 'N° de poste',   pour: ['daf'] },
-  { id: 'famille',     label: 'Famille',       pour: ['daf'],        abrege: 3, ex: 'Végétaux' },
-  { id: 'categorie',   label: 'Catégorie',     pour: ['doc'],        abrege: 3, ex: 'PAQ' },
-  { id: 'designation', label: 'Désignation',   pour: ['daf'],        abrege: 8, ex: 'Phillyrea angustifolia' },
-  { id: 'nom',         label: 'Nom du document', pour: ['doc'],      abrege: 8, ex: "Plan d'assurance qualité" },
-  { id: 'version',     label: 'Version',       pour: ['daf', 'doc'] },
-  { id: 'annee',       label: 'Année',         pour: ['daf', 'doc'] },
+  { id: 'chantier',   label: 'Chantier',       abrege: 5, ex: 'Casino grande Motte' },
+  { id: 'ville',      label: 'Ville',          abrege: 4, ex: 'Grande Motte' },
+  { id: 'client',     label: 'Client (MOA)',   abrege: 5, ex: 'Ville de la Grande Motte' },
+  { id: 'entreprise', label: 'Mon entreprise', abrege: 4, ex: 'Vert Horizon' },
+  // Briques équivalentes : elles désignent la même idée d'un type de pièce à l'autre, ce qui
+  // permet une codification unique. Le poste n'existe que sur une DAF et s'efface ailleurs.
+  { id: 'poste',      label: 'N° de poste',    aide: 'DAF seulement' },
+  { id: 'type',       label: 'Famille / Catégorie', abrege: 3, ex: 'Végétaux' },
+  { id: 'objet',      label: 'Désignation / Nom',   abrege: 8, ex: 'Phillyrea angustifolia' },
+  { id: 'version',    label: 'Version' },
+  { id: 'annee',      label: 'Année' },
+  { id: 'date',       label: 'Date du jour' },
 ];
 
-const CODE_DEFAUT = {
-  daf: [{ id: 'chantier', n: 5 }, { id: 'poste' }, { id: 'famille', n: 3 }, { id: 'designation', n: 8 }, { id: 'version' }],
-  doc: [{ id: 'chantier', n: 5 }, { id: 'categorie', n: 3 }, { id: 'nom', n: 8 }, { id: 'version' }],
-};
+const CODE_DEFAUT = [
+  { id: 'chantier', n: 5 }, { id: 'poste' }, { id: 'type', n: 3 },
+  { id: 'objet', n: 8 }, { id: 'version' },
+];
 const CODE_SEPARATEUR_DEFAUT = '_';
 
 const _codeBrique = id => CODE_BRIQUES.find(b => b.id === id);
 
-// Les configurations enregistrées avant l'ajout des longueurs ne contiennent que des identifiants.
+// Trois formats se sont succédé : identifiants nus, puis objets, puis listes séparées par type.
+// On les ramène tous à la liste unique, en retenant celle des DAF quand deux existaient.
 function _codeNormaliser(liste) {
   return (liste || []).map(b => (typeof b === 'string' ? { id: b } : b))
+    .map(b => ({ ...b, id: _CODE_ANCIENS[b.id] || b.id }))
     .filter(b => _codeBrique(b.id));
 }
+const _CODE_ANCIENS = { famille: 'type', categorie: 'type', designation: 'objet', nom: 'objet' };
 
-function _codeConfig(config, type) {
-  const f = _codeNormaliser(config?.code_format?.[type]);
-  return f.length ? f : CODE_DEFAUT[type];
+function _codeConfig(config) {
+  const f = config?.code_format;
+  const brut = Array.isArray(f) ? f : (f?.commun || f?.daf || f?.doc);
+  const liste = _codeNormaliser(brut);
+  return liste.length ? liste : CODE_DEFAUT;
 }
 
 // Compose la référence. Une brique sans valeur est omise plutôt que de laisser un séparateur
-// orphelin — un poste absent ne doit pas produire « _CASIN_… ».
+// orphelin — le poste, absent d'un document, ne doit pas produire « _CASIN_… ».
 function _composerCode(ordre, valeurs, separateur = CODE_SEPARATEUR_DEFAUT) {
   return ordre.map(b => {
     const brut = valeurs[b.id];
@@ -11481,6 +11491,8 @@ function _codeValeursChantier(ch) {
     client:     ch?.maitre_ouvrage || '',
     entreprise: state.profile?.raison_sociale || state.profile?.societe || state.profile?.nom || '',
     annee:      String(new Date().getFullYear()),
+    // Format AAAAMMJJ : il se trie tout seul, ce qu'aucun format à la française ne fait.
+    date:       new Date().toISOString().slice(0, 10).replace(/-/g, ''),
   };
 }
 
@@ -11489,10 +11501,10 @@ function _codeValeursChantier(ch) {
 async function _codeDocument(ch, { nom, categorie, version }) {
   try {
     const cfg = await _loadChantierConfig(ch.id);
-    return _composerCode(_codeConfig(cfg, 'doc'), {
+    return _composerCode(_codeConfig(cfg), {
       ..._codeValeursChantier(ch),
-      categorie: categorie || 'DOC',
-      nom,
+      type: categorie || 'DOC',
+      objet: nom,
       version: `v${version}`,
     }, cfg.code_separateur || CODE_SEPARATEUR_DEFAUT);
   } catch (err) {
@@ -11503,52 +11515,55 @@ async function _codeDocument(ch, { nom, categorie, version }) {
 }
 
 // ─── Atelier de codification (fenêtre Paramètres DAF) ──────────────────────
-let _codeEtat = { daf: [], doc: [], separateur: CODE_SEPARATEUR_DEFAUT };
+let _codeEtat = { briques: [], separateur: CODE_SEPARATEUR_DEFAUT };
 
-function _renderCodeAtelier(type) {
-  const el = document.getElementById(`code-${type}`);
+function _renderCodeAtelier() {
+  const el = document.getElementById('code-briques');
   if (!el) return;
-  const choisies = _codeEtat[type];
-  const dispo = CODE_BRIQUES.filter(b => b.pour.includes(type) && !choisies.some(c => c.id === b.id));
+  const choisies = _codeEtat.briques;
+  const dispo = CODE_BRIQUES.filter(b => !choisies.some(c => c.id === b.id));
 
   el.innerHTML = `
-    <div class="flex flex-wrap items-center gap-1.5 mb-2" id="code-zone-${type}">
+    <div class="flex flex-wrap items-center gap-1.5 mb-2" id="code-zone">
       ${choisies.length ? choisies.map((b, i) => {
         const def = _codeBrique(b.id);
         return `
         <span draggable="true" data-i="${i}"
-          ondragstart="_codeDragStart(event,'${type}',${i})"
+          ondragstart="_codeDragStart(event,${i})"
           ondragover="_codeDragOver(event,${i})"
           ondragleave="_codeTraitEffacer(this)"
-          ondrop="_codeDrop(event,'${type}')"
+          ondrop="_codeDrop(event)"
           ondragend="_codeDragEnd()"
-          class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1.5 pr-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none">
-          <span class="text-gray-300 leading-none" title="Glisser pour réordonner">⠿</span>
+          class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1.5 pr-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none"
+          ${def.aide ? `title="${escHtml(def.aide)}"` : ''}>
+          <span class="text-gray-300 leading-none">⠿</span>
           <span class="font-medium">${escHtml(def.label)}</span>
+          ${def.aide ? `<span class="text-gray-300">·&nbsp;${escHtml(def.aide)}</span>` : ''}
           ${def.abrege ? `<input type="number" min="1" max="20" value="${b.n ?? def.abrege}" draggable="false"
             onmousedown="event.stopPropagation()"
-            onchange="_codeLongueur('${type}',${i},this.value)"
+            onchange="_codeLongueur(${i},this.value)"
             class="w-10 border rounded px-1 py-0.5 text-xs text-center cursor-text" title="Nombre de lettres">` : ''}
-          <button onclick="_codeRetirer('${type}',${i})" class="w-5 h-5 rounded text-red-300 hover:text-red-500 hover:bg-red-50" title="Retirer">✕</button>
+          <button onclick="_codeRetirer(${i})" class="w-5 h-5 rounded text-red-300 hover:text-red-500 hover:bg-red-50" title="Retirer">✕</button>
         </span>`;
       }).join('')
         : '<span class="text-xs text-gray-400 italic">Aucune brique — la référence serait vide.</span>'}
     </div>
     ${dispo.length ? `<div class="flex flex-wrap gap-1.5">
-      ${dispo.map(b => `<button onclick="_codeAjouter('${type}','${b.id}')"
+      ${dispo.map(b => `<button onclick="_codeAjouter('${b.id}')"
         class="text-xs border border-dashed border-gray-300 text-gray-500 rounded-lg px-2 py-1 hover:border-gray-500 hover:text-gray-700">+ ${escHtml(b.label)}</button>`).join('')}
     </div>` : ''}
-    <p class="text-xs text-gray-400 mt-2">Glissez une brique : le trait bleu indique où elle s'insérera. Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+    <div class="text-xs text-gray-500 mt-3 space-y-1">
+      <p>Glissez une brique : le trait bleu indique où elle s'insérera.</p>
+      <p>DAF <span class="font-mono text-gray-700">${escHtml(_codeApercu('daf')) || '—'}</span></p>
+      <p>Document <span class="font-mono text-gray-700">${escHtml(_codeApercu('doc')) || '—'}</span></p>
+    </div>`;
 }
 
-// Glisser-déposer. La source est mémorisée plutôt que passée par le presse-papiers de l'événement :
-// certains navigateurs n'exposent pas les données au survol, et l'aperçu en dépend.
 let _codeDrag = null;
 
-function _codeDragStart(ev, type, i) {
-  _codeDrag = { type, depart: i, insertion: i };
+function _codeDragStart(ev, i) {
+  _codeDrag = { depart: i, insertion: i };
   ev.dataTransfer.effectAllowed = 'move';
-  // Firefox n'amorce pas le glisser sans données transférées.
   ev.dataTransfer.setData('text/plain', String(i));
   ev.currentTarget.classList.add('opacity-40');
 }
@@ -11556,9 +11571,7 @@ function _codeDragStart(ev, type, i) {
 // Un trait vertical dans l'interstice, plutôt qu'un cadre autour de la brique survolée : on lit
 // alors où la brique va s'insérer, et non par-dessus laquelle on passe.
 function _codeTrait(el, cote) {
-  el.style.boxShadow = cote === 'gauche'
-    ? '-5px 0 0 -3px #2563eb'
-    : '5px 0 0 -3px #2563eb';
+  el.style.boxShadow = cote === 'gauche' ? '-5px 0 0 -3px #2563eb' : '5px 0 0 -3px #2563eb';
 }
 function _codeTraitEffacer(el) { el.style.boxShadow = ''; }
 
@@ -11568,25 +11581,24 @@ function _codeDragOver(ev, i) {
   ev.dataTransfer.dropEffect = 'move';
   const r = ev.currentTarget.getBoundingClientRect();
   const apres = ev.clientX > r.left + r.width / 2;
-  // Les autres briques effacent leur trait : un seul interstice peut être visé à la fois.
-  document.querySelectorAll(`#code-zone-${_codeDrag.type} [data-i]`).forEach(e => {
+  document.querySelectorAll('#code-zone [data-i]').forEach(e => {
     if (e !== ev.currentTarget) _codeTraitEffacer(e);
   });
   _codeTrait(ev.currentTarget, apres ? 'droite' : 'gauche');
   _codeDrag.insertion = apres ? i + 1 : i;
 }
 
-function _codeDrop(ev, type) {
+function _codeDrop(ev) {
   ev.preventDefault();
-  if (!_codeDrag || _codeDrag.type !== type) return;
+  if (!_codeDrag) return;
   const { depart, insertion } = _codeDrag;
   _codeDrag = null;
-  const l = [..._codeEtat[type]];
+  const l = [..._codeEtat.briques];
   const [brique] = l.splice(depart, 1);
   // Retirer la brique décale ce qui la suit : l'index d'insertion doit suivre.
   l.splice(insertion > depart ? insertion - 1 : insertion, 0, brique);
-  _codeEtat[type] = l;
-  _renderCodeAtelier(type);
+  _codeEtat.briques = l;
+  _renderCodeAtelier();
 }
 
 function _codeDragEnd() {
@@ -11597,31 +11609,92 @@ function _codeDragEnd() {
   });
 }
 
+// Deux aperçus pour une seule règle : c'est le meilleur moyen de voir que les deux références se
+// ressemblent, et où elles diffèrent nécessairement.
 function _codeApercu(type) {
-  const valeurs = {
-    poste: '2.1', version: 'v1', annee: String(new Date().getFullYear()),
-    ...Object.fromEntries(CODE_BRIQUES.filter(b => b.ex).map(b => [b.id, b.ex])),
+  const commun = {
+    chantier: 'Casino grande Motte', ville: 'Grande Motte',
+    client: 'Ville de la Grande Motte', entreprise: 'Vert Horizon',
+    version: 'v1', annee: String(new Date().getFullYear()),
+    date: new Date().toISOString().slice(0, 10).replace(/-/g, ''),
   };
-  return _composerCode(_codeEtat[type], valeurs, _codeEtat.separateur);
+  const propre = type === 'daf'
+    ? { poste: '2.1', type: 'Végétaux', objet: 'Phillyrea angustifolia' }
+    : { poste: '', type: 'PAQ', objet: "Plan d'assurance qualité" };
+  return _composerCode(_codeEtat.briques, { ...commun, ...propre }, _codeEtat.separateur);
 }
 
-function _codeAjouter(type, id) {
+function _codeAjouter(id) {
   const def = _codeBrique(id);
-  _codeEtat[type] = [..._codeEtat[type], def?.abrege ? { id, n: def.abrege } : { id }];
-  _renderCodeAtelier(type);
+  _codeEtat.briques = [..._codeEtat.briques, def?.abrege ? { id, n: def.abrege } : { id }];
+  _renderCodeAtelier();
 }
-function _codeRetirer(type, i) {
-  _codeEtat[type] = _codeEtat[type].filter((_, k) => k !== i);
-  _renderCodeAtelier(type);
+function _codeRetirer(i) {
+  _codeEtat.briques = _codeEtat.briques.filter((_, k) => k !== i);
+  _renderCodeAtelier();
 }
-function _codeLongueur(type, i, valeur) {
+function _codeLongueur(i, valeur) {
   const n = Math.max(1, Math.min(20, parseInt(valeur, 10) || 1));
-  const l = [..._codeEtat[type]];
+  const l = [..._codeEtat.briques];
   l[i] = { ...l[i], n };
-  _codeEtat[type] = l;
-  _renderCodeAtelier(type);
+  _codeEtat.briques = l;
+  _renderCodeAtelier();
 }
-function _codeSeparateur(v) { _codeEtat.separateur = v; _renderCodeAtelier('daf'); _renderCodeAtelier('doc'); }
+function _codeSeparateur(v) { _codeEtat.separateur = v; _renderCodeAtelier(); }
+
+// La codification vaut pour les DAF comme pour les documents à viser : la loger dans les
+// paramètres DAF obligeait à passer par un onglet pour régler l'autre. Elle a sa propre fenêtre,
+// ouverte depuis les deux.
+async function ouvrirParametresCodification() {
+  const ch = state.currentChantier;
+  if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
+  const config = await _loadChantierConfig(ch.id);
+
+  showModal(`
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--vert);margin-bottom:6px">Codification des fichiers créés</h2>
+    <p class="text-xs text-gray-500 mb-5">La référence d'une pièce sert à la retrouver longtemps après. Composez-la comme vous en avez l'usage.</p>
+      <div>
+        <div class="flex items-center gap-2 mb-3">
+          <label class="text-xs text-gray-500">Séparateur</label>
+          <select id="code-separateur" onchange="_codeSeparateur(this.value)" class="border rounded px-2 py-1 text-xs">
+            ${['_', '-', '.', '/'].map(x => `<option value="${x}">${x}</option>`).join('')}
+          </select>
+        </div>
+        <div id="code-briques" class="bg-gray-50 rounded-lg p-2"></div>
+      </div>
+    <div class="flex gap-3 mt-6">
+      <button onclick="_sauvegarderCodification()" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700">Enregistrer</button>
+      <button onclick="closeModal()" class="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+    </div>
+  `);
+
+  _codeEtat = {
+    briques: [..._codeConfig(config)],
+    separateur: config.code_separateur || CODE_SEPARATEUR_DEFAUT,
+  };
+  const selSep = document.getElementById('code-separateur');
+  if (selSep) selSep.value = _codeEtat.separateur;
+  _renderCodeAtelier();
+}
+
+async function _sauvegarderCodification() {
+  const ch = state.currentChantier;
+  try {
+    const existing = await _loadChantierConfig(ch.id);
+    const payload = {
+      code_format: { commun: _codeEtat.briques },
+      code_separateur: _codeEtat.separateur,
+    };
+    if (existing.id) {
+      await _ecrire(db.from('chantier_config').update(payload).eq('id', existing.id), 'Codification non enregistrée');
+    } else {
+      await _ecrire(db.from('chantier_config').insert({ chantier_id: ch.id, ...payload }), 'Codification non enregistrée');
+    }
+    delete _chantierConfigCache[ch.id];
+    closeModal();
+    toast('Codification enregistrée');
+  } catch (err) { toast(_messageErreur(err), 'err'); }
+}
 
 async function ouvrirParametresDAF() {
   const ch = state.currentChantier;
@@ -11661,20 +11734,12 @@ async function ouvrirParametresDAF() {
         </div>
       </div>
 
-      <!-- Codification -->
+      <!-- Codification : réglage partagé avec les documents à viser, donc sa propre fenêtre -->
       <div class="border-t pt-4">
         <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Codification des fichiers créés</p>
-        <p class="text-xs text-gray-400 mb-3">Ordonnez les briques : la référence d'une pièce en découle, et sert à la retrouver des années plus tard.</p>
-        <div class="flex items-center gap-2 mb-3">
-          <label class="text-xs text-gray-500">Séparateur</label>
-          <select id="code-separateur" onchange="_codeSeparateur(this.value)" class="border rounded px-2 py-1 text-xs">
-            ${['-', '_', '.', '/'].map(x => `<option value="${x}">${x}</option>`).join('')}
-          </select>
-        </div>
-        <p class="text-xs font-medium text-gray-600 mb-1">DAF</p>
-        <div id="code-daf" class="bg-gray-50 rounded-lg p-2 mb-3"></div>
-        <p class="text-xs font-medium text-gray-600 mb-1">Documents à viser</p>
-        <div id="code-doc" class="bg-gray-50 rounded-lg p-2"></div>
+        <p class="text-xs text-gray-400 mb-2">Le même réglage vaut pour les DAF et les documents à viser.</p>
+        <button onclick="closeModal();ouvrirParametresCodification()"
+          class="text-xs border border-indigo-300 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50">⚙️ Ouvrir la codification</button>
       </div>
 
       <!-- MOA / MOE -->
@@ -11749,16 +11814,6 @@ async function ouvrirParametresDAF() {
     _updatePreview(hex, (0.299*r+0.587*g+0.114*b) > 140 ? '#2C2C2A' : '#ffffff');
   });
 
-  _codeEtat = {
-    daf: [..._codeConfig(config, 'daf')],
-    doc: [..._codeConfig(config, 'doc')],
-    separateur: config.code_separateur || CODE_SEPARATEUR_DEFAUT,
-  };
-  const selSep = document.getElementById('code-separateur');
-  if (selSep) selSep.value = _codeEtat.separateur;
-  _renderCodeAtelier('daf');
-  _renderCodeAtelier('doc');
-
   window._dafParamGetColor = () => ({ bg: _selBg, text: _selText });
 }
 
@@ -11771,11 +11826,7 @@ async function _sauvegarderParametresDAF() {
 
   try {
     const existing = await _loadChantierConfig(ch.id);
-    const payload = {
-      bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques,
-      code_format: { daf: _codeEtat.daf, doc: _codeEtat.doc },
-      code_separateur: _codeEtat.separateur,
-    };
+    const payload = { bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques };
     if (existing.id) {
       await _discret(db.from('chantier_config').update(payload).eq('id', existing.id), 'configuration du chantier');
     } else {
