@@ -11112,12 +11112,18 @@ async function _dafSaveAndGeneratePdfConfirmed(fId) {
   const row = window._dafRows[fId]||{};
   const ch = state.currentChantier;
   const fam = state.familles.find(fm=>fm.id===f.famille_id);
-  const famCode = fam ? fam.nom.slice(0,3).toUpperCase() : 'GEN';
-  const motCle = (row._designation||f.designation||'').replace(/[^a-zA-ZÀ-ÿ]/g,'').slice(0,8).toUpperCase();
-  const chCode = (ch.affaire||'CH').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase();
-  const poste = row._numero_poste ?? f.numero_poste ?? '0';
-  const ver = row.version || 1;
-  const numero = row.numero || `${poste ? poste + '-' : ''}${chCode}-${famCode}-${motCle}-v${ver}`;
+  const cfg = await _loadChantierConfig(ch.id);
+  const valeurs = {
+    poste:       row._numero_poste ?? f.numero_poste ?? '',
+    chantier:    _codeMot(ch.affaire || 'CH', 5),
+    famille:     fam ? _codeMot(fam.nom, 3) : 'GEN',
+    designation: _codeMot(row._designation || f.designation, 8),
+    version:     `v${row.version || 1}`,
+    annee:       String(new Date().getFullYear()),
+  };
+  // La référence d'une DAF déjà émise ne change pas : elle figure sur un document transmis.
+  const numero = row.numero
+    || _composerCode(_codeConfig(cfg, 'daf'), valeurs, cfg.code_separateur || '-');
   const fichesJson = JSON.stringify((row.fiches||[]).map(ft=>({nom:ft.nom,url:ft.url||'',type:ft.type})));
   try {
     const { data, error } = await db.from('daf').insert({
@@ -11398,6 +11404,108 @@ const DAF_CHAMPS_OPTIONNELS = [
   { key: 'date_commande',  label: 'Date de commande' },
 ];
 
+// ─── Codification des pièces ───────────────────────────────────────────────
+// La référence d'une DAF était figée dans le code : poste, chantier, famille, désignation,
+// version, dans cet ordre et pas un autre. Chaque entreprise a ses habitudes de numérotation, et
+// une pièce contractuelle se retrouve par sa référence — autant qu'elle épouse les usages.
+const CODE_BRIQUES = [
+  { id: 'poste',       label: 'N° de poste',        pour: ['daf'],        ex: '2.1' },
+  { id: 'chantier',    label: 'Chantier (5 car.)',  pour: ['daf', 'doc'], ex: 'CASIN' },
+  { id: 'famille',     label: 'Famille (3 car.)',   pour: ['daf'],        ex: 'VÉG' },
+  { id: 'categorie',   label: 'Catégorie (3 car.)', pour: ['doc'],        ex: 'PAQ' },
+  { id: 'designation', label: 'Désignation (8 car.)', pour: ['daf'],      ex: 'PHILLYRE' },
+  { id: 'nom',         label: 'Nom du document (8 car.)', pour: ['doc'],  ex: 'PLANASSU' },
+  { id: 'version',     label: 'Version',            pour: ['daf', 'doc'], ex: 'v1' },
+  { id: 'annee',       label: 'Année',              pour: ['daf', 'doc'], ex: '2026' },
+];
+
+const CODE_DEFAUT = {
+  daf: ['poste', 'chantier', 'famille', 'designation', 'version'],
+  doc: ['chantier', 'categorie', 'nom', 'version'],
+};
+
+function _codeConfig(config, type) {
+  const f = config?.code_format?.[type];
+  return Array.isArray(f) && f.length ? f : CODE_DEFAUT[type];
+}
+
+// Compose la référence à partir des valeurs déjà normalisées par l'appelant. Une brique sans
+// valeur est omise plutôt que de laisser un séparateur orphelin.
+function _composerCode(ordre, valeurs, separateur = '-') {
+  return ordre.map(id => valeurs[id]).filter(v => v !== null && v !== undefined && v !== '')
+    .join(separateur);
+}
+
+// Réduit une chaîne à sa forme codifiée : sans accent perdu, sans ponctuation, en capitales.
+function _codeMot(txt, n) {
+  return String(txt || '').replace(/[^a-zA-ZÀ-ÿ0-9]/g, '').slice(0, n).toUpperCase();
+}
+
+// Référence d'un document à viser. Elle n'existait pas : un document se retrouvait par son nom,
+// ce qui suffit tant qu'on est dans Pivot et beaucoup moins dans un échange de courriels ou une
+// pièce d'un dossier d'ouvrage exécuté.
+async function _codeDocument(ch, { nom, categorie, version }) {
+  try {
+    const cfg = await _loadChantierConfig(ch.id);
+    return _composerCode(_codeConfig(cfg, 'doc'), {
+      chantier:  _codeMot(ch.affaire || 'CH', 5),
+      categorie: _codeMot(categorie || 'DOC', 3),
+      nom:       _codeMot(nom, 8),
+      version:   `v${version}`,
+      annee:     String(new Date().getFullYear()),
+    }, cfg.code_separateur || '-');
+  } catch (err) {
+    // Une référence manquante ne doit pas empêcher d'envoyer le document.
+    console.error('_codeDocument', err);
+    return null;
+  }
+}
+
+// ─── Atelier de codification (fenêtre Paramètres DAF) ──────────────────────
+let _codeEtat = { daf: [], doc: [], separateur: '-' };
+
+function _renderCodeAtelier(type) {
+  const el = document.getElementById(`code-${type}`);
+  if (!el) return;
+  const choisies = _codeEtat[type];
+  const dispo = CODE_BRIQUES.filter(b => b.pour.includes(type) && !choisies.includes(b.id));
+  const nom = b => CODE_BRIQUES.find(x => x.id === b);
+
+  el.innerHTML = `
+    <div class="flex flex-wrap items-center gap-1.5 mb-2">
+      ${choisies.length ? choisies.map((id, i) => `
+        <span class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs">
+          <button onclick="_codeDeplacer('${type}',${i},-1)" class="text-gray-300 hover:text-gray-600 ${i === 0 ? 'invisible' : ''}" title="Déplacer à gauche">‹</button>
+          <span>${escHtml(nom(id)?.label || id)}</span>
+          <button onclick="_codeDeplacer('${type}',${i},1)" class="text-gray-300 hover:text-gray-600 ${i === choisies.length - 1 ? 'invisible' : ''}" title="Déplacer à droite">›</button>
+          <button onclick="_codeRetirer('${type}',${i})" class="text-red-300 hover:text-red-500 ml-0.5" title="Retirer">✕</button>
+        </span>`).join('')
+        : '<span class="text-xs text-gray-400 italic">Aucune brique — la référence serait vide.</span>'}
+    </div>
+    ${dispo.length ? `<div class="flex flex-wrap gap-1.5">
+      ${dispo.map(b => `<button onclick="_codeAjouter('${type}','${b.id}')"
+        class="text-xs border border-dashed border-gray-300 text-gray-500 rounded-lg px-2 py-1 hover:border-gray-500 hover:text-gray-700">+ ${escHtml(b.label)}</button>`).join('')}
+    </div>` : ''}
+    <p class="text-xs text-gray-400 mt-2">Aperçu : <span class="font-mono text-gray-600">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+}
+
+function _codeApercu(type) {
+  const valeurs = Object.fromEntries(CODE_BRIQUES.map(b => [b.id, b.ex]));
+  return _composerCode(_codeEtat[type], valeurs, _codeEtat.separateur);
+}
+
+function _codeAjouter(type, id) { _codeEtat[type] = [..._codeEtat[type], id]; _renderCodeAtelier(type); }
+function _codeRetirer(type, i)  { _codeEtat[type] = _codeEtat[type].filter((_, k) => k !== i); _renderCodeAtelier(type); }
+function _codeDeplacer(type, i, sens) {
+  const l = [..._codeEtat[type]];
+  const j = i + sens;
+  if (j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]];
+  _codeEtat[type] = l;
+  _renderCodeAtelier(type);
+}
+function _codeSeparateur(v) { _codeEtat.separateur = v; _renderCodeAtelier('daf'); _renderCodeAtelier('doc'); }
+
 async function ouvrirParametresDAF() {
   const ch = state.currentChantier;
   if (!ch) return toast('Ouvrez un chantier d\'abord', 'err');
@@ -11434,6 +11542,22 @@ async function ouvrirParametresDAF() {
             <p id="daf-param-band-title" style="color:${selText};font-size:12px;font-weight:700">${escHtml(ch.affaire || 'Nom du chantier')} · Fourniture</p>
           </div>
         </div>
+      </div>
+
+      <!-- Codification -->
+      <div class="border-t pt-4">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Codification des références</p>
+        <p class="text-xs text-gray-400 mb-3">Ordonnez les briques : la référence d'une pièce en découle, et sert à la retrouver des années plus tard.</p>
+        <div class="flex items-center gap-2 mb-3">
+          <label class="text-xs text-gray-500">Séparateur</label>
+          <select id="code-separateur" onchange="_codeSeparateur(this.value)" class="border rounded px-2 py-1 text-xs">
+            ${['-', '_', '.', '/'].map(x => `<option value="${x}">${x}</option>`).join('')}
+          </select>
+        </div>
+        <p class="text-xs font-medium text-gray-600 mb-1">DAF</p>
+        <div id="code-daf" class="bg-gray-50 rounded-lg p-2 mb-3"></div>
+        <p class="text-xs font-medium text-gray-600 mb-1">Documents à viser</p>
+        <div id="code-doc" class="bg-gray-50 rounded-lg p-2"></div>
       </div>
 
       <!-- MOA / MOE -->
@@ -11508,6 +11632,16 @@ async function ouvrirParametresDAF() {
     _updatePreview(hex, (0.299*r+0.587*g+0.114*b) > 140 ? '#2C2C2A' : '#ffffff');
   });
 
+  _codeEtat = {
+    daf: [..._codeConfig(config, 'daf')],
+    doc: [..._codeConfig(config, 'doc')],
+    separateur: config.code_separateur || '-',
+  };
+  const selSep = document.getElementById('code-separateur');
+  if (selSep) selSep.value = _codeEtat.separateur;
+  _renderCodeAtelier('daf');
+  _renderCodeAtelier('doc');
+
   window._dafParamGetColor = () => ({ bg: _selBg, text: _selText });
 }
 
@@ -11520,7 +11654,11 @@ async function _sauvegarderParametresDAF() {
 
   try {
     const existing = await _loadChantierConfig(ch.id);
-    const payload = { bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques };
+    const payload = {
+      bandeau_bg: bg, bandeau_text: text, daf_champs_masques: champsMasques,
+      code_format: { daf: _codeEtat.daf, doc: _codeEtat.doc },
+      code_separateur: _codeEtat.separateur,
+    };
     if (existing.id) {
       await _discret(db.from('chantier_config').update(payload).eq('id', existing.id), 'configuration du chantier');
     } else {
@@ -12907,9 +13045,10 @@ async function uploadDocumentViser() {
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
     const categorie = document.getElementById('doc-viser-categorie')?.value || null;
+    const numero = await _codeDocument(ch, { nom, categorie, version: 1 });
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
-      nom, categorie, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
+      nom, categorie, numero, pdf_url: urlData.publicUrl, statut: 'soumise', version: 1
     });
     if (error) throw error;
     fileInput.value = ''; nomInput.value = '';
@@ -12944,9 +13083,11 @@ async function envoyerNouvelleVersionDoc(parentId, nom, prevVersion) {
     if (upErr) throw upErr;
     const { data: urlData } = db.storage.from('daf-pdfs').getPublicUrl(path);
     const parentDoc = state.documentsViser?.find(d => d.id === parentId);
+    const categorie = parentDoc?.categorie || null;
+    const numero = await _codeDocument(ch, { nom, categorie, version: prevVersion + 1 });
     const { error } = await db.from('documents_viser').insert({
       chantier_id: ch.id, entrepreneur_id: state.user.id, moe_id: ch.moe_id || null,
-      nom, categorie: parentDoc?.categorie || null, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
+      nom, categorie, numero, pdf_url: urlData.publicUrl, statut: 'soumise', version: prevVersion + 1, parent_id: parentId
     });
     if (error) throw error;
     closeModal();
@@ -13039,7 +13180,7 @@ async function _renderSuiviDocuments() {
         <td class="px-3 py-2"></td>
         <td class="px-3 py-2">
           <a href="${d.pdf_visa_url || d.pdf_url}" target="_blank" class="${multi ? 'text-xs text-gray-600' : 'font-medium'} hover:text-blue-600 hover:underline">${multi ? '' : escHtml(d.nom) + ' '}</a>
-          <span class="text-xs text-gray-400 font-mono">v${d.version}</span>
+          <span class="text-xs text-gray-400 font-mono">${d.numero ? escHtml(d.numero) : 'v' + d.version}</span>
           ${d.categorie ? `<span class="text-xs text-gray-400"> · ${escHtml(d.categorie)}</span>` : ''}
         </td>
         <td class="px-3 py-2"></td>
