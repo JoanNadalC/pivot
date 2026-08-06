@@ -1017,9 +1017,9 @@ function _hideLoading() {
 async function _journaliserConnexion(portail) {
   try {
     // Une seule ligne par compte, portail et jour : les connexions suivantes heurtent la clé
-    // primaire, ce qui est le comportement voulu. `ignoreDuplicates` évite d'en faire une erreur.
-    await _discret(db.from('connexions_journal')
-      .upsert({ user_id: state.user.id, portail }, { onConflict: 'user_id,portail,jour', ignoreDuplicates: true }),
+    // primaire, ce qui est le comportement voulu et que `_discret` absorbe. L'upsert, lui,
+    // réclamait un droit de mise à jour que la politique n'accorde pas — d'où un refus RLS.
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }),
       'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
@@ -3145,9 +3145,13 @@ async function loadPendingInvitations() {
     const { data: invs } = await db.from('chantier_invitations')
       .select('id, chantier_id, nom_chantier, nom_entreprise, moe_id, created_at')
       .or(orParts.join(',')).eq('statut', 'pending');
-    const { data: lots } = await db.from('lot_entreprises')
-      .select('*, lots(nom, chantier_id, created_by(nom, societe))')
+    // Ne pas joindre le créateur du lot : sa clé étrangère pointe vers `profiles`, qui ne porte
+    // pas de raison sociale, et la jointure imbriquée échouait avec un 400. Le nom du maître
+    // d'œuvre est résolu ensuite, depuis les comptes liés.
+    const { data: lots, error: lotsErr } = await db.from('lot_entreprises')
+      .select('*, lots(nom, chantier_id, created_by)')
       .or(orParts.join(',')).eq('statut', 'invited');
+    if (lotsErr) console.error('invitations de lot', lotsErr);
 
     const allInvites = [
       ...(invs || []).map(i => ({ type: 'chantier', ...i })),
@@ -3185,7 +3189,12 @@ async function loadPendingInvitations() {
               const chNom = inv.nom_chantier || inv.lots?.chantiers?.affaire || '';
               const ville = inv.ville_chantier || '';
               const lotNom = inv.lots?.nom || '';
-              const moeNom = inv.lots?.created_by ? (inv.lots.created_by.societe ? `${inv.lots.created_by.nom} · ${inv.lots.created_by.societe}` : inv.lots.created_by.nom) : '';
+              const moeCompte = inv.lots?.created_by
+                ? (state.contactsMoe?.[inv.lots.created_by] || (state.maitresOeuvre || []).find(m => m.compte_moe_id === inv.lots.created_by))
+                : null;
+              const moeNom = moeCompte
+                ? [moeCompte.societe, [moeCompte.prenom, moeCompte.nom].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+                : '';
               return `<div style="background:white;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid rgba(99,102,241,0.15)">
                 <div>
                   <p style="font-size:13px;font-weight:600;color:#1e293b">📦 ${escHtml(lotNom)} <span style="font-weight:400;color:#94a3b8;font-size:12px">· ${escHtml(chNom)}${ville ? ', ' + escHtml(ville) : ''}</span></p>
@@ -3287,6 +3296,7 @@ async function loadCarnetMoe() {
     const { data: comptes, error: cErr } = await db.rpc('contacts_moe_lies');
     if (cErr) console.error('contacts_moe_lies', cErr);
     const parCompte = Object.fromEntries((comptes || []).map(c => [c.compte_id, c]));
+    state.contactsMoe = parCompte;
 
     // Le compte lié fait autorité sur ce qu'il publie ; la copie locale ne sert que de recours,
     // pour les fiches saisies à la main ou les champs qu'il ne partage pas.

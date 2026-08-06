@@ -438,9 +438,9 @@ function _hideLoading() {
 async function _journaliserConnexion(portail) {
   try {
     // Une seule ligne par compte, portail et jour : les connexions suivantes heurtent la clé
-    // primaire, ce qui est le comportement voulu. `ignoreDuplicates` évite d'en faire une erreur.
-    await _discret(db.from('connexions_journal')
-      .upsert({ user_id: state.user.id, portail }, { onConflict: 'user_id,portail,jour', ignoreDuplicates: true }),
+    // primaire, ce qui est le comportement voulu et que `_discret` absorbe. L'upsert, lui,
+    // réclamait un droit de mise à jour que la politique n'accorde pas — d'où un refus RLS.
+    await _discret(db.from('connexions_journal').insert({ user_id: state.user.id, portail }),
       'journal de connexion');
   } catch (_) { /* doublon du jour, ou hors ligne : sans conséquence */ }
 }
