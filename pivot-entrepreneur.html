@@ -11501,19 +11501,23 @@ function _renderCodeAtelier(type) {
   const dispo = CODE_BRIQUES.filter(b => b.pour.includes(type) && !choisies.some(c => c.id === b.id));
 
   el.innerHTML = `
-    <div class="flex flex-wrap items-center gap-1.5 mb-2">
+    <div class="flex flex-wrap items-center gap-1.5 mb-2" id="code-zone-${type}">
       ${choisies.length ? choisies.map((b, i) => {
         const def = _codeBrique(b.id);
         return `
-        <span class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1 pr-1.5 py-1 text-xs">
-          <button onclick="_codeDeplacer('${type}',${i},-1)" ${i === 0 ? 'disabled' : ''}
-            class="w-5 h-5 rounded hover:bg-gray-100 text-gray-500 disabled:text-gray-200 disabled:hover:bg-transparent" title="Vers la gauche">◀</button>
+        <span draggable="true" data-i="${i}"
+          ondragstart="_codeDragStart(event,'${type}',${i})"
+          ondragover="_codeDragOver(event)"
+          ondragleave="this.classList.remove('ring-2','ring-blue-400')"
+          ondrop="_codeDrop(event,'${type}',${i})"
+          ondragend="_codeDragEnd()"
+          class="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-1.5 pr-1.5 py-1 text-xs cursor-grab active:cursor-grabbing select-none">
+          <span class="text-gray-300 leading-none" title="Glisser pour réordonner">⠿</span>
           <span class="font-medium">${escHtml(def.label)}</span>
-          ${def.abrege ? `<input type="number" min="1" max="20" value="${b.n ?? def.abrege}"
+          ${def.abrege ? `<input type="number" min="1" max="20" value="${b.n ?? def.abrege}" draggable="false"
+            onmousedown="event.stopPropagation()"
             onchange="_codeLongueur('${type}',${i},this.value)"
-            class="w-10 border rounded px-1 py-0.5 text-xs text-center" title="Nombre de lettres">` : ''}
-          <button onclick="_codeDeplacer('${type}',${i},1)" ${i === choisies.length - 1 ? 'disabled' : ''}
-            class="w-5 h-5 rounded hover:bg-gray-100 text-gray-500 disabled:text-gray-200 disabled:hover:bg-transparent" title="Vers la droite">▶</button>
+            class="w-10 border rounded px-1 py-0.5 text-xs text-center cursor-text" title="Nombre de lettres">` : ''}
           <button onclick="_codeRetirer('${type}',${i})" class="w-5 h-5 rounded text-red-300 hover:text-red-500 hover:bg-red-50" title="Retirer">✕</button>
         </span>`;
       }).join('')
@@ -11523,7 +11527,45 @@ function _renderCodeAtelier(type) {
       ${dispo.map(b => `<button onclick="_codeAjouter('${type}','${b.id}')"
         class="text-xs border border-dashed border-gray-300 text-gray-500 rounded-lg px-2 py-1 hover:border-gray-500 hover:text-gray-700">+ ${escHtml(b.label)}</button>`).join('')}
     </div>` : ''}
-    <p class="text-xs text-gray-400 mt-2">Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+    <p class="text-xs text-gray-400 mt-2">Glissez les briques pour les réordonner. Aperçu : <span class="font-mono text-gray-700">${escHtml(_codeApercu(type)) || '—'}</span></p>`;
+}
+
+// Glisser-déposer. La source est mémorisée plutôt que passée par le presse-papiers de l'événement :
+// certains navigateurs n'exposent pas les données au survol, et l'aperçu en dépend.
+let _codeDrag = null;
+
+function _codeDragStart(ev, type, i) {
+  _codeDrag = { type, i };
+  ev.dataTransfer.effectAllowed = 'move';
+  // Firefox n'amorce pas le glisser sans données transférées.
+  ev.dataTransfer.setData('text/plain', String(i));
+  ev.currentTarget.classList.add('opacity-40');
+}
+
+function _codeDragOver(ev) {
+  if (!_codeDrag) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  ev.currentTarget.classList.add('ring-2', 'ring-blue-400');
+}
+
+function _codeDrop(ev, type, cible) {
+  ev.preventDefault();
+  if (!_codeDrag || _codeDrag.type !== type) return;
+  const depart = _codeDrag.i;
+  _codeDrag = null;
+  if (depart === cible) { _renderCodeAtelier(type); return; }
+  const l = [..._codeEtat[type]];
+  const [brique] = l.splice(depart, 1);
+  l.splice(cible, 0, brique);
+  _codeEtat[type] = l;
+  _renderCodeAtelier(type);
+}
+
+function _codeDragEnd() {
+  _codeDrag = null;
+  document.querySelectorAll('[data-i]').forEach(e =>
+    e.classList.remove('opacity-40', 'ring-2', 'ring-blue-400'));
 }
 
 function _codeApercu(type) {
@@ -11541,14 +11583,6 @@ function _codeAjouter(type, id) {
 }
 function _codeRetirer(type, i) {
   _codeEtat[type] = _codeEtat[type].filter((_, k) => k !== i);
-  _renderCodeAtelier(type);
-}
-function _codeDeplacer(type, i, sens) {
-  const l = [..._codeEtat[type]];
-  const j = i + sens;
-  if (j < 0 || j >= l.length) return;
-  [l[i], l[j]] = [l[j], l[i]];
-  _codeEtat[type] = l;
   _renderCodeAtelier(type);
 }
 function _codeLongueur(type, i, valeur) {
