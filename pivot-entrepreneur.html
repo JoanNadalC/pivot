@@ -5296,7 +5296,9 @@ document.addEventListener('click', e => {
   updateAffectationBar();
 });
 
-function onCheckFourniture() { /* géré par le listener délégué */ }
+// Appelée par chaque case de ligne. L'écouteur délégué gère en plus la sélection par plage au
+// Maj+clic ; ces deux chemins convergent ici.
+function onCheckFourniture() { updateAffectationBar(); }
 
 function toggleSelectAll(checked) {
   document.querySelectorAll('.fourniture-cb').forEach(cb => { cb.checked = checked; });
@@ -5305,16 +5307,22 @@ function toggleSelectAll(checked) {
 
 function updateAffectationBar() {
   const checked = [...document.querySelectorAll('.fourniture-cb:checked')];
-  const total   = document.querySelectorAll('.fourniture-cb').length;
   const bar     = document.getElementById('affectation-bar');
   const label   = document.getElementById('sel-count-label');
-  const allCb   = document.getElementById('select-all-cb');
   if (bar)   bar.classList.toggle('hidden', checked.length === 0);
   if (label) label.textContent = `${checked.length} ligne(s) sélectionnée(s)`;
-  if (allCb) {
-    allCb.indeterminate = checked.length > 0 && checked.length < total;
-    allCb.checked = total > 0 && checked.length === total;
-  }
+
+  // Chaque famille a sa propre case « tout » : elle doit refléter les lignes de sa table, et non
+  // l'ensemble du tableau. La version précédente pilotait un `select-all-cb` global qui n'existe
+  // dans aucun écran — elle ne faisait donc rien.
+  document.querySelectorAll('.fam-select-all').forEach(cb => {
+    const table = document.getElementById(`fam-table-${cb.dataset.fam}`);
+    if (!table) return;
+    const lignes = [...table.querySelectorAll('.fourniture-cb')];
+    const cochees = lignes.filter(x => x.checked).length;
+    cb.checked = lignes.length > 0 && cochees === lignes.length;
+    cb.indeterminate = cochees > 0 && cochees < lignes.length;
+  });
 }
 
 // undo stack : chaque entrée = { action, data }
@@ -5712,6 +5720,10 @@ function renderFournitures() {
       </div>`;
   }
   container.innerHTML = html;
+  // Le tableau vient d'être repeint, donc toutes les cases sont décochées. Sans cette remise à
+  // jour, la barre survivait à un changement d'onglet en annonçant une sélection disparue — et
+  // les actions groupées s'y appliquaient à rien.
+  updateAffectationBar();
 }
 
 async function saveFournitureField(id, key, value) {
@@ -5745,7 +5757,9 @@ function famSelectAll(famId, checked) {
   document.querySelectorAll(`#fam-table-${famId} .fourniture-cb`).forEach(cb => {
     cb.checked = checked;
   });
-  onCheckFourniture();
+  // L'écouteur délégué ne surveille que les cases de ligne : cocher « tout » ne le déclenchait
+  // pas, et la barre d'actions restait invisible malgré trente lignes sélectionnées.
+  updateAffectationBar();
 }
 
 function renderFournitureGroup(f, cols, colCount, famId) {
