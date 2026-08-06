@@ -1838,8 +1838,10 @@ async function openChantier(id, _noHistory) {
   document.getElementById('chantier-header').textContent = [state.currentChantier?.ville, state.currentChantier?.affaire].filter(Boolean).join(' — ');
   document.getElementById('chantier-header').classList.remove('hidden');
 
-  await loadDafForChantier();
-  await loadFournituresForChantier();
+  // DAF et fournitures ne dépendent pas l'une de l'autre : les enchaîner faisait attendre au MOE
+  // la somme des deux allers-retours avant de voir quoi que ce soit. Les lots suivent, eux, car la
+  // barre latérale compte les DAF de chaque lot.
+  await Promise.all([loadDafForChantier(), loadFournituresForChantier()]);
   if (!state.isGuest) { await loadLots(); loadInvitations(); }
   else state.lots = [];
 
