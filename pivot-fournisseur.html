@@ -3570,7 +3570,7 @@ function renderSaisie() {
               <th class="px-2 py-2 text-left w-12">N°</th>
               <th class="px-2 py-2 text-left w-14">Photo</th>
               <th class="px-2 py-2 text-left">Désignation</th>
-              ${inclureCaract ? '<th class="px-2 py-2 text-left min-w-32">Spécifications requises</th>' : ''}
+              <th class="px-2 py-2 text-left min-w-32">Spécifications requises</th>
               <th class="px-2 py-2 text-right w-14">Qté</th>
               <th class="px-2 py-2 text-left w-10">U</th>
               <th class="px-2 py-2 text-right min-w-24">Prix unit. HT *</th>
@@ -3618,19 +3618,22 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
   const famNom = (state.familles.find(x => x.id === f.famille_id)?.nom || '').toLowerCase();
   const isVegetal = famNom.includes('végét') || famNom.includes('vegetal') || famNom.includes('végétal');
 
-  // Colonne specs (lecture seule pour la ligne principale, éditable pour variantes)
+  // Colonne specs : ce que l'entreprise impose — ses caractéristiques et les documents qu'elle
+  // joint. Ces derniers n'étaient affichés nulle part : le fournisseur chiffrait sans les pièces
+  // que l'entreprise avait pris soin de rattacher.
   let specCell = '';
-  if (inclureCaract) {
-    if (!isVar) {
-      const caract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
-      specCell = caract.length
-        ? `<td class="px-3 py-2 align-top">
-            <div class="space-y-0.5">
-              ${caract.map(c => `<div class="text-xs"><span class="text-gray-500">${escHtml(c.cle)} :</span> <span class="font-medium">${escHtml(c.valeur)}</span></div>`).join('')}
-            </div>
-          </td>`
-        : '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
-    } else {
+  if (!isVar) {
+    const caract = inclureCaract && Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
+    const docs = _documentsJoints(f);
+    specCell = (caract.length || docs)
+      ? `<td class="px-3 py-2 align-top">
+          <div class="space-y-0.5">
+            ${caract.map(c => `<div class="text-xs"><span class="text-gray-500">${escHtml(c.cle)} :</span> <span class="font-medium">${escHtml(c.valeur)}</span></div>`).join('')}
+          </div>
+          ${docs}
+        </td>`
+      : '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
+  } else if (inclureCaract) {
       // Variante : champs éditables pré-remplis depuis le parent
       const parentCaract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
       let varCaract = Array.isArray(rep.variante_caracteristiques) ? rep.variante_caracteristiques : [];
@@ -3642,7 +3645,8 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
       specCell = `<td class="px-3 py-2 align-top" id="var-caract-cell-${f.id}-${varOrdre}">
         ${renderVarCaractFields(f.id, varOrdre, varCaract, locked)}
       </td>`;
-    }
+  } else {
+    specCell = '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
   }
 
   return `
@@ -3728,6 +3732,25 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
 //
 // Une variante aurait dupliqué chaque ligne pour dire une seule chose, et le comparatif aurait
 // perdu en lisibilité ce qu'il gagnait en exhaustivité.
+// Documents joints par l'entreprise à la fourniture — plans, notices, cahier des charges. Ils
+// complètent la demande, et le fournisseur doit pouvoir les ouvrir avant de chiffrer.
+//
+// Le format a varié : tableau de chaînes au début, d'objets {nom, url} ensuite. On accepte les
+// deux plutôt que d'ignorer les plus anciens.
+function _documentsJoints(f) {
+  const brut = Array.isArray(f.fiches_techniques) ? f.fiches_techniques : [];
+  const docs = brut.map(d => (typeof d === 'string' ? { url: d, nom: '' } : d))
+                   .filter(d => d && d.url);
+  if (!docs.length) return '';
+  return `<div class="flex flex-wrap gap-1.5 mt-1">${docs.map((d, i) => {
+    const nom = d.nom || `Document ${i + 1}`;
+    const image = /\.(jpe?g|png|gif|webp)(\?|$)/i.test(d.url);
+    return `<a href="${escHtml(d.url)}" target="_blank" rel="noopener"
+        class="text-xs text-blue-600 hover:underline inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5"
+        title="${escHtml(nom)}">${image ? '🖼' : '📄'} ${escHtml(nom.length > 18 ? nom.slice(0, 17) + '…' : nom)}</a>`;
+  }).join('')}</div>`;
+}
+
 function _certificationsExigees(f, key, locked) {
   const liste = Array.isArray(f.certifications) ? f.certifications.filter(Boolean) : [];
   if (!liste.length) return '';

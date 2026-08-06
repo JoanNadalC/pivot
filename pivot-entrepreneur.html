@@ -5545,7 +5545,7 @@ function renderFournitures() {
                   </label>
                 </th>
                 ${hdrCells}
-                <th class="px-3 py-2 text-center w-16">BPU</th>
+                <th class="px-3 py-2 text-center w-16" title="Caractéristiques importées du BPU">Caract. BPU</th>
                 <th class="px-3 py-2 text-left w-40">Caract. +</th>
                 <th class="px-3 py-2 text-center w-28">Actions</th>
               </tr>
@@ -6042,7 +6042,7 @@ function renderDetailRow(f) {
       ${url ? `<a href="${escHtml(url)}" target="_blank" class="text-blue-400 hover:text-blue-600 text-xs">📄</a>` : ''}
       <button onclick="removeFiche('${f.id}', ${i})" class="text-red-300 hover:text-red-500 text-xs">✕</button>
     </div>
-  `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucune fiche technique.</p>';
+  `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucun document joint.</p>';
 
   return `
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -6057,9 +6057,10 @@ function renderDetailRow(f) {
       </div>
       <div>
         <div class="flex items-center justify-between mb-2">
-          <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fiches techniques</h4>
+          <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documents joints</h4>
           <button onclick="addFiche('${f.id}')" class="text-xs text-green-600 hover:underline">+ Ajouter</button>
         </div>
+        <p class="text-xs text-gray-400 mb-2 leading-snug">Plans, notices, cahier des charges — le fournisseur les verra dans ses spécifications requises.</p>
         <div id="fiches-${f.id}">${fichesRows}</div>
         <button onclick="saveFiches('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
       </div>
