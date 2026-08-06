@@ -4627,12 +4627,16 @@ async function validateAndGenerateDevis(consId) {
       toast(`Prix envoyés, mais le devis ${devis.devisNum} n'a pas pu être déposé (${devis.erreurStockage}) : l'entrepreneur ne le verra pas.`, 'err');
     }
     // Téléchargement automatique
+    // Un lien détaché du document est ignoré par plusieurs navigateurs : il faut l'y insérer le
+    // temps du clic. Et l'URL ne doit être libérée qu'après, sans quoi le fichier arrive vide.
     if (devis?.pdfBlob) {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(devis.pdfBlob);
       a.download = `${devis.devisNum}.pdf`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
     }
   } catch (err) {
     toast('Erreur : ' + _messageErreur(err), 'err');
@@ -5243,11 +5247,15 @@ async function renderMesReponses() {
         titre: r.consultations?.titre || 'Consultation',
         chantier: stCons?._chantier || null,
         entrepreneur: stCons?.entrepreneur || null,
+        // Le devis émis n'était consultable nulle part après l'envoi : le téléchargement
+        // automatique passé, il ne restait rien à archiver côté fournisseur.
+        devis: null,
         items: []
       };
+      if (!consMap[key].devis && r.devis_pdf_url) consMap[key].devis = r.devis_pdf_url;
       consMap[key].items.push(r);
     });
-    el.innerHTML = Object.values(consMap).map(({ titre, chantier: ch, entrepreneur: ent, items }) => {
+    el.innerHTML = Object.values(consMap).map(({ titre, chantier: ch, entrepreneur: ent, items, devis }) => {
       const entNom = ent ? (ent.societe || ent.nom || '') : '';
       const prenomNom = ent ? [ent.prenom, ent.nom].filter(Boolean).join(' ') : '';
       const contextLine = [entNom, ch?.ville, ch?.affaire, prenomNom && prenomNom !== entNom ? prenomNom : ''].filter(Boolean).join(' · ');
@@ -5257,6 +5265,8 @@ async function renderMesReponses() {
           <div class="flex items-center gap-2">
             <span>✅</span> ${escHtml(titre)}
             <span class="ml-auto text-xs font-normal text-green-600">${items.length} fourniture${items.length > 1 ? 's' : ''}</span>
+            ${devis ? `<button onclick="ouvrirFichierProtege('${escHtml(devis)}','devis-fournisseurs')"
+              class="text-xs bg-white border border-green-300 text-green-700 px-2.5 py-1 rounded-lg hover:bg-green-100">📄 Devis</button>` : ''}
           </div>
           ${contextLine ? `<div class="text-xs font-normal text-green-600 mt-0.5">${escHtml(contextLine)}</div>` : ''}
         </div>
