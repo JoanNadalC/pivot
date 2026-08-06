@@ -6045,7 +6045,7 @@ function renderDetailRow(f) {
   `).join('') || '<p class="text-xs text-gray-400 italic mb-2">Aucune fiche technique.</p>';
 
   return `
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <div>
         <div class="flex items-center justify-between mb-2">
           <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Caractéristiques techniques</h4>
@@ -6063,8 +6063,42 @@ function renderDetailRow(f) {
         <div id="fiches-${f.id}">${fichesRows}</div>
         <button onclick="saveFiches('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
       </div>
+      ${_certifsDetailHtml(f)}
     </div>
   `;
+}
+
+// Les certifications ne se réglaient qu'à la création de la fourniture : ce panneau est le seul
+// point d'édition réellement atteignable depuis la liste, et il les ignorait. Un label oublié
+// obligeait à supprimer la ligne pour la refaire.
+function _certifsDetailHtml(f) {
+  const fam = state.familles.find(x => x.id === f.famille_id);
+  const cfg = getFamilleConfig(fam?.nom);
+  if (!cfg?.certifications?.length) return '';
+  const actuelles = Array.isArray(f.certifications) ? f.certifications : [];
+  return `
+    <div>
+      <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Certifications exigées</h4>
+      <div class="flex flex-wrap gap-2" id="certifs-${f.id}">
+        ${cfg.certifications.map(cert => `<label class="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" class="certif-detail-${f.id} accent-green-700" data-certif="${escHtml(cert)}" ${actuelles.includes(cert) ? 'checked' : ''}>
+          <span>${escHtml(cert)}</span>
+        </label>`).join('')}
+      </div>
+      <p class="text-xs text-gray-400 mt-2 leading-snug">Le fournisseur les verra dans sa saisie et déclarera celles qu'il détient.</p>
+      <button onclick="saveCertifs('${f.id}')" class="mt-2 text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700">💾 Enregistrer</button>
+    </div>`;
+}
+
+async function saveCertifs(id) {
+  const certifications = [...document.querySelectorAll(`.certif-detail-${id}:checked`)].map(cb => cb.dataset.certif);
+  const { data, error } = await db.from('fournitures')
+    .update({ certifications }).eq('id', id)
+    .select('*, famille:familles_fournitures(nom, icone, couleur)').single();
+  if (error) return toast(_messageErreur(error), 'err');
+  const idx = state.fournitures.findIndex(f => f.id === id);
+  if (idx >= 0) state.fournitures[idx] = data;
+  toast(certifications.length ? `${certifications.length} certification(s) enregistrée(s)` : 'Certifications retirées');
 }
 
 // ─── Champs & certifications par famille (référentiel commun) ──────────────
