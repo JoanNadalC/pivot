@@ -3416,12 +3416,11 @@ async function loadSaisie() {
     if (state.isGuest) {
       const { data } = await db.rpc('get_fournitures_by_token', { p_token: state.guestToken });
       fournitures = data || [];
-      // Charger inclure_caracteristiques depuis la consultation via token
       const { data: consData } = await db.rpc('get_consultation_by_token', { p_token: state.guestToken });
       if (consData) state.currentConsultation = { ...(state.currentConsultation || {}), ...consData };
     } else {
       const { data: cons } = await db.from('consultations')
-        .select('chantier_id, inclure_caracteristiques, familles, fournitures_ids')
+        .select('chantier_id, familles, fournitures_ids')
         .eq('id', consId).single();
       if (cons) {
         state.currentConsultation = { ...(state.currentConsultation || {}), ...cons };
@@ -3513,7 +3512,6 @@ async function loadSaisie() {
 function renderSaisie() {
   const container = document.getElementById('saisie-content');
   const fournitures = state.fournitures.filter(f => !f.is_variante);
-  const inclureCaract = state.currentConsultation?.inclure_caracteristiques || false;
   const consId = state.currentConsultation?.id;
 
   const famMap = {};
@@ -3584,14 +3582,14 @@ function renderSaisie() {
           <tbody id="saisie-tbody-${fam.id}">
             ${items.map(f => {
               // Ligne principale
-              let html = renderLigneSaisie(f, 0, inclureCaract);
+              let html = renderLigneSaisie(f, 0);
               // Variantes sauvegardées
               const variantesOrdres = Object.keys(state.reponses)
                 .filter(k => k.startsWith(f.id + '_') && parseInt(k.split('_')[1]) > 0)
                 .map(k => parseInt(k.split('_')[1]))
                 .sort();
               for (const ord of variantesOrdres) {
-                html += renderLigneSaisie({ ...f, is_variante: true }, ord, inclureCaract);
+                html += renderLigneSaisie({ ...f, is_variante: true }, ord);
               }
               return html;
             }).join('')}
@@ -3602,7 +3600,7 @@ function renderSaisie() {
   `).join('') + fraisPortHtml;
 }
 
-function renderLigneSaisie(f, varOrdre, inclureCaract) {
+function renderLigneSaisie(f, varOrdre) {
   const key    = `${f.id}_${varOrdre}`;
   const rep    = state.reponses[key] || {};
   const locked = !!state.reponsesEnvoyees[key];
@@ -3623,9 +3621,7 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
   // que l'entreprise avait pris soin de rattacher.
   let specCell = '';
   if (!isVar) {
-    // Sans condition : une spécification technique renseignée par l'entreprise concerne le
-    // fournisseur, que l'option « inclure les caractéristiques du BPU » ait été cochée ou non.
-    // Ce réglage décidait de l'affichage de données déjà transmises — il ne protégeait rien.
+    // Une spécification renseignée par l'entreprise concerne le fournisseur, sans condition.
     const caract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
     const docs = _documentsJoints(f);
     specCell = (caract.length || docs)
@@ -3636,7 +3632,7 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
           ${docs}
         </td>`
       : '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
-  } else if (inclureCaract) {
+  } else {
       // Variante : champs éditables pré-remplis depuis le parent
       const parentCaract = Array.isArray(f.caracteristiques) ? f.caracteristiques : [];
       let varCaract = Array.isArray(rep.variante_caracteristiques) ? rep.variante_caracteristiques : [];
@@ -3648,8 +3644,6 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
       specCell = `<td class="px-3 py-2 align-top" id="var-caract-cell-${f.id}-${varOrdre}">
         ${renderVarCaractFields(f.id, varOrdre, varCaract, locked)}
       </td>`;
-  } else {
-    specCell = '<td class="px-3 py-2 text-xs text-gray-300 italic">—</td>';
   }
 
   return `
@@ -3726,8 +3720,8 @@ function renderLigneSaisie(f, varOrdre, inclureCaract) {
 // Label Rouge, Plante Bleue — et non un détail descriptif. Elles n'étaient nulle part affichées au
 // fournisseur, qui chiffrait sans savoir ce qu'on lui demandait.
 //
-// Elles figurent donc sous la désignation, indépendamment du choix « inclure les caractéristiques »
-// : ce réglage porte sur le détail technique, pas sur ce que la commande impose.
+// Elles figurent sous la désignation, à part des caractéristiques : une exigence n'est pas une
+// description.
 // Toutes les pépinières n'ont pas les mêmes labels. Interdire la réponse à celles qui ne les ont
 // pas priverait l'entreprise d'offres qu'elle veut peut-être considérer ; passer le sujet sous
 // silence lui ferait comparer des choses inégales. Le fournisseur déclare donc, ligne par ligne,
@@ -4292,14 +4286,13 @@ function addVarianteFournisseur(fournitureId) {
     commentaire: ''
   };
 
-  const inclureCaract = state.currentConsultation?.inclure_caracteristiques || false;
   // Trouver la dernière ligne de ce fourniture dans le DOM
   const allRows = [...document.querySelectorAll(`tr[data-fourniture="${fournitureId}"]`)];
   const lastRow = allRows[allRows.length - 1];
   if (!lastRow) return;
 
   const tmp = document.createElement('tbody');
-  tmp.innerHTML = renderLigneSaisie({ ...f, is_variante: true }, newOrdre, inclureCaract);
+  tmp.innerHTML = renderLigneSaisie({ ...f, is_variante: true }, newOrdre);
   const newRow = tmp.firstElementChild;
   // Animation d'apparition
   newRow.style.opacity = '0';
