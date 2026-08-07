@@ -1618,6 +1618,23 @@ async function ouvrirFichierProtege(url, bucket) {
   else window.location.href = signee;
 }
 
+// Un bucket privé ne se lit qu'avec une URL signée. Plutôt que de reprendre un à un la trentaine
+// de liens qui pointent vers le Storage — et d'en oublier —, on intercepte le clic : le lien reste
+// écrit tel quel, il est signé au moment où on l'ouvre. Les liens déjà passés par
+// `ouvrirFichierProtege` portent un href vide et ne sont pas concernés.
+document.addEventListener('click', async ev => {
+  const a = ev.target?.closest?.('a[href*="/storage/v1/object/public/"]');
+  if (!a) return;
+  // On laisse filer ce que l'utilisateur veut ouvrir autrement : nouvel onglet système, clic droit.
+  if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+  ev.preventDefault();
+  const href = a.getAttribute('href');
+  const onglet = a.getAttribute('target') === '_blank' ? window.open('', '_blank') : null;
+  const signee = await _urlSignee(href);
+  if (onglet) onglet.location = signee;
+  else window.location.href = signee;
+}, true);
+
 // Écrit un classeur Excel dans l'archive. On préfère le .xlsx au .csv : pas de question de
 // séparateur ni d'encodage à l'ouverture, et les colonnes sont dimensionnées.
 function _ajouterFeuille(dossier, nomFichier, lignes, nomFeuille) {
@@ -11388,7 +11405,9 @@ async function _loadChantierConfig(chantierId) {
 }
 
 async function _urlToBase64(url) {
-  const resp = await fetch(url);
+  // Fiches techniques, photos et logos partent en annexe des PDF : ils sont lus par le portail,
+  // donc soumis au même besoin de signature que les liens cliquables.
+  const resp = await fetch(await _urlSignee(url));
   if (!resp.ok) throw new Error('fetch failed');
   const buf = await resp.arrayBuffer();
   const bytes = new Uint8Array(buf);
