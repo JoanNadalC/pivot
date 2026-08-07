@@ -160,6 +160,21 @@ rapprochée. Un compte déjà existant ne se rattache pas tout seul : cela passe
 **La mesure d'usage se limite au comptage.** Un compteur de connexions par mois et par compte,
 annoncé aux conditions générales — rien de plus fin.
 
+**Une entreprise à plusieurs agences doit pouvoir exister.** Un compte de tête, des agences ayant
+chacune son référent, ses licences et ses chantiers. La fonctionnalité n'est pas écrite ; la
+relation entre structures l'est (`structures.parent_id`), parce qu'une hiérarchie se pose sur une
+table vide et se reconstitue très mal sur des données réelles.
+
+Trois conséquences qui valent dès aujourd'hui :
+
+- une personne n'appartient qu'à **une** structure — la contrainte d'unicité sur
+  `structure_membres.user_id` reste, et l'administrateur de groupe est membre de la structure de
+  tête, non de chaque agence ;
+- une structure de tête ne se supprime pas tant qu'une agence lui est rattachée ; la purge se fait
+  agence par agence, la tête en dernier ;
+- ce qui appartient à une agence — chantiers, carnet, prix — n'est pas visible des autres agences du
+  seul fait du groupe. Le partage, s'il vient un jour, sera un choix explicite.
+
 ---
 
 ## 6. Consultations
